@@ -29,14 +29,14 @@ jobs:
           cd ios/App
           pod install
 
-      - name: 编译未签名 archive
+      - name: 编译 archive（ad-hoc 签名，便于 Sideloadly 重签）
         run: |
           cd ios/App
           xcodebuild -workspace App.xcworkspace -scheme App \
             -configuration Release -sdk iphoneos \
             -archivePath "$PWD/build/App.xcarchive" archive \
-            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGN_IDENTITY="" PROVISIONING_PROFILE=""
+            CODE_SIGN_IDENTITY="-" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=YES \
+            AD_HOC_CODE_SIGNING_ALLOWED=YES DEVELOPMENT_TEAM="" PROVISIONING_PROFILE_SPECIFIER=""
 
       - name: 打包未签名 IPA
         run: |
