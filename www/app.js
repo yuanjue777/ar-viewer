@@ -41,6 +41,16 @@ arBtn.addEventListener('click', () => {
     arHint.textContent = '⚠️ 此模型为本地内置无网络地址，请用「模型库」里的模型（它们有地址）。';
     return;
   }
+  const cap = window.Capacitor;
+  if (cap && cap.getPlatform && cap.getPlatform() === 'ios') {
+    try {
+      const ARLauncher = cap.registerPlugin('ARLauncher');
+      ARLauncher.open({ url: url, name: m.name });   // 原生 ARKit 放置（虚像+放置按钮）
+    } catch (e) {
+      arHint.textContent = 'AR 启动失败：' + ((e && e.message) || e);
+    }
+    return;
+  }
   if (window.AndroidAR && window.AndroidAR.nativeAR) {
     window.AndroidAR.nativeAR(url, m.name);   // 原生 ARCore 相机放置
   } else {
