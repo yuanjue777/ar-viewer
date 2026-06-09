@@ -47,5 +47,12 @@
 	<true/>
 	<key>NSCameraUsageDescription</key>
 	<string>用于 AR 把模型投射到现实地面</string>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsArbitraryLoads</key>
+		<true/>
+	</dict>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>用于连接局域网内的模型库服务器下载模型</string>
 </dict>
 </plist>
