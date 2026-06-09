@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>AR 模型库</title>
+  <!-- PWA：可“添加到主屏幕”，全屏运行 -->
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="AR模型库" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="theme-color" content="#0b0d12" />
+  <link rel="apple-touch-icon" href="/icon-180.png" />
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <script type="module" src="https://cdn.jsdelivr.net/npm/@google/model-viewer@3.5.0/dist/model-viewer.min.js"></script>
+  <style>
+    :root { --bg:#0b0d12; --surface:#161a23; --text:#f2f4f8; --dim:#9aa3b2; --accent:#4f7cff; }
+    * { box-sizing: border-box; }
+    body { margin:0; background:var(--bg); color:var(--text);
+      font-family:-apple-system,"PingFang SC",system-ui,sans-serif; }
+    header { padding:16px 18px 6px; font-size:18px; font-weight:700; }
+    .tip { padding:0 18px 14px; color:var(--dim); font-size:13px; line-height:1.6; }
+    .tip b { color:var(--accent); }
+    .grid { display:grid; grid-template-columns:1fr; gap:16px; padding:0 16px 30px; }
+    @media (min-width:560px){ .grid{ grid-template-columns:1fr 1fr; } }
+    .card { background:var(--surface); border:1px solid #222a38; border-radius:16px; overflow:hidden; }
+    model-viewer { width:100%; height:300px; background:#10131a; }
+    .name { padding:12px 14px; font-size:15px; font-weight:600; }
+    .arbtn { position:absolute; bottom:14px; left:50%; transform:translateX(-50%);
+      background:var(--accent); color:#fff; border:none; border-radius:999px;
+      padding:11px 20px; font-size:15px; font-weight:700; box-shadow:0 4px 14px rgba(0,0,0,.4); }
+    .empty { padding:30px; text-align:center; color:var(--dim); }
+  </style>
+</head>
+<body>
+  <header>📱 AR 模型库</header>
+  <div class="tip">
+    用 iPhone 的 <b>Safari</b> 打开本页 → 点模型上的 <b>「在现实中查看 (AR)」</b> →
+    把镜头对准地面放置 → <b>可绕着走 360° 观看</b>、双指缩放。<br>（基于 iPhone 的 ARKit，无需 Google）
+  </div>
+  <div class="grid" id="list"></div>
+  <div class="empty" id="empty" style="display:none">模型库为空，去 /admin 上传一个。</div>
+
+  <script>
+    function esc(s){ return (s||'').replace(/[&<>"]/g,(c)=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+    async function load(){
+      const items = await (await fetch('/api/models')).json();
+      document.getElementById('empty').style.display = items.length ? 'none' : 'block';
+      document.getElementById('list').innerHTML = items.map(card).join('');
+    }
+    function card(m){
+      const url = '/library/' + m.file;
+      // iOS 上 ar-modes 的 quick-look 会让 model-viewer 自动生成 USDZ 并调起 AR Quick Look
+      return `<div class="card">
+        <model-viewer src="${url}" ar ar-modes="quick-look scene-viewer webxr" ar-scale="auto"
+          camera-controls auto-rotate shadow-intensity="1" alt="${esc(m.name)}">
+          <button slot="ar-button" class="arbtn">📷 在现实中查看 (AR)</button>
+        </model-viewer>
+        <div class="name">${esc(m.name)}</div>
+      </div>`;
+    }
+    load();
+  </script>
+</body>
+</html>

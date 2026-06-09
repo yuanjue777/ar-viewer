@@ -1,0 +1,41 @@
+# Codemagic 云端 Mac 构建 iOS（无需自己的 Mac）
+# 用法见 README-ios.md。签名走 App Store Connect API 密钥（在 Codemagic 后台配置）。
+workflows:
+  ios-app:
+    name: AR投影 iOS
+    instance_type: mac_mini_m1
+    max_build_duration: 60
+    integrations:
+      # ↓ 在 Codemagic 后台 Teams → Integrations → App Store Connect 添加密钥后，把名字填到这里
+      app_store_connect: CodemagicApiKey
+    environment:
+      ios_signing:
+        distribution_type: app_store        # TestFlight 分发
+        bundle_identifier: com.arviewer.app
+      vars:
+        XCODE_WORKSPACE: "ios/App/App.xcworkspace"
+        XCODE_SCHEME: "App"
+      node: 20
+      xcode: 15.4
+      cocoapods: default
+    scripts:
+      - name: 安装 npm 依赖
+        script: npm install
+      - name: Capacitor 同步 iOS
+        script: npx cap sync ios
+      - name: Pod install
+        script: cd ios/App && pod install
+      - name: 配置签名描述文件
+        script: xcode-project use-profiles
+      - name: 构建 IPA
+        script: |
+          xcode-project build-ipa \
+            --workspace "$XCODE_WORKSPACE" \
+            --scheme "$XCODE_SCHEME"
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
+    publishing:
+      app_store_connect:
+        auth: integration
+        submit_to_testflight: true        # 构建完自动上 TestFlight

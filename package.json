@@ -1,0 +1,19 @@
+{
+  "name": "ar-viewer",
+  "version": "1.0.0",
+  "private": true,
+  "description": "AR 模型投影 App",
+  "scripts": {
+    "sync": "cap sync",
+    "build:apk": "cd android && gradlew.bat assembleDebug"
+  },
+  "dependencies": {
+    "@capacitor/android": "^6.2.0",
+    "@capacitor/browser": "^6.0.4",
+    "@capacitor/core": "^6.2.0",
+    "@capacitor/ios": "^6.2.1"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^6.2.0"
+  }
+}

@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#0b0d12" />
+  <title>AR 模型投影</title>
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="apple-touch-icon" href="icon-192.png" />
+  <link rel="stylesheet" href="styles.css" />
+  <!-- model-viewer：封装 ARCore(安卓) / ARKit(iOS)，负责平面检测与地面锚定 -->
+  <script type="module" src="https://unpkg.com/@google/model-viewer@3.5.0/dist/model-viewer.min.js"></script>
+</head>
+<body>
+  <!-- ============ 第一页：模型 + 开启 AR ============ -->
+  <section id="view-home" class="view view--active">
+    <header class="topbar">
+      <span class="topbar__title">AR 投影</span>
+      <button class="topbar__btn" data-go="list">模型列表 ›</button>
+    </header>
+
+    <main class="home">
+      <model-viewer
+        id="viewer"
+        camera-controls
+        touch-action="pan-y"
+        shadow-intensity="1"
+        exposure="1"
+        auto-rotate
+        auto-rotate-delay="3000"
+        ar
+        ar-modes="webxr scene-viewer quick-look"
+        ar-placement="floor"
+        ar-scale="fixed"
+        alt="AR 模型">
+        <div class="mv-progress" slot="progress-bar"></div>
+      </model-viewer>
+
+      <div class="home__panel">
+        <h1 id="model-name" class="home__name">模型</h1>
+        <p id="model-desc" class="home__desc"></p>
+        <button id="ar-btn" class="btn btn--primary">开启 AR</button>
+        <p id="ar-hint" class="home__hint"></p>
+      </div>
+    </main>
+  </section>
+
+  <!-- ============ 第二页：模型列表 ============ -->
+  <section id="view-list" class="view">
+    <header class="topbar">
+      <button class="topbar__btn" data-go="home">‹ 返回</button>
+      <span class="topbar__title">模型列表</span>
+    </header>
+    <main class="list" id="model-list"><!-- JS 动态填充 --></main>
+  </section>
+
+  <script src="app.js"></script>
+  <script>
+    // 注册 Service Worker，让其成为可安装/可打包的 PWA
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('sw.js').catch((err) =>
+          console.warn('SW 注册失败:', err)
+        );
+      });
+    }
+  </script>
+</body>
+</html>

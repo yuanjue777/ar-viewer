@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>模型库 · 管理端</title>
+  <script type="module" src="https://cdn.jsdelivr.net/npm/@google/model-viewer@3.5.0/dist/model-viewer.min.js"></script>
+  <style>
+    :root { --bg:#0b0d12; --surface:#161a23; --surface2:#1f2532; --text:#f2f4f8; --dim:#9aa3b2; --accent:#4f7cff; }
+    * { box-sizing: border-box; }
+    body { margin:0; background:var(--bg); color:var(--text); font-family:-apple-system,"PingFang SC","Microsoft YaHei",system-ui,sans-serif; }
+    header { padding:18px 22px; background:#11141c; border-bottom:1px solid #222a38; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px; }
+    header h1 { font-size:18px; margin:0; }
+    header .url { font-size:13px; color:var(--dim); }
+    header .url b { color:var(--accent); }
+    main { max-width:1000px; margin:0 auto; padding:22px; }
+    .upload { background:var(--surface); border:1px solid #222a38; border-radius:14px; padding:18px; display:flex; gap:12px; flex-wrap:wrap; align-items:center; }
+    .upload input[type=text] { flex:1; min-width:160px; padding:11px 12px; border-radius:10px; border:1px solid #2c3547; background:var(--surface2); color:var(--text); font-size:14px; }
+    .upload input[type=file] { color:var(--dim); font-size:13px; }
+    .btn { padding:11px 20px; border:none; border-radius:10px; background:var(--accent); color:#fff; font-weight:600; font-size:14px; cursor:pointer; }
+    .btn:disabled { opacity:.5; cursor:not-allowed; }
+    #prog { width:100%; font-size:13px; color:var(--dim); min-height:18px; }
+    h2 { font-size:15px; color:var(--dim); margin:26px 4px 12px; font-weight:600; }
+    .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:14px; }
+    .card { background:var(--surface); border:1px solid #222a38; border-radius:14px; overflow:hidden; }
+    .card model-viewer { width:100%; height:180px; background:#10131a; --poster-color:transparent; }
+    .meta { padding:10px 12px 4px; display:flex; justify-content:space-between; align-items:baseline; gap:8px; }
+    .meta b { font-size:14px; } .meta span { font-size:12px; color:var(--dim); white-space:nowrap; }
+    .row { padding:8px 12px 12px; display:flex; gap:8px; }
+    .row button { flex:1; padding:8px; border:1px solid #2c3547; background:var(--surface2); color:var(--text); border-radius:8px; font-size:13px; cursor:pointer; }
+    .row button.del { color:#ff8585; border-color:#5a2a2a; }
+    .empty { color:var(--dim); font-size:14px; padding:30px; text-align:center; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>🗂️ 模型库 · 管理端</h1>
+    <div class="url">App 接口地址：<b id="apiurl">…</b></div>
+  </header>
+  <main>
+    <div class="upload">
+      <input type="text" id="name" placeholder="模型名称（留空则用文件名）" />
+      <input type="file" id="file" accept=".glb" />
+      <button class="btn" id="btn">上传</button>
+      <div id="prog"></div>
+    </div>
+
+    <h2>模型库（<span id="count">0</span>）</h2>
+    <div class="grid" id="list"></div>
+    <div class="empty" id="empty" style="display:none">还没有模型，上传一个 .glb 试试。</div>
+  </main>
+
+  <script>
+    const $ = (s) => document.querySelector(s);
+    document.getElementById('apiurl').textContent = location.origin;
+
+    function esc(s) { return (s || '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+
+    async function load() {
+      const items = await (await fetch('/api/models')).json();
+      $('#count').textContent = items.length;
+      $('#empty').style.display = items.length ? 'none' : 'block';
+      $('#list').innerHTML = items.map(card).join('');
+    }
+    function card(m) {
+      const url = '/library/' + m.file;
+      return `<div class="card">
+        <model-viewer src="${url}" camera-controls auto-rotate disable-zoom interaction-prompt="none" shadow-intensity="0.6"></model-viewer>
+        <div class="meta"><b>${esc(m.name)}</b><span>${(m.size / 1048576).toFixed(2)} MB</span></div>
+        <div class="row">
+          <button onclick="copyLink('${m.file}')">复制链接</button>
+          <button class="del" onclick="del('${m.id}')">删除</button>
+        </div></div>`;
+    }
+    window.del = async (id) => { if (!confirm('确定删除该模型？')) return; await fetch('/api/models/' + id, { method: 'DELETE' }); load(); };
+    window.copyLink = (file) => {
+      const link = location.origin + '/library/' + file;
+      navigator.clipboard && navigator.clipboard.writeText(link);
+      $('#prog').textContent = '已复制链接：' + link;
+    };
+
+    $('#btn').onclick = async () => {
+      const f = $('#file').files[0];
+      if (!f) { alert('请先选择一个 .glb 文件'); return; }
+      const name = $('#name').value.trim() || f.name.replace(/\.glb$/i, '');
+      $('#btn').disabled = true; $('#prog').textContent = '上传中… ' + (f.size / 1048576).toFixed(1) + ' MB';
+      try {
+        await fetch('/api/upload?name=' + encodeURIComponent(name), { method: 'POST', body: f });
+        $('#prog').textContent = '上传完成 ✓';
+        $('#name').value = ''; $('#file').value = '';
+        load();
+      } catch (e) { $('#prog').textContent = '上传失败：' + e.message; }
+      $('#btn').disabled = false;
+    };
+
+    load();
+  </script>
+</body>
+</html>

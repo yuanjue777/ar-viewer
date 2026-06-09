@@ -1,0 +1,54 @@
+name: Build iOS (unsigned IPA)
+
+# 免费云端 Mac 编译。产物是未签名 .ipa，下载后用 AltStore/Sideloadly
+# 配合【免费 Apple ID】重新签名并装到 iPhone。
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:        # 也可在 Actions 页手动点运行
+
+jobs:
+  build:
+    runs-on: macos-14
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: 安装 npm 依赖
+        run: npm install
+
+      - name: Capacitor 同步 iOS
+        run: npx cap sync ios
+
+      - name: Pod install
+        run: |
+          cd ios/App
+          pod install
+
+      - name: 编译未签名 archive
+        run: |
+          cd ios/App
+          xcodebuild -workspace App.xcworkspace -scheme App \
+            -configuration Release -sdk iphoneos \
+            -archivePath "$PWD/build/App.xcarchive" archive \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" PROVISIONING_PROFILE=""
+
+      - name: 打包未签名 IPA
+        run: |
+          cd ios/App/build
+          mkdir -p Payload
+          cp -r App.xcarchive/Products/Applications/App.app Payload/
+          zip -qr App-unsigned.ipa Payload
+          ls -lh App-unsigned.ipa
+
+      - name: 上传 IPA 产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: App-unsigned-ipa
+          path: ios/App/build/App-unsigned.ipa
+          if-no-files-found: error

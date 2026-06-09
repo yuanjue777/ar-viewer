@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>AR 投影</title>
+  <script src="lib/aframe.min.js"></script>
+  <script src="lib/aframe-extras.min.js"></script>
+  <script src="models.js"></script>
+  <script>
+    /* 自定义陀螺仪组件：把设备朝向平滑(slerp)后驱动相机，压低抖动 */
+    AFRAME.registerComponent('smooth-gyro', {
+      schema: { factor: { default: 0.15 } },
+      init: function () {
+        var T = AFRAME.THREE;
+        this.q = new T.Quaternion();
+        this.target = new T.Quaternion();
+        this.tmp = new T.Quaternion();
+        this.euler = new T.Euler();
+        this.zee = new T.Vector3(0, 0, 1);
+        this.q1 = new T.Quaternion(-Math.sqrt(0.5), 0, 0, Math.sqrt(0.5));
+        this.have = false;
+        this.onOrient = this.onOrient.bind(this);
+        window.addEventListener('deviceorientation', this.onOrient, true);
+      },
+      onOrient: function (e) {
+        if (e.alpha == null) return;
+        var d = Math.PI / 180;
+        var orient = (((screen.orientation && screen.orientation.angle) || window.orientation || 0)) * d;
+        this.euler.set((e.beta || 0) * d, (e.alpha || 0) * d, -(e.gamma || 0) * d, 'YXZ');
+        this.target.setFromEuler(this.euler);
+        this.target.multiply(this.q1);
+        this.target.multiply(this.tmp.setFromAxisAngle(this.zee, -orient));
+        if (!this.have) { this.q.copy(this.target); this.have = true; }
+      },
+      tick: function () {
+        if (!this.have) return;
+        this.q.slerp(this.target, this.data.factor);
+        this.el.object3D.quaternion.copy(this.q);
+      }
+    });
+  </script>
+  <style>
+    html, body { margin: 0; height: 100%; overflow: hidden; background: #000;
+      font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; color: #fff;
+      touch-action: none; -webkit-user-select: none; user-select: none; }
+    #cam { position: fixed; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; z-index: 0; }
+    a-scene, canvas.a-canvas { position: fixed !important; top: 0; left: 0;
+      z-index: 1 !important; background: transparent !important; }
+    .overlay { position: fixed; z-index: 20; }
+    .back { top: max(14px, env(safe-area-inset-top)); left: 14px; background: rgba(0,0,0,.55);
+      padding: 10px 16px; border-radius: 999px; color: #fff; text-decoration: none; font-size: 15px; }
+    .tip { left: 0; right: 0; bottom: max(20px, env(safe-area-inset-bottom)); text-align: center;
+      font-size: 13px; padding: 0 90px; text-shadow: 0 1px 4px rgba(0,0,0,.9); }
+    .reticle { position: fixed; left: 50%; top: 50%; width: 46px; height: 46px; margin: -23px 0 0 -23px;
+      border: 2px solid rgba(255,255,255,.9); border-radius: 50%; z-index: 15; pointer-events: none; }
+    .reticle::after { content: ''; position: absolute; left: 50%; top: 50%; width: 6px; height: 6px;
+      margin: -3px 0 0 -3px; background: #4f7cff; border-radius: 50%; }
+    /* 两侧竖向滑条（用旋转实现，兼容性最好） */
+    .ctrl { position: fixed; top: 50%; transform: translateY(-50%); z-index: 26; display: none;
+      height: 60vh; width: 64px; }
+    .ctrl-right { right: 2px; } .ctrl-left { left: 2px; }
+    .ctrl input[type=range] { position: absolute; top: 50%; left: 50%; width: 56vh; height: 40px;
+      transform: translate(-50%, -50%) rotate(-90deg); accent-color: #4f7cff; }
+    .ctrl .lbl { position: absolute; bottom: 2px; left: 0; right: 0; text-align: center;
+      font-size: 12px; color: #fff; text-shadow: 0 1px 3px #000; }
+    .gate { position: fixed; inset: 0; z-index: 40; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 18px; padding: 28px; text-align: center;
+      background: radial-gradient(120% 80% at 50% 0%, #1c2330, #0b0d12 70%); }
+    .gate p { color: #9aa3b2; font-size: 14px; line-height: 1.6; margin: 0; }
+    .start { padding: 16px 34px; border: none; border-radius: 999px; background: #4f7cff;
+      color: #fff; font-size: 18px; font-weight: 700; }
+    .err { position: fixed; inset: 0; display: none; flex-direction: column; align-items: center;
+      justify-content: center; gap: 16px; padding: 28px; text-align: center; background: #0b0d12; z-index: 50; }
+    .err a { color: #4f7cff; }
+  </style>
+</head>
+<body>
+  <video id="cam" autoplay muted playsinline></video>
+
+  <a-scene renderer="alpha: true; colorManagement: true"
+    vr-mode-ui="enabled: false" device-orientation-permission-ui="enabled: false">
+    <a-entity light="type: ambient; intensity: 0.9"></a-entity>
+    <a-entity light="type: directional; intensity: 0.7" position="1 4 2"></a-entity>
+    <a-camera fov="60" position="0 1.6 0"
+      look-controls="enabled: false" wasd-controls-enabled="false" smooth-gyro></a-camera>
+    <a-entity id="model" visible="false"></a-entity>
+  </a-scene>
+
+  <div class="reticle" id="reticle" style="display:none"></div>
+  <a class="overlay back" href="index.html">‹ 返回</a>
+  <div class="overlay tip" id="tip"></div>
+
+  <!-- 左：上下；右：远近 -->
+  <div class="ctrl ctrl-left" id="ctrlH"><input type="range" id="rngH" min="-1" max="3" step="0.02" value="0"><div class="lbl">上下</div></div>
+  <div class="ctrl ctrl-right" id="ctrlD"><input type="range" id="rngD" min="0.5" max="8" step="0.05" value="2"><div class="lbl">远近</div></div>
+
+  <div class="gate" id="gate">
+    <h2 id="gate-title">放到地面</h2>
+    <p>点击开启摄像头。<br>把镜头对准地面，点一下屏幕放置模型。<br>双指缩放，两侧滑条调远近/上下。</p>
+    <button class="start" id="start">▶ 开始</button>
+  </div>
+
+  <div class="err" id="err"><div id="errmsg"></div><a href="index.html">返回首页</a></div>
+
+  <script>
+    (function () {
+      var THREE = AFRAME.THREE;
+      var qs = new URLSearchParams(location.search);
+      var id = qs.get('model') || (MODELS[0] && MODELS[0].id);
+      var m = MODELS.find(function (x) { return x.id === id; }) || MODELS[0];
+
+      var cam = document.getElementById('cam');
+      var sceneEl = document.querySelector('a-scene');
+      var modelEl = document.getElementById('model');
+      var tip = document.getElementById('tip');
+      var reticle = document.getElementById('reticle');
+      var gate = document.getElementById('gate');
+      var startBtn = document.getElementById('start');
+      var ctrlH = document.getElementById('ctrlH'), ctrlD = document.getElementById('ctrlD');
+      var rngH = document.getElementById('rngH'), rngD = document.getElementById('rngD');
+      function showErr(t) { document.getElementById('errmsg').textContent = t; document.getElementById('err').style.display = 'flex'; }
+      window.addEventListener('error', function (e) { showErr('脚本错误：' + (e.message || e.type)); }, true);
+
+      var ar = m.ar || {};
+      var baseScale = ar.scale || 1;
+      var br = (ar.rot || '0 0 0').split(' ');
+      modelEl.setAttribute('gltf-model', m.glb);
+      if (m.anim) modelEl.setAttribute('animation-mixer', 'clip: *; loop: repeat');
+      document.getElementById('gate-title').textContent = m.name;
+
+      // 自动缩放：把模型缩放到 ar.autofit 指定的高度(米)
+      modelEl.addEventListener('model-loaded', function () {
+        if (!ar.autofit) return;
+        try {
+          var obj = modelEl.getObject3D('mesh'); if (!obj) return;
+          var box = new THREE.Box3().setFromObject(obj);
+          var size = new THREE.Vector3(); box.getSize(size);
+          baseScale = ar.autofit / (size.y || 1);
+          if (st.placed) updateModel();
+        } catch (e) {}
+      });
+
+      // 状态：方位(bearing) + 距离 + 高度 + 缩放
+      var st = { bx: 0, bz: -1, dist: 2, height: 0, scale: 1, yaw: 0, placed: false };
+
+      function updateModel() {
+        var x = st.bx * st.dist, z = st.bz * st.dist;
+        modelEl.setAttribute('position', x.toFixed(3) + ' ' + st.height.toFixed(3) + ' ' + z.toFixed(3));
+        var sc = baseScale * st.scale;
+        modelEl.setAttribute('scale', sc + ' ' + sc + ' ' + sc);
+        // 朝向在放置时锁定(st.yaw)，之后固定不动，不再随镜头转
+        modelEl.setAttribute('rotation', (br[0] || '0') + ' ' + st.yaw.toFixed(1) + ' ' + (br[2] || '0'));
+        modelEl.setAttribute('visible', 'true');
+      }
+
+      startBtn.addEventListener('click', function () { gate.style.display = 'none'; startCamera(); });
+
+      function startCamera() {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { showErr('navigator.mediaDevices 不可用'); return; }
+        navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false })
+          .then(function (stream) {
+            cam.srcObject = stream;
+            reticle.style.display = 'block';
+            tip.textContent = '把镜头对准地面，点屏幕放置';
+            setTimeout(function () { window.addEventListener('click', onTap); }, 350);
+          })
+          .catch(function (e) { showErr('摄像头打开失败：' + e.name + ' — ' + (e.message || '')); });
+      }
+
+      var lastPinchEnd = 0;
+      function onTap(ev) {
+        if (Date.now() - lastPinchEnd < 400) return;                 // 刚缩放完，忽略
+        if (ev && ev.target && ev.target.closest &&
+            (ev.target.closest('.ctrl') || ev.target.closest('.back'))) return; // 滑条/返回不放置
+        var cameraEl = sceneEl.camera; if (!cameraEl) return;
+        var camPos = new THREE.Vector3(); cameraEl.getWorldPosition(camPos);
+        var quat = new THREE.Quaternion(); cameraEl.getWorldQuaternion(quat);
+        var dir = new THREE.Vector3(0, 0, -1).applyQuaternion(quat);
+        if (dir.y > -0.05) { tip.textContent = '请把镜头多朝下对准地面再点'; return; }
+        var t = (0 - camPos.y) / dir.y; if (t < 0) return; if (t > 6) t = 6;
+        var hit = camPos.clone().add(dir.multiplyScalar(t));
+        var len = Math.hypot(hit.x, hit.z) || 1;
+        st.bx = hit.x / len; st.bz = hit.z / len;
+        st.dist = Math.min(Math.max(len, 0.5), 8);
+        st.height = 0;
+        st.yaw = Math.atan2(0 - hit.x, 0 - hit.z) * 180 / Math.PI; // 放置瞬间锁定朝向
+        rngD.value = st.dist; rngH.value = 0;
+        updateModel();
+        ctrlH.style.display = 'block'; ctrlD.style.display = 'block';
+        st.placed = true;
+        tip.textContent = m.name + ' 已放置 ✓ 双指缩放 · 右滑条远近 · 左滑条上下';
+      }
+
+      // 滑条：远近 / 上下
+      rngD.addEventListener('input', function () { st.dist = parseFloat(rngD.value); updateModel(); });
+      rngH.addEventListener('input', function () { st.height = parseFloat(rngH.value); updateModel(); });
+      [ctrlH, ctrlD].forEach(function (el) {
+        el.addEventListener('touchstart', function (e) { e.stopPropagation(); }, { passive: true });
+        el.addEventListener('click', function (e) { e.stopPropagation(); });
+      });
+
+      // 双指捏合缩放
+      function dist2(t) { var dx = t[0].clientX - t[1].clientX, dy = t[0].clientY - t[1].clientY; return Math.hypot(dx, dy); }
+      var pinchStart = null, pinchScale = 1;
+      window.addEventListener('touchstart', function (e) {
+        if (e.touches.length === 2) { pinchStart = dist2(e.touches); pinchScale = st.scale; }
+      }, { passive: false });
+      window.addEventListener('touchmove', function (e) {
+        if (e.touches.length === 2 && pinchStart) {
+          var d = dist2(e.touches);
+          st.scale = Math.min(Math.max(pinchScale * (d / pinchStart), 0.05), 20);
+          if (st.placed) updateModel();
+          e.preventDefault();
+        }
+      }, { passive: false });
+      window.addEventListener('touchend', function (e) {
+        if (e.touches.length < 2 && pinchStart !== null) { pinchStart = null; lastPinchEnd = Date.now(); }
+      });
+    })();
+  </script>
+</body>
+</html>

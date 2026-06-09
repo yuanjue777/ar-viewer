@@ -1,0 +1,23 @@
+node_modules/
+
+# Android
+android/.gradle/
+android/app/build/
+android/build/
+android/captures/
+android/local.properties
+android/.idea/
+*.apk
+
+# iOS（云端 cap sync / pod install 会重建）
+ios/App/Pods/
+ios/App/build/
+ios/App/App/public/
+ios/DerivedData/
+ios/App/output/
+
+# 杂项
+.DS_Store
+*.log
+server/library/
+server/library.json

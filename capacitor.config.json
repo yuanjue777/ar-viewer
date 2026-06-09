@@ -1,0 +1,12 @@
+{
+  "appId": "com.arviewer.app",
+  "appName": "AR投影",
+  "webDir": "www",
+  "server": {
+    "androidScheme": "http",
+    "cleartext": true
+  },
+  "android": {
+    "allowMixedContent": true
+  }
+}
