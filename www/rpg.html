@@ -203,12 +203,36 @@ const CLASSES={
   warrior:{name:'战士',color:'#ff5d5d',hpB:90,wep:15,bat:1.7,baseArmor:4,range:1.15,splash:0, main:'str',
           attr:{str:22,agi:10,int:8}, grow:{str:2.7,agi:1.3,int:1.0},desc:'近战坦克·主力量'},
 };
+/* 转职分支：每职业2条路线，各带1个专精技能（专精用金+木升级，上限Lv5） */
 const ADV={
-  mage:  {name:'大法师',atk:1.6,hp:1.4,bat:1,  range:1,  splash:.4},
-  archer:{name:'神射手',atk:1.5,hp:1.3,bat:.85,range:1.5,splash:0},
-  warrior:{name:'狂战士',atk:1.6,hp:1.6,bat:.9, range:.25,splash:0},
+  warrior:[
+    {key:'berserker',name:'狂战士',atk:1.6,hp:1.5,bat:.9, range:.25,splash:0},
+    {key:'guard',    name:'护卫',  atk:1.3,hp:1.9,bat:.95,range:.2, splash:0},
+  ],
+  archer:[
+    {key:'elf',  name:'精灵游侠',atk:1.4,hp:1.3, bat:.85,range:1.5,splash:0},
+    {key:'death',name:'死亡射手',atk:1.6,hp:1.25,bat:.9, range:1.2,splash:0},
+  ],
+  mage:[
+    {key:'priest',name:'牧师',  atk:1.4,hp:1.5,bat:1,range:1,splash:.2},
+    {key:'druid', name:'德鲁伊',atk:1.4,hp:1.4,bat:1,range:1,splash:.2},
+  ],
 };
-const ADV_LV=5, ADV_GOLD=150, ADV_WOOD=50;
+const SPECS={
+  berserker:{n:'血怒',    d:lv=>`失血越多输出越高：攻击+失血比×${15+10*lv}%，攻速+失血比×${30+15*lv}点`},
+  guard:    {n:'坚壁',    d:lv=>`护甲+${3*lv}`},
+  elf:      {n:'迅捷',    d:lv=>`攻击间隔额外-${(0.2+0.01*lv).toFixed(2)}s`},
+  death:    {n:'死神收割',d:lv=>`每有敌人死亡+0.5敏捷，上限${20+10*(lv-1)}`},
+  priest:   {n:'治愈祷言',d:lv=>`主动(30蓝,CD8s)：回复全体英雄 30+智×${(0.6+0.4*lv).toFixed(1)} 生命`},
+  druid:    {n:'自然之力',d:lv=>`召唤物属性+${20*lv}%`},
+};
+function advOf(h){return h.tier?ADV[h.cls][h.branch]:null;}
+function specCost(lv){return {g:100*lv,w:60*lv};}   // 专精升级费用（当前级→下一级）
+const SPEC_MAX=5;
+const ADV_LV=5, ADV_GOLD=150, ADV_WOOD=250;
+/* 英雄递增定价：第1个50、第2个100、第3个200 */
+const HERO_COSTS=[50,100,200];
+function heroCost(){return HERO_COSTS[Math.min(heroes.length,HERO_COSTS.length-1)];}
 function xpNeed(lv){return 40+45*(lv-1);}
 /* 魔兽护甲减伤公式 */
 function armorRed(a){const v=a*.06;return v>0?v/(1+v):0;}
@@ -227,6 +251,7 @@ const SKB={
   '冰风暴':    {cat:'int',q:'qgreen', short:'冰风',cd:10,mana:35,desc:'主动(35蓝)：范围魔法AOE+减速，显示范围圈'},
   'CD光环':    {cat:'int',q:'qblue',  short:'CD环',cd:0, desc:'被动：主动技能冷却-4%×等级（与装备CD缩减叠加，总上限50%）'},
   '闪电链':    {cat:'int',q:'qblue',  short:'闪电',cd:4, mana:45,desc:'主动(45蓝)：CD短耗蓝高，闪电跳(2+等级)个目标，各(30+智×1.2×等级)魔法伤害'},
+  '魂吸':      {cat:'int',q:'qpurple',short:'魂吸',cd:0, desc:'被动：每有敌方单位死亡+0.5智力，上限10+5×(等级-1)'},
 };
 const QC={qgreen:'#5ad48a',qblue:'#4fa8ff',qpurple:'#b070ff'};
 const QN={qgreen:'绿',qblue:'蓝',qpurple:'紫'};
@@ -255,15 +280,23 @@ const EQUIPS=[
   {id:'hammer',   n:'狼牙锤',  s:'狼牙',q:'fine',  stats:{str:15}},
   {id:'shield1',  n:'小圆盾',  s:'圆盾',q:'fine',  stats:{armor:10}},
   {id:'fang',     n:'毒牙之刃',s:'毒牙',q:'fine',  stats:{agi:15}},
+  {id:'doranring', n:'多兰戒', s:'多兰',q:'fine',  stats:{mpre:3}},
   {id:'thunderbow',n:'雷鸣弓', s:'雷弓',q:'rare',  stats:{bat:.1,aspd:20}},
   {id:'poorshield',n:'穷鬼盾', s:'穷盾',q:'rare',  stats:{block:20}},
-  {id:'manaring',  n:'法力指环',s:'蓝戒',q:'rare', stats:{mpre:2}},
+  {id:'manaring',  n:'法力指环',s:'蓝戒',q:'rare', stats:{mpre:8}},
+  {id:'dragonlance',n:'魔龙枪',s:'龙枪',q:'epic',  stats:{agi:20,range:2}},
 ];
 const EQ_BY_ID=Object.fromEntries(EQUIPS.map(e=>[e.id,e]));
-const EQ_ROLL1=45, EQ_ROLL4=160;
-function rollEquip(){
+/* 装备商店三档roll：每次固定4件，越贵越容易出高品质 */
+const EQ_TIERS={
+  low: {n:'低级roll',cost:100,w:{common:60,fine:30,rare:9, epic:1}},
+  mid: {n:'中级roll',cost:200,w:{common:30,fine:40,rare:24,epic:6}},
+  high:{n:'高级roll',cost:400,w:{common:5, fine:30,rare:45,epic:20}},
+};
+function rollEquip(tier){
+  const w=EQ_TIERS[tier].w;
   let r=Math.random()*100,qk='common';
-  for(const[k,q]of Object.entries(QUALS)){if(r<q.w){qk=k;break;}r-=q.w;}
+  for(const k of ['common','fine','rare','epic']){if(r<w[k]){qk=k;break;}r-=w[k];}
   const pool=EQUIPS.filter(e=>e.q===qk);
   return {t:'eq',id:pool[Math.floor(Math.random()*pool.length)].id};
 }
@@ -280,6 +313,7 @@ function eqDesc(def){
   if(s.bat)p.push('攻击间隔-'+s.bat);
   if(s.block)p.push('格挡普攻伤害'+s.block);
   if(s.mpre)p.push('回蓝+'+s.mpre+'/s');
+  if(s.range)p.push('射程+'+s.range+'格');
   if(s.hp)p.push('生命+'+s.hp);
   return p.join(' · ');
 }
@@ -317,42 +351,46 @@ window.addEventListener('resize',()=>setTimeout(resize,60));
 
 /* ================= 英雄 ================= */
 function makeHero(cls,row,col){
-  const h={cls,row,col,lv:1,xp:0,tier:0,equips:[],
+  const h={cls,row,col,lv:1,xp:0,tier:0,branch:-1,specLv:1,
+    soulInt:0,deathAgi:0,equips:[],
     skills:{},cds:{},cd:0,flash:0,alive:true};
   calc(h);h.hp=h.maxHp;
   return h;
 }
 function calc(h){
-  const b=CLASSES[h.cls],a=h.tier?ADV[h.cls]:null;
+  const b=CLASSES[h.cls],a=advOf(h);
   const am=h.tier?1.35:1;
-  let eqAtk=0,eqArmor=0,eqHp=0,eqAspd=0,eqStr=0,eqAgi=0,eqMres=0,eqCdr=0,eqBat=0,eqBlock=0,eqMpre=0;
+  const sp=h.specLv||0,key=a?a.key:'';
+  let eqAtk=0,eqArmor=0,eqHp=0,eqAspd=0,eqStr=0,eqAgi=0,eqMres=0,eqCdr=0,eqBat=0,eqBlock=0,eqMpre=0,eqRange=0;
   for(const e of h.equips){
     const s=eqDef(e).stats;
     eqAtk+=s.atk||0;eqArmor+=s.armor||0;eqHp+=s.hp||0;eqAspd+=s.aspd||0;
     eqStr+=s.str||0;eqAgi+=s.agi||0;eqMres+=s.mres||0;
-    eqCdr+=s.cdr||0;eqBat+=s.bat||0;eqBlock+=s.block||0;eqMpre+=s.mpre||0;
+    eqCdr+=s.cdr||0;eqBat+=s.bat||0;eqBlock+=s.block||0;eqMpre+=s.mpre||0;eqRange+=s.range||0;
   }
-  // 装备加的力/敏一样吃派生（力加血、敏加甲加攻速）
+  // 装备加的力/敏一样吃派生；魂吸智力/死神收割敏捷是击杀累积
   h.str=Math.round((b.attr.str+b.grow.str*(h.lv-1))*am)+eqStr;
-  h.agi=Math.round((b.attr.agi+b.grow.agi*(h.lv-1))*am)+eqAgi;
-  h.int=Math.round((b.attr.int+b.grow.int*(h.lv-1))*am);
+  h.agi=Math.round((b.attr.agi+b.grow.agi*(h.lv-1))*am)+eqAgi+Math.round(h.deathAgi||0);
+  h.int=Math.round((b.attr.int+b.grow.int*(h.lv-1))*am)+Math.round(h.soulInt||0);
   h.atk=Math.round(b.wep*(a?a.atk:1)+h[b.main]+eqAtk);
   h.maxHp=Math.round((b.hpB+h.str*8)*(a?a.hp:1)+eqHp);
-  h.armor=Math.round((b.baseArmor+h.agi/7+eqArmor)*10)/10;
+  // 护卫专精：坚壁加甲
+  h.armor=Math.round((b.baseArmor+h.agi/7+eqArmor+(key==='guard'?3*sp:0))*10)/10;
   h.mres=Math.min(.75,.25+eqMres);
   // 魔兽/DotA公式：每秒攻击=(1+攻速/100)/BAT；1敏=1攻速；上限400⇒最多5/BAT次每秒
-  const bat=Math.max(.4,b.bat*(a?a.bat:1)-eqBat);
+  // 精灵游侠专精：迅捷额外降BAT
+  const bat=Math.max(.35,b.bat*(a?a.bat:1)-eqBat-(key==='elf'?.2+.01*sp:0));
   h.ias=Math.min(400,h.agi+eqAspd);
   h.interval=bat/(1+h.ias/100);
-  h.cdr=Math.min(.5,eqCdr+.04*(h.skills['CD光环']||0));   // 技能CD缩减(装备+CD光环)，上限50%
-  h.block=eqBlock;                                         // 普攻固定格挡
-  h.range=b.range+(a?a.range:0)+.3*(h.skills['狙击潜质']||0); // 狙击潜质加射程(主动释放距离同步)
+  h.cdr=Math.min(.5,eqCdr+.04*(h.skills['CD光环']||0));
+  h.block=eqBlock;
+  h.range=b.range+(a?a.range:0)+.3*(h.skills['狙击潜质']||0)+eqRange;
   h.splash=b.splash+(a?a.splash:0);
-  // 法力：智力给蓝量和回蓝，主动技能耗蓝
   h.maxMp=10+h.int*3;
   h.mpRegen=1+h.int*.04+eqMpre;
   if(h.mp===undefined)h.mp=h.maxMp;
   h.mp=Math.min(h.mp,h.maxMp);
+  if(h.hp!==undefined)h.hp=Math.min(h.hp,h.maxHp);
 }
 function heroAt(c,r){return heroes.find(h=>h.col===c&&h.row===r);}
 function bearIn(row){return bears.find(b=>b.row===row&&!b.dead);}
@@ -369,7 +407,7 @@ function nearestDefendedRow(row){
   for(let r=0;r<ROWS;r++)if(rowDefended(r)&&Math.abs(r-row)<bd){bd=Math.abs(r-row);best=r;}
   return best;
 }
-function dispName(h){return h.tier?ADV[h.cls].name:CLASSES[h.cls].name;}
+function dispName(h){return h.tier?advOf(h).name:CLASSES[h.cls].name;}
 
 /* ================= 流程 ================= */
 function reset(){
@@ -419,9 +457,26 @@ function damage(m,d,color){
     m.dead=true;
     gold+=m.reward;
     gainXp(m.xp);
+    onKill();
     updateHUD();refreshAfford();
     fx.push({type:'ring',x:m.x,y:m.y+.5,rr:m.r*1.7,t:.28,max:.28,color:m.color});
   }
+}
+/* 敌人死亡触发：魂吸(+智,上限随等级)、死神收割(+敏,上限随专精) */
+function onKill(){
+  let dirty=false;
+  for(const h of heroes){
+    const sk=h.skills['魂吸'];
+    if(sk){
+      const cap=10+5*(sk-1);
+      if(h.soulInt<cap){h.soulInt=Math.min(cap,h.soulInt+.5);calc(h);dirty=true;}
+    }
+    if(h.tier&&advOf(h).key==='death'){
+      const cap=20+10*((h.specLv||1)-1);
+      if(h.deathAgi<cap){h.deathAgi=Math.min(cap,h.deathAgi+.5);calc(h);dirty=true;}
+    }
+  }
+  if(dirty&&sel)renderInfo();
 }
 /* 物理伤害吃怪物护甲，魔法伤害吃怪物魔抗 */
 function physDamage(m,d,color){damage(m,d*(1-armorRed(m.armor)),color);}
@@ -553,6 +608,22 @@ function update(dt){
         h.mp-=def.mana||0;
       }
     }
+    // 牧师专精·治愈祷言（主动，自动释放）
+    if(h.tier&&advOf(h).key==='priest'){
+      h.specCd=(h.specCd||0)-dt;
+      if(h.specCd<=0&&h.mp>=30){
+        const hurt=heroes.filter(o=>o.alive&&o.hp<o.maxHp);
+        if(hurt.length){
+          h.specCd=8*(1-h.cdr);h.mp-=30;
+          const heal=30+h.int*(.6+.4*h.specLv);
+          for(const o of hurt){
+            o.hp=Math.min(o.maxHp,o.hp+heal);
+            dnum(o.col+.5,o.row+.5,heal,'#7effc0');
+            fx.push({type:'ring',x:o.col+.5,y:o.row+.5,rr:.55,t:.35,max:.35,color:'#7effc0'});
+          }
+        }
+      }
+    }
     h.cd-=dt;if(h.cd>0)continue;
     let best=null;
     for(const m of mobs){
@@ -563,7 +634,7 @@ function update(dt){
       if(d<=h.range+m.r&&(!best||m.x<best.x))best=m;
     }
     if(best){
-      h.cd=h.interval;
+      h.cd=effInterval(h);
       attack(h,hx,hy,best);
       const ms=h.skills['多重射击'];
       if(ms){
@@ -618,9 +689,25 @@ function cleaveAround(m,base,pct){
   }
   fx.push({type:'ring',x:m.x,y:m.y+.5,rr:1.5,t:.2,max:.2,color:'#ffb27f'});
 }
+/* 血怒(狂战士专精)：按失血比动态加攻/攻速 */
+function berserkRatio(h){
+  if(!h.tier||advOf(h).key!=='berserker')return 0;
+  return 1-h.hp/h.maxHp;
+}
+function effAtk(h){
+  const r=berserkRatio(h);
+  return r>0?h.atk*(1+r*(.15+.1*h.specLv)):h.atk;
+}
+function effInterval(h){
+  const r=berserkRatio(h);
+  if(r<=0)return h.interval;
+  const ias=Math.min(400,h.ias+r*(30+15*h.specLv));
+  const bat=h.interval*(1+h.ias/100);   // 还原BAT
+  return bat/(1+ias/100);
+}
 function attack(h,hx,hy,m,mul,color){
   mul=mul||1;
-  let dmg=h.atk*mul,c=color;
+  let dmg=effAtk(h)*mul,c=color;
   // 致命一击：(15+5lv)%几率 (140+10lv)%伤害
   const cr=h.skills['致命一击'];
   if(cr&&Math.random()<.15+.05*cr){dmg*=1.4+.1*cr;c='#ffd24f';}
@@ -683,8 +770,11 @@ function frontInRange(h,hx,hy){
 function castSkill(h,name,lv,hx,hy){
   if(name==='召唤熊德'){
     if(bearIn(h.row)||!mobs.length)return false;
+    // 德鲁伊·自然之力：召唤物属性+20%×专精等级
+    const sm=(h.tier&&advOf(h).key==='druid')?1+.2*h.specLv:1;
+    const bhp=(120+h.int*6*lv)*sm;
     bears.push({isBear:true,row:h.row,x:HCOLS+.45,
-      hp:120+h.int*6*lv,maxHp:120+h.int*6*lv,atk:8+h.int*.7*lv,
+      hp:bhp,maxHp:bhp,atk:(8+h.int*.7*lv)*sm,
       t:12+2*lv,cd:0,dead:false});
     fx.push({type:'ring',x:HCOLS+.55,y:h.row+.5,rr:.8,t:.4,max:.4,color:'#c9a068'});
     return true;
@@ -891,11 +981,12 @@ function renderInfo(){
   let html='';
   if(sel&&!h){
     const cls=COL_CLASS[sel.col],b=CLASSES[cls];
+    const hc=heroCost();
     html=`<div class="card"><b style="color:${b.color}">初始${b.name}</b> <span>${b.desc}</span><br>
       <span>HP ${b.hpB+b.attr.str*8} · 攻 ${b.wep+b.attr[b.main]} · 间隔 ${b.bat}s · 甲 ${b.baseArmor}</span><br>
       <span>力${b.attr.str}(+${b.grow.str}) 敏${b.attr.agi}(+${b.grow.agi}) 智${b.attr.int}(+${b.grow.int})</span></div>
-      <button class="btn" id="buyAt" data-cost="${HERO_COST}" data-lock="${heroes.length>=MAX_HEROES?1:0}" ${gold<HERO_COST||heroes.length>=MAX_HEROES?'disabled':''}>
-        买入 <span class="cost">${HERO_COST}金</span>${heroes.length>=MAX_HEROES?'<br><span class="sub">已满3人</span>':''}</button>`;
+      <button class="btn" id="buyAt" data-cost="${hc}" data-lock="${heroes.length>=MAX_HEROES?1:0}" ${gold<hc||heroes.length>=MAX_HEROES?'disabled':''}>
+        买入 <span class="cost">${hc}金</span>${heroes.length>=MAX_HEROES?'<br><span class="sub">已满3人</span>':'<br><span class="sub">第'+(heroes.length+1)+'个英雄</span>'}</button>`;
   }else if(h){
     const b=CLASSES[h.cls];
     const advOK=!h.tier&&h.lv>=ADV_LV, canAdv=advOK&&gold>=ADV_GOLD&&wood>=ADV_WOOD;
@@ -926,12 +1017,23 @@ function renderInfo(){
         <span style="color:#8ce8a8">敏 <b>${h.agi}</b></span>
         <span style="color:#8db8ff">智 <b>${h.int}</b></span>
         <span>抗 <b>${Math.round(h.mres*100)}%</b>${h.cdr?' CD-'+Math.round(h.cdr*100)+'%':''}${h.block?' 挡'+h.block:''}</span>
-      </div></div>
+      </div>${h.tier?`<div style="margin-top:2px;color:${b.color};font-size:9.5px">专精 <b>${SPECS[advOf(h).key].n}</b> Lv${h.specLv} — <span style="color:var(--ink-dim)">${SPECS[advOf(h).key].d(h.specLv)}</span></div>`:''}</div>
       <div class="slotgrid sk">${sk.join('')}</div>
       <div class="slotgrid eq">${eq.join('')}</div>`;
     if(!h.tier){
-      html+=`<button class="btn" id="advBtn" data-cost="${ADV_GOLD}" data-wood="${ADV_WOOD}" data-lock="${advOK?0:1}" ${canAdv?'':'disabled'}>
-        转职·${ADV[h.cls].name}<br><span class="sub">需Lv${ADV_LV}</span> <span class="cost">${ADV_GOLD}金</span>+<span class="costw">${ADV_WOOD}木</span></button>`;
+      // 转职分支：两条路线各一个按钮
+      const canBase=h.lv>=ADV_LV;
+      html+=`<div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0">`+
+        ADV[h.cls].map((br,i)=>{
+          const can=canBase&&gold>=ADV_GOLD&&wood>=ADV_WOOD;
+          return `<button class="btn" data-adv="${i}" data-cost="${ADV_GOLD}" data-wood="${ADV_WOOD}" data-lock="${canBase?0:1}" ${can?'':'disabled'} style="padding:4px 8px">
+            ${br.name} <span style="color:${b.color};font-size:9px">[${SPECS[br.key].n}]</span><br>
+            <span class="sub">${canBase?'':'需Lv'+ADV_LV+' '}</span><span class="cost">${ADV_GOLD}金</span>+<span class="costw">${ADV_WOOD}木</span></button>`;
+        }).join('')+`</div>`;
+    }else if(h.specLv<SPEC_MAX){
+      const sc=specCost(h.specLv);
+      html+=`<button class="btn" data-spec="1" data-cost="${sc.g}" data-wood="${sc.w}" data-lock="0" ${gold>=sc.g&&wood>=sc.w?'':'disabled'}>
+        专精升级 Lv${h.specLv+1}<br><span class="cost">${sc.g}金</span>+<span class="costw">${sc.w}木</span></button>`;
     }
   }else{
     const n=mobs.length+queue.length;
@@ -941,19 +1043,31 @@ function renderInfo(){
   info.innerHTML=html;
   const ba=document.getElementById('buyAt');
   if(ba)ba.onclick=()=>{
-    if(gold>=HERO_COST&&heroes.length<MAX_HEROES&&sel&&!heroAt(sel.col,sel.row)){
-      gold-=HERO_COST;
+    const hc=heroCost();
+    if(gold>=hc&&heroes.length<MAX_HEROES&&sel&&!heroAt(sel.col,sel.row)){
+      gold-=hc;
       heroes.push(makeHero(COL_CLASS[sel.col],sel.row,sel.col));
       updateHUD();renderInfo();
     }
   };
-  const ab=document.getElementById('advBtn');
-  if(ab)ab.onclick=()=>{
+  info.querySelectorAll('[data-adv]').forEach(btn=>btn.onclick=()=>{
     const hh=selHero();if(!hh||hh.tier||hh.lv<ADV_LV)return;
     if(gold>=ADV_GOLD&&wood>=ADV_WOOD){
       gold-=ADV_GOLD;wood-=ADV_WOOD;
-      hh.tier=1;calc(hh);hh.hp=hh.maxHp;
+      hh.tier=1;hh.branch=+btn.dataset.adv;hh.specLv=1;
+      calc(hh);hh.hp=hh.maxHp;
       levelFx(hh.col+.5,hh.row+.5);
+      updateHUD();renderInfo();
+    }
+  });
+  const sb=info.querySelector('[data-spec]');
+  if(sb)sb.onclick=()=>{
+    const hh=selHero();if(!hh||!hh.tier||hh.specLv>=SPEC_MAX)return;
+    const sc=specCost(hh.specLv);
+    if(gold>=sc.g&&wood>=sc.w){
+      gold-=sc.g;wood-=sc.w;hh.specLv++;
+      calc(hh);
+      fx.push({type:'ring',x:hh.col+.5,y:hh.row+.5,rr:.7,t:.4,max:.4,color:'#f0c46a'});
       updateHUD();renderInfo();
     }
   };
@@ -979,16 +1093,14 @@ function shopHTML(){
           <span class="sub">${Object.keys(SKB).filter(n=>SKB[n].cat===cat).join('/')}</span></button>`).join('')+
       `<button class="btn grow" data-pack="roll" data-cost="${ROLL_COST}" data-lock="0" ${gold>=ROLL_COST?'':'disabled'}>
         <b style="color:#f0c46a">ROLL</b> <span class="cost">${ROLL_COST}金</span>
-        <span class="sub">全池7种·半价</span></button>`;
+        <span class="sub">全池·半价（新书替换旧书）</span></button>`;
   }
   if(openShop==='item'){
-    return `<div class="card shopHead"><b>装备商店</b><br><span>白50/绿35/蓝15%</span></div>
-      <button class="btn grow" data-eqroll="1" data-cost="${EQ_ROLL1}" data-lock="0" ${gold>=EQ_ROLL1?'':'disabled'}>
-        <b>roll ×1</b> <span class="cost">${EQ_ROLL1}金</span>
-        <span class="sub">从装备池随机一件</span></button>
-      <button class="btn grow" data-eqroll="4" data-cost="${EQ_ROLL4}" data-lock="0" ${gold>=EQ_ROLL4?'':'disabled'}>
-        <b>roll ×4</b> <span class="cost">${EQ_ROLL4}金</span>
-        <span class="sub">四连抽，略有折扣</span></button>`;
+    return `<div class="card shopHead"><b>装备商店</b><br><span>每档roll4件<br>越贵越出高品质</span></div>`+
+      Object.entries(EQ_TIERS).map(([k,t])=>
+        `<button class="btn grow" data-eqroll="${k}" data-cost="${t.cost}" data-lock="0" ${gold>=t.cost?'':'disabled'}>
+          <b>${t.n}</b> <span class="cost">${t.cost}金</span>
+          <span class="sub">白${t.w.common}/绿${t.w.fine}/蓝${t.w.rare}/紫${t.w.epic}%</span></button>`).join('');
   }
   const isMine=openShop==='mine';
   const lv=isMine?mineLv:millLv, cost=isMine?mineCost(lv):millCost(lv);
@@ -1015,15 +1127,17 @@ function buyPack(cat){
   const cost=cat==='roll'?ROLL_COST:PACK_COST;
   if(gold<cost)return;
   gold-=cost;
+  inv=inv.filter(it=>it.t!=='book');   // 上次没用完的技能书不保留
   const pool=cat==='roll'?Object.keys(SKB):Object.keys(SKB).filter(n=>SKB[n].cat===cat);
   for(let i=0;i<PACK_N;i++)inv.push({t:'book',name:pickBook(pool)});
+  if(invSel!=null&&(!inv[invSel]||inv[invSel].t!=='book'))invSel=null;
   updateHUD();renderInfo();renderInv();
 }
-function buyEquip(n){
-  const cost=n===4?EQ_ROLL4:EQ_ROLL1;
+function buyEquip(tier){
+  const cost=EQ_TIERS[tier].cost;
   if(gold<cost)return;
   gold-=cost;
-  for(let i=0;i<n;i++)inv.push(rollEquip());
+  for(let i=0;i<4;i++)inv.push(rollEquip(tier));   // 每档固定roll4件
   updateHUD();renderInfo();renderInv();
 }
 function renderInv(){
@@ -1114,7 +1228,7 @@ info.addEventListener('click',ev=>{
   }
   const b=ev.target.closest('button');if(!b||b.disabled)return;
   if(b.dataset.pack){buyPack(b.dataset.pack);return;}
-  if(b.dataset.eqroll){buyEquip(+b.dataset.eqroll);return;}
+  if(b.dataset.eqroll){buyEquip(b.dataset.eqroll);return;}
   if(b.dataset.shop){
     const isMine=b.dataset.shop==='mine';
     const lv=isMine?mineLv:millLv;
