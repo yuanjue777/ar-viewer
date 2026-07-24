@@ -307,9 +307,10 @@ function calc(h){
   h.armor=Math.round((b.baseArmor+h.agi/7+eqArmor)*10)/10;
   // 魔抗：基础25% + 装备，上限75%
   h.mres=Math.min(.75,.25+eqMres);
-  // 魔兽/DotA公式：每秒攻击 = (1+攻速/100)/BAT；1点敏捷=1攻速，攻速上限400
+  // 魔兽/DotA公式：每秒攻击 = (1+攻速/100)/BAT；1点敏捷=1攻速
+  // 攻速上限400 ⇒ 每秒最多A的次数 = 5/BAT（间隔1→5下/s，间隔2→2.5下/s）
   h.ias=Math.min(400,h.agi+eqAspd);
-  h.interval=Math.max(.25,b.bat*(a?a.bat:1)/(1+h.ias/100));
+  h.interval=b.bat*(a?a.bat:1)/(1+h.ias/100);
   h.range=b.range+(a?a.range:0);
   h.splash=b.splash+(a?a.splash:0);
 }
