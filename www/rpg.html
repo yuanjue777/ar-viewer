@@ -1,0 +1,521 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>方块战线</title>
+<style>
+  :root{
+    --bg:#0a0e16;
+    --bg2:#101726;
+    --line:#1c2940;
+    --ink:#d5e4ee;
+    --ink-dim:#68809a;
+    --gold:#f0c46a;
+    --hp:#6ee7a0;
+    --mage:#4f8dff;
+    --archer:#57d474;
+    --warrior:#ff5d5d;
+    --enemy:#c95bff;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    background:var(--bg);color:var(--ink);
+    font-family:-apple-system,"PingFang SC","Helvetica Neue","Noto Sans SC",sans-serif;
+    overflow:hidden;-webkit-user-select:none;user-select:none;
+    -webkit-tap-highlight-color:transparent;
+  }
+  #app{height:100%;height:100dvh;display:flex;flex-direction:column}
+
+  header{
+    display:flex;align-items:center;gap:14px;
+    padding:calc(env(safe-area-inset-top) + 8px) 14px 8px;
+    border-bottom:1px solid var(--line);background:var(--bg2);
+  }
+  .stat{display:flex;align-items:baseline;gap:4px}
+  .stat b{font-family:ui-monospace,"SF Mono",Menlo,monospace;font-size:17px;font-weight:600;font-variant-numeric:tabular-nums}
+  .stat small{font-size:11px;color:var(--ink-dim)}
+  .money b{color:var(--gold)} .life b{color:var(--hp)} .wave b{color:#8ab8d8}
+  #speedBtn{
+    margin-left:auto;background:none;border:1px solid var(--line);color:#8ab8d8;
+    border-radius:4px;padding:5px 10px;font-size:13px;
+    font-family:ui-monospace,"SF Mono",Menlo,monospace;
+  }
+  #speedBtn.on{background:#8ab8d8;color:#0a0e16;border-color:#8ab8d8}
+
+  #stage{position:relative;display:flex;justify-content:center;padding:10px 0;background:var(--bg)}
+  canvas{display:block;touch-action:none}
+
+  #info{
+    min-height:74px;padding:8px 14px;display:flex;align-items:center;gap:10px;
+    border-top:1px solid var(--line);background:var(--bg2);
+  }
+  #info .hint{flex:1;color:var(--ink-dim);font-size:13px;line-height:1.55}
+  #info .card{flex:1;font-size:12px;line-height:1.6}
+  #info .card b{font-size:14px}
+  #info .card span{color:var(--ink-dim)}
+  .btn{
+    border:1px solid var(--line);border-radius:6px;background:#16223a;color:var(--ink);
+    padding:9px 8px;text-align:center;font-size:13px;line-height:1.3;
+  }
+  .btn:disabled{opacity:.35}
+  .btn .cost{color:var(--gold);font-size:12px;font-variant-numeric:tabular-nums}
+  .btn.primary{background:#2a6ee0;border-color:#2a6ee0;color:#fff;font-weight:600;padding:10px 16px}
+
+  #shops{
+    flex:1;display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--line);
+    border-top:1px solid var(--line);min-height:0;
+  }
+  .shop{background:var(--bg);padding:8px 10px calc(env(safe-area-inset-bottom) + 8px);overflow-y:auto}
+  .shop h3{
+    font-size:11px;font-weight:600;color:var(--ink-dim);letter-spacing:.18em;
+    margin-bottom:6px;
+  }
+  .shop .btn{display:block;width:100%;margin-bottom:6px;text-align:left;padding:7px 10px;font-size:12px}
+  .shop .btn b{font-size:13px}
+  .shop .btn .sub{display:block;color:var(--ink-dim);font-size:11px;margin-top:1px}
+
+  #overlay{
+    position:fixed;inset:0;z-index:10;background:rgba(10,14,22,.9);
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    gap:14px;text-align:center;padding:28px;
+  }
+  #overlay.hide{display:none}
+  #overlay h1{font-size:30px;letter-spacing:.14em;color:#8ab8d8}
+  #overlay p{color:var(--ink-dim);font-size:14px;line-height:1.9;max-width:320px}
+  #overlay .lg{border:1px solid #2a6ee0;background:#2a6ee0;color:#fff;border-radius:8px;padding:12px 44px;font-size:17px;letter-spacing:.2em}
+  #overlay .cls{display:flex;gap:14px;font-size:12px;color:var(--ink-dim)}
+  #overlay .cls i{display:inline-block;width:10px;height:10px;margin-right:4px;border-radius:2px}
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="stat money"><b id="uiMoney">0</b><small>金币</small></div>
+    <div class="stat life"><b id="uiLife">0</b><small>基地</small></div>
+    <div class="stat wave"><b id="uiWave">0/15</b><small>波次</small></div>
+    <button id="speedBtn">×1</button>
+  </header>
+  <div id="stage"><canvas id="cv"></canvas></div>
+  <div id="info"><div class="hint"></div></div>
+  <div id="shops">
+    <div class="shop"><h3>技能商店</h3><div id="skillShop"></div></div>
+    <div class="shop"><h3>装备商店</h3><div id="itemShop"></div></div>
+  </div>
+  <div id="overlay">
+    <h1>方块战线</h1>
+    <div class="cls">
+      <span><i style="background:var(--mage)"></i>法师</span>
+      <span><i style="background:var(--archer)"></i>射手</span>
+      <span><i style="background:var(--warrior)"></i>战士</span>
+    </div>
+    <p>怪物从右侧压来。买英雄放进左侧 3×3 格——放哪一列就是哪个职业（最多 3 人）。用击杀金币在下方商店买技能和装备，守住 15 波。</p>
+    <button class="lg" id="startBtn">开 始</button>
+  </div>
+</div>
+
+<script>
+'use strict';
+/* ================= 数据 ================= */
+const ROWS=3, HCOLS=3, BCOLS=9, COLS=HCOLS+BCOLS, TOTAL_WAVES=15, HERO_COST=50, MAX_HEROES=3;
+const COL_CLASS=['mage','archer','warrior'];   // 3×3 里的列 -> 职业
+const CLASSES={
+  mage:  {name:'法师',color:'#4f8dff',hp:70, dmg:16,range:9,  rate:.8,desc:'远程·溅射·可打任意行'},
+  archer:{name:'射手',color:'#57d474',hp:90, dmg:12,range:6,  rate:2, desc:'中程·可打相邻行'},
+  warrior:{name:'战士',color:'#ff5d5d',hp:240,dmg:22,range:1.6,rate:1, desc:'近战·高血量·挡怪'},
+};
+const SKILLS={
+  mage:  {name:'火球术', cost:80,cd:6,desc:'每6秒轰炸最前排，范围3倍伤害'},
+  archer:{name:'箭雨',   cost:70,cd:5,desc:'每5秒射5个目标各1.5倍伤害'},
+  warrior:{name:'旋风斩',cost:70,cd:5,desc:'每5秒对身边所有敌人2倍伤害'},
+};
+const ITEMS={
+  blade:{name:'利刃',base:60,desc:'攻击 +30%'},
+  armor:{name:'护甲',base:50,desc:'生命上限 +40% 并回满'},
+  boots:{name:'迅捷靴',base:55,desc:'攻速 +25%'},
+};
+const MOBS={
+  normal:{hp:40, spd:1.1,atk:8, reward:6, r:.30,lives:1,color:'#c95bff'},
+  fast:  {hp:26, spd:1.9,atk:6, reward:7, r:.23,lives:1,color:'#ff9d4d'},
+  tank:  {hp:150,spd:.7, atk:14,reward:12,r:.38,lives:2,color:'#8a6bff'},
+  boss:  {hp:700,spd:.55,atk:30,reward:60,r:.47,lives:3,color:'#ff3860'},
+};
+
+/* ================= 状态 ================= */
+let money,lives,wave,waveActive,queue,spawnT;
+let heroes,mobs,shots,fx;
+let sel=null,placing=false,speed=1,running=false,over=false;
+
+/* ================= 画布 ================= */
+const cv=document.getElementById('cv'),ctx=cv.getContext('2d');
+let cell=30,dpr=1;
+function resize(){
+  const w=document.getElementById('stage').clientWidth;
+  cell=Math.floor(Math.min(w/COLS, 44));
+  dpr=Math.min(window.devicePixelRatio||1,2);
+  cv.width=COLS*cell*dpr;cv.height=ROWS*cell*dpr;
+  cv.style.width=COLS*cell+'px';cv.style.height=ROWS*cell+'px';
+}
+window.addEventListener('resize',resize);resize();
+
+/* ================= 英雄 ================= */
+function makeHero(cls,row,col){
+  const h={cls,row,col,items:{blade:0,armor:0,boots:0},skill:false,skillCd:0,cd:0,flash:0,alive:true};
+  calc(h);h.hp=h.maxHp;
+  return h;
+}
+function calc(h){
+  const b=CLASSES[h.cls];
+  h.atk=b.dmg*Math.pow(1.3,h.items.blade);
+  h.maxHp=Math.round(b.hp*Math.pow(1.4,h.items.armor));
+  h.rate=b.rate*Math.pow(1.25,h.items.boots);
+  h.range=b.range;
+}
+function heroAt(c,r){return heroes.find(h=>h.col===c&&h.row===r);}
+function frontHero(row){ // 该行最靠前（列最大）的活英雄
+  let best=null;
+  for(const h of heroes)if(h.alive&&h.row===row&&(!best||h.col>best.col))best=h;
+  return best;
+}
+function rowDefended(row){return heroes.some(h=>h.alive&&h.row===row);}
+
+/* ================= 流程 ================= */
+function reset(){
+  money=60;lives=10;wave=0;waveActive=false;queue=[];spawnT=0;
+  heroes=[];mobs=[];shots=[];fx=[];
+  sel=null;placing=false;over=false;
+  updateHUD();renderInfo();renderShops();
+}
+function waveComp(w){
+  const list=[];const n=4+w*2;
+  for(let i=0;i<n;i++){
+    let t='normal';
+    if(w>=3&&i%3===2)t='fast';
+    if(w>=4&&i%4===3)t='tank';
+    list.push(t);
+  }
+  if(w%5===0)list.push('boss');
+  return list;
+}
+function startWave(){
+  if(waveActive||wave>=TOTAL_WAVES)return;
+  wave++;waveActive=true;queue=waveComp(wave);spawnT=0;
+  updateHUD();renderInfo();
+}
+function spawnMob(type){
+  const b=MOBS[type],mul=1+0.25*(wave-1);
+  mobs.push({type,row:Math.floor(Math.random()*ROWS),x:COLS+.5,
+    hp:b.hp*mul,maxHp:b.hp*mul,spd:b.spd,atk:b.atk*mul,r:b.r,
+    reward:b.reward,lives:b.lives,color:b.color,cd:0,fight:false});
+}
+
+/* ================= 更新 ================= */
+function update(dt){
+  if(waveActive&&queue.length){
+    spawnT-=dt;
+    if(spawnT<=0){const t=queue.shift();spawnMob(t);spawnT=t==='fast'?.5:.9;}
+  }
+  /* 怪物：按行排队推进，抵达战线后攻击该行最前英雄 */
+  const STOP=HCOLS+.35;
+  for(let r=0;r<ROWS;r++){
+    const lane=mobs.filter(m=>m.row===r).sort((a,b)=>a.x-b.x);
+    for(let i=0;i<lane.length;i++){
+      const m=lane[i],ahead=lane[i-1];
+      const blocked=ahead&&(m.x-ahead.x)<.62;
+      m.fight=false;
+      if(m.x<=STOP&&rowDefended(r)){m.fight=true;}
+      else if(!blocked){
+        m.x-=m.spd*dt;
+        if(m.x< -0.5){m.dead=true;lives-=m.lives;if(lives<=0){lives=0;endGame(false);}updateHUD();}
+      }
+      if((m.fight||(blocked&&m.x<=STOP+1.1))&&rowDefended(r)){
+        m.cd-=dt;
+        if(m.cd<=0){
+          m.cd=1;
+          const h=frontHero(r);
+          if(h){h.hp-=m.atk;h.flash=.12;
+            if(h.hp<=0){h.hp=0;h.alive=false;fx.push({x:h.col+.5,y:h.row+.5,rr:.7,t:.35,max:.35,color:'#fff'});}
+          }
+        }
+      }
+    }
+  }
+  /* 英雄：普攻 + 技能 */
+  for(const h of heroes){
+    if(!h.alive)continue;
+    if(h.flash>0)h.flash-=dt;
+    const hx=h.col+.5,hy=h.row+.5,b=CLASSES[h.cls];
+    // 技能
+    if(h.skill){
+      h.skillCd-=dt;
+      if(h.skillCd<=0&&castSkill(h,hx,hy))h.skillCd=SKILLS[h.cls].cd;
+    }
+    // 普攻
+    h.cd-=dt;if(h.cd>0)continue;
+    let best=null;
+    for(const m of mobs){
+      if(m.dead)continue;
+      if(h.cls==='archer'&&Math.abs(m.row-h.row)>1)continue;
+      if(h.cls==='warrior'&&m.row!==h.row)continue;
+      const d=Math.hypot(m.x-hx,(m.row+.5)-hy);
+      if(d<=h.range+m.r&&(!best||m.x<best.x))best=m;  // 优先最靠前（离基地最近）
+    }
+    if(best){
+      h.cd=1/h.rate;
+      if(h.cls==='warrior'){
+        damage(best,h.atk);
+        fx.push({x:best.x,y:best.row+.5,rr:.35,t:.15,max:.15,color:b.color});
+      }else{
+        shots.push({x:hx,y:hy,target:best,tx:best.x,ty:best.row+.5,
+          dmg:h.atk,cls:h.cls,color:b.color});
+      }
+    }
+  }
+  /* 子弹 */
+  const SPD=10;
+  for(const s of shots){
+    if(s.target&&!s.target.dead){s.tx=s.target.x;s.ty=s.target.row+.5;}
+    const dx=s.tx-s.x,dy=s.ty-s.y,l=Math.hypot(dx,dy);
+    if(l<SPD*dt){
+      s.dead=true;
+      if(s.cls==='mage'){
+        fx.push({x:s.tx,y:s.ty,rr:1.1,t:.22,max:.22,color:s.color});
+        for(const m of mobs){if(!m.dead&&Math.hypot(m.x-s.tx,(m.row+.5)-s.ty)<=1.1+m.r)damage(m,s.dmg);}
+      }else if(s.target&&!s.target.dead)damage(s.target,s.dmg);
+    }else{s.x+=dx/l*SPD*dt;s.y+=dy/l*SPD*dt;}
+  }
+  mobs=mobs.filter(m=>!m.dead);
+  shots=shots.filter(s=>!s.dead);
+  for(const f of fx)f.t-=dt;
+  fx=fx.filter(f=>f.t>0);
+  /* 波次结束：复活+回满 */
+  if(waveActive&&!queue.length&&!mobs.length){
+    waveActive=false;
+    money+=15+wave*5;
+    for(const h of heroes){h.alive=true;h.hp=h.maxHp;}
+    updateHUD();
+    if(wave>=TOTAL_WAVES){endGame(true);return;}
+    renderInfo();renderShops();
+  }
+}
+function castSkill(h,hx,hy){
+  if(h.cls==='mage'){
+    let t=null;for(const m of mobs)if(!m.dead&&(!t||m.x<t.x))t=m;
+    if(!t)return false;
+    fx.push({x:t.x,y:t.row+.5,rr:1.8,t:.4,max:.4,color:'#ffb04f'});
+    for(const m of mobs)if(!m.dead&&Math.hypot(m.x-t.x,m.row-t.row)<=1.8+m.r)damage(m,h.atk*3);
+    return true;
+  }
+  if(h.cls==='archer'){
+    const ts=mobs.filter(m=>!m.dead&&Math.abs(m.row-h.row)<=1&&m.x-hx<=h.range+2)
+                 .sort((a,b)=>a.x-b.x).slice(0,5);
+    if(!ts.length)return false;
+    for(const m of ts){damage(m,h.atk*1.5);fx.push({x:m.x,y:m.row+.5,rr:.3,t:.2,max:.2,color:CLASSES.archer.color});}
+    return true;
+  }
+  // warrior
+  const ts=mobs.filter(m=>!m.dead&&Math.hypot(m.x-hx,(m.row+.5)-hy)<=2.4);
+  if(!ts.length)return false;
+  fx.push({x:hx,y:hy,rr:2.4,t:.3,max:.3,color:CLASSES.warrior.color});
+  for(const m of ts)damage(m,h.atk*2);
+  return true;
+}
+function damage(m,d){
+  m.hp-=d;
+  if(m.hp<=0&&!m.dead){
+    m.dead=true;money+=m.reward;updateHUD();refreshAfford();
+    fx.push({x:m.x,y:m.row+.5,rr:m.r*1.7,t:.28,max:.28,color:m.color});
+  }
+}
+function endGame(win){
+  over=true;running=false;
+  const ov=document.getElementById('overlay');
+  ov.classList.remove('hide');
+  ov.innerHTML=win
+    ?'<h1>战线守住了</h1><p>15 波全部击退。</p><button class="lg" id="startBtn">再来一局</button>'
+    :`<h1 style="color:var(--warrior)">基地陷落</h1><p>坚持到了第 ${wave} 波。试试先买战士挡线，再补射手输出。</p><button class="lg" id="startBtn">重新开始</button>`;
+  document.getElementById('startBtn').onclick=begin;
+}
+function begin(){
+  document.getElementById('overlay').classList.add('hide');
+  reset();running=true;
+}
+
+/* ================= 绘制 ================= */
+function rgba(hex,a){
+  const n=parseInt(hex.slice(1),16);
+  return `rgba(${n>>16},${n>>8&255},${n&255},${a})`;
+}
+function draw(){
+  ctx.setTransform(dpr*cell,0,0,dpr*cell,0,0);
+  ctx.clearRect(0,0,COLS,ROWS);
+  // 出兵格底色（按列职业着色）
+  for(let c=0;c<HCOLS;c++){
+    const col=CLASSES[COL_CLASS[c]].color;
+    ctx.fillStyle=rgba(col,placing?.22:.09);
+    for(let r=0;r<ROWS;r++)ctx.fillRect(c+.03,r+.03,.94,.94);
+  }
+  // 对战区
+  ctx.fillStyle='#0d1420';
+  ctx.fillRect(HCOLS,0,BCOLS,ROWS);
+  ctx.strokeStyle='#1c2940';ctx.lineWidth=.02;
+  ctx.beginPath();
+  for(let c=HCOLS;c<=COLS;c++){ctx.moveTo(c,0);ctx.lineTo(c,ROWS);}
+  for(let r=0;r<=ROWS;r++){ctx.moveTo(0,r);ctx.lineTo(COLS,r);}
+  ctx.stroke();
+  // 战线
+  ctx.strokeStyle='rgba(255,93,93,.5)';ctx.lineWidth=.05;
+  ctx.beginPath();ctx.moveTo(HCOLS,0);ctx.lineTo(HCOLS,ROWS);ctx.stroke();
+  // 选中格
+  if(sel){
+    ctx.strokeStyle='#8ab8d8';ctx.lineWidth=.06;
+    ctx.strokeRect(sel.col+.06,sel.row+.06,.88,.88);
+  }
+  // 英雄（方块）
+  for(const h of heroes){
+    const b=CLASSES[h.cls],x=h.col+.5,y=h.row+.5;
+    ctx.fillStyle=h.alive?(h.flash>0?'#ffffff':b.color):'#333c4c';
+    ctx.globalAlpha=h.alive?1:.45;
+    ctx.fillRect(x-.32,y-.32,.64,.64);
+    ctx.globalAlpha=1;
+    if(h.alive){
+      // 血条
+      ctx.fillStyle='rgba(0,0,0,.6)';ctx.fillRect(x-.34,y-.47,.68,.09);
+      ctx.fillStyle='#6ee7a0';ctx.fillRect(x-.34,y-.47,.68*Math.max(h.hp/h.maxHp,0),.09);
+      // 技能就绪点
+      if(h.skill&&h.skillCd<=0){ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(x+.26,y-.26,.07,0,7);ctx.fill();}
+    }
+  }
+  // 怪物（方块）
+  for(const m of mobs){
+    const y=m.row+.5;
+    ctx.fillStyle=m.color;
+    ctx.fillRect(m.x-m.r,y-m.r,m.r*2,m.r*2);
+    ctx.fillStyle='rgba(0,0,0,.6)';ctx.fillRect(m.x-m.r,y-m.r-.15,m.r*2,.08);
+    ctx.fillStyle='#6ee7a0';ctx.fillRect(m.x-m.r,y-m.r-.15,m.r*2*Math.max(m.hp/m.maxHp,0),.08);
+  }
+  // 子弹
+  for(const s of shots){
+    ctx.fillStyle=s.color;
+    ctx.beginPath();ctx.arc(s.x,s.y,.09,0,7);ctx.fill();
+  }
+  // 特效
+  for(const f of fx){
+    const k=1-f.t/f.max;
+    ctx.beginPath();ctx.arc(f.x,f.y,f.rr*(.4+.6*k),0,7);
+    ctx.strokeStyle=f.color;ctx.globalAlpha=1-k;ctx.lineWidth=.06;ctx.stroke();ctx.globalAlpha=1;
+  }
+}
+
+/* ================= UI ================= */
+const uiMoney=document.getElementById('uiMoney'),uiLife=document.getElementById('uiLife'),
+      uiWave=document.getElementById('uiWave'),info=document.getElementById('info'),
+      skillShop=document.getElementById('skillShop'),itemShop=document.getElementById('itemShop');
+function updateHUD(){uiMoney.textContent=Math.floor(money);uiLife.textContent=lives;uiWave.textContent=wave+'/'+TOTAL_WAVES;}
+function selHero(){return sel?heroAt(sel.col,sel.row):null;}
+
+function renderInfo(){
+  if(over)return;
+  const h=selHero();
+  let html='';
+  if(placing){
+    html='<div class="hint">点击左侧 3×3 的空格放置英雄<br>蓝列=法师 · 绿列=射手 · 红列=战士</div><button class="btn" id="cancelPlace">取消</button>';
+  }else if(h){
+    const b=CLASSES[h.cls];
+    html=`<div class="card"><b style="color:${b.color}">${b.name}</b> <span>${b.desc}</span><br>
+      HP ${Math.ceil(h.hp)}/${h.maxHp} · 攻击 ${Math.round(h.atk)} · 攻速 ${h.rate.toFixed(1)}/秒
+      ${h.skill?' · 已学['+SKILLS[h.cls].name+']':''}</div>`;
+  }else{
+    html=`<div class="hint">${waveActive?'第 '+wave+' 波进行中 — 剩余 '+(mobs.length+queue.length):'点击英雄查看/购买强化'}</div>`;
+    if(heroes.length<MAX_HEROES)
+      html+=`<button class="btn" id="buyHero" data-cost="${HERO_COST}" ${money<HERO_COST?'disabled':''}>买英雄<br><span class="cost">${HERO_COST}</span></button>`;
+    if(!waveActive)
+      html+=`<button class="btn primary" id="nextWave">${wave===0?'开战':'下一波'} ▶</button>`;
+  }
+  info.innerHTML=html;
+  const bh=document.getElementById('buyHero');
+  if(bh)bh.onclick=()=>{placing=true;sel=null;renderInfo();};
+  const cp=document.getElementById('cancelPlace');
+  if(cp)cp.onclick=()=>{placing=false;renderInfo();};
+  const nw=document.getElementById('nextWave');
+  if(nw)nw.onclick=()=>{startWave();};
+}
+function renderShops(){
+  const h=selHero();
+  skillShop.innerHTML=Object.entries(SKILLS).map(([cls,s])=>{
+    const mine=h&&h.cls===cls;
+    const owned=mine&&h.skill;
+    const can=mine&&!owned&&money>=s.cost;
+    return `<button class="btn" data-skill="${cls}" data-cost="${s.cost}" ${can?'':'disabled'}>
+      <b style="color:${CLASSES[cls].color}">${s.name}</b> <span class="cost">${owned?'已学':s.cost}</span>
+      <span class="sub">${s.desc}${mine?'':' ·（选中'+CLASSES[cls].name+'后可买）'}</span></button>`;
+  }).join('');
+  itemShop.innerHTML=Object.entries(ITEMS).map(([k,it])=>{
+    const price=h?it.base+h.items[k]*25:it.base;
+    const can=h&&money>=price;
+    return `<button class="btn" data-item="${k}" data-cost="${price}" ${can?'':'disabled'}>
+      <b>${it.name}</b> <span class="cost">${price}</span>
+      <span class="sub">${it.desc}${h?' · 已购'+h.items[k]:' ·（先选中英雄）'}</span></button>`;
+  }).join('');
+}
+function refreshAfford(){ // 只按金币刷新禁用态，不重建 DOM（避免打断点击）
+  document.querySelectorAll('#shops .btn[data-cost],#info .btn[data-cost]').forEach(b=>{
+    if(b.disabled&&money>=+b.dataset.cost){
+      // 可能还有别的禁用原因（未选中/已学），重画一次最稳
+      renderShops();renderInfo();
+    }
+  });
+}
+document.getElementById('shops').addEventListener('click',ev=>{
+  const b=ev.target.closest('button');if(!b||b.disabled)return;
+  const h=selHero();if(!h)return;
+  if(b.dataset.skill&&b.dataset.skill===h.cls&&!h.skill&&money>=SKILLS[h.cls].cost){
+    money-=SKILLS[h.cls].cost;h.skill=true;h.skillCd=0;
+  }else if(b.dataset.item){
+    const k=b.dataset.item,price=ITEMS[k].base+h.items[k]*25;
+    if(money>=price){
+      money-=price;h.items[k]++;
+      const ratio=h.hp/h.maxHp;calc(h);
+      h.hp=k==='armor'?h.maxHp:Math.round(h.maxHp*ratio);
+    }
+  }
+  updateHUD();renderInfo();renderShops();
+});
+cv.addEventListener('pointerdown',ev=>{
+  if(!running)return;
+  const rect=cv.getBoundingClientRect();
+  const c=Math.floor((ev.clientX-rect.left)/cell),r=Math.floor((ev.clientY-rect.top)/cell);
+  if(c<0||c>=COLS||r<0||r>=ROWS)return;
+  if(placing){
+    if(c<HCOLS&&!heroAt(c,r)&&money>=HERO_COST&&heroes.length<MAX_HEROES){
+      money-=HERO_COST;
+      heroes.push(makeHero(COL_CLASS[c],r,c));
+      placing=false;sel={col:c,row:r};
+      updateHUD();
+    }
+  }else{
+    sel=(c<HCOLS&&heroAt(c,r))?{col:c,row:r}:null;
+  }
+  renderInfo();renderShops();
+});
+document.getElementById('speedBtn').addEventListener('click',ev=>{
+  speed=speed===1?2:1;
+  ev.currentTarget.textContent='×'+speed;
+  ev.currentTarget.classList.toggle('on',speed===2);
+});
+document.getElementById('startBtn').addEventListener('click',begin);
+
+/* ================= 主循环 ================= */
+let last=performance.now();
+function loop(now){
+  const dt=Math.min((now-last)/1000,.05);last=now;
+  if(running&&!over)update(dt*speed);
+  draw();
+  requestAnimationFrame(loop);
+}
+reset();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
