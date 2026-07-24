@@ -31,7 +31,6 @@
   #app{height:100%;height:100dvh;display:flex;flex-direction:column;
     padding-left:env(safe-area-inset-left);padding-right:env(safe-area-inset-right)}
 
-  /* ---- 顶部 HUD ---- */
   header{
     display:flex;align-items:center;gap:12px;
     padding:4px 12px;border-bottom:1px solid var(--line);background:var(--bg2);
@@ -48,12 +47,10 @@
   header .hbtn.on{background:#8ab8d8;color:#0a0e16;border-color:#8ab8d8}
   #speedBtn{margin-left:auto}
 
-  /* ---- 战场（顶置） ---- */
   #stage{flex:1;position:relative;display:flex;justify-content:center;align-items:flex-start;
     padding-top:3px;min-height:0;background:var(--bg)}
   canvas{display:block;touch-action:none}
 
-  /* ---- 商店条（战场与信息区之间） ---- */
   #dock{
     display:flex;align-items:stretch;gap:8px;
     padding:4px 12px;border-top:1px solid var(--line);
@@ -69,18 +66,18 @@
   .tile .lv{font-size:9px;color:var(--ink-dim)}
   .tile.on{border-color:#8ab8d8;background:#1b2c48}
   #tileSkill .ic{background:linear-gradient(135deg,var(--mage),var(--warrior))}
-  #tileItem .ic{background:#9db8d8}
+  #tileItem .ic{background:linear-gradient(135deg,#c8d2dc,#b070ff)}
   #tileMine .ic{background:var(--gold)}
   #tileMill .ic{background:var(--wood)}
 
   /* ---- 信息区（常驻） ---- */
   #info{
-    height:64px;display:flex;align-items:center;gap:8px;
-    padding:5px 12px;border-top:1px solid var(--line);background:var(--bg2);overflow:hidden;
+    height:76px;display:flex;align-items:center;gap:8px;
+    padding:4px 12px;border-top:1px solid var(--line);background:var(--bg2);overflow:hidden;
   }
   #info .hint{flex:1;color:var(--ink-dim);font-size:12px;line-height:1.5}
-  #info .card{flex:1;font-size:10.5px;line-height:1.45;min-width:0}
-  #info .card b{font-size:12.5px}
+  #info .card{flex:1;font-size:10px;line-height:1.42;min-width:0}
+  #info .card b{font-size:12px}
   #info .card span{color:var(--ink-dim)}
   #info .card.shopHead{flex:0 0 auto;max-width:118px}
   #info .btn .sub{display:block;color:var(--ink-dim);font-size:9.5px;margin-top:1px;line-height:1.3}
@@ -93,7 +90,7 @@
   .btn .cost{color:var(--gold);font-size:11px;font-variant-numeric:tabular-nums}
   .btn .costw{color:var(--wood);font-size:11px;font-variant-numeric:tabular-nums}
 
-  /* ---- 技能书背包行（信息区下方一行方块） ---- */
+  /* ---- 背包行（技能书+装备） ---- */
   #inv{
     display:flex;align-items:center;gap:7px;
     height:52px;padding:4px 12px calc(env(safe-area-inset-bottom) + 4px);
@@ -105,15 +102,11 @@
     width:40px;height:40px;flex-shrink:0;border-radius:7px;background:#16223a;
     display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;
     font-size:10px;font-weight:600;touch-action:none;position:relative;
+    border:1.5px solid var(--line);
   }
-  .book.qblue{border:1.5px solid var(--qblue);color:var(--qblue)}
-  .book.qgreen{border:1.5px solid var(--qgreen);color:var(--qgreen)}
   .book small{font-size:8px;font-weight:400;color:var(--ink-dim)}
-  #dragGhost{
-    position:fixed;z-index:80;pointer-events:none;opacity:.9;display:none;
-  }
+  #dragGhost{position:fixed;z-index:80;pointer-events:none;opacity:.9;display:none}
 
-  /* ---- 提示气泡（仅错误提示用） ---- */
   #toast{
     position:fixed;left:50%;top:14%;transform:translateX(-50%);z-index:60;
     background:#1b2c48;border:1px solid #2b3d5e;color:var(--ink);
@@ -122,7 +115,6 @@
   }
   #toast.show{opacity:1}
 
-  /* ---- 开始/结束遮罩 ---- */
   #overlay{
     position:fixed;inset:0;z-index:30;background:rgba(10,14,22,.92);
     display:flex;flex-direction:column;align-items:center;justify-content:center;
@@ -135,7 +127,6 @@
   #overlay .cls{display:flex;gap:14px;font-size:12px;color:var(--ink-dim)}
   #overlay .cls i{display:inline-block;width:10px;height:10px;margin-right:4px;border-radius:2px}
 
-  /* ---- 竖屏提示 ---- */
   #rotate{position:fixed;inset:0;z-index:50;background:var(--bg);display:none;
     flex-direction:column;align-items:center;justify-content:center;gap:12px;color:var(--ink-dim);text-align:center}
   #rotate .ph{font-size:40px;animation:spin90 1.6s ease-in-out infinite}
@@ -156,13 +147,13 @@
   <div id="stage"><canvas id="cv"></canvas></div>
   <div id="dock">
     <button class="tile" id="tileSkill"><span class="ic"></span>技能<span class="lv">出4本书</span></button>
-    <button class="tile" id="tileItem"><span class="ic"></span>装备<span class="lv">强化</span></button>
-    <button class="tile" id="tileMine"><span class="ic"></span>金矿<span class="lv" id="mineLvT">Lv0</span></button>
-    <button class="tile" id="tileMill"><span class="ic"></span>伐木场<span class="lv" id="millLvT">Lv0</span></button>
+    <button class="tile" id="tileItem"><span class="ic"></span>装备<span class="lv">roll品质</span></button>
+    <button class="tile" id="tileMine"><span class="ic"></span>金矿<span class="lv" id="mineLvT">Lv1</span></button>
+    <button class="tile" id="tileMill"><span class="ic"></span>伐木场<span class="lv" id="millLvT">Lv1</span></button>
     <div class="spacer"></div>
   </div>
   <div id="info"><div class="hint"></div></div>
-  <div id="inv"><div class="invLabel">技能书<br>背包</div></div>
+  <div id="inv"><div class="invLabel">背包</div></div>
 </div>
 
 <div id="dragGhost"></div>
@@ -171,11 +162,11 @@
 <div id="overlay">
   <h1>方块战线</h1>
   <div class="cls">
-    <span><i style="background:var(--mage)"></i>法师</span>
-    <span><i style="background:var(--archer)"></i>游侠</span>
-    <span><i style="background:var(--warrior)"></i>战士</span>
+    <span><i style="background:var(--mage)"></i>法师·主智力</span>
+    <span><i style="background:var(--archer)"></i>游侠·主敏捷</span>
+    <span><i style="background:var(--warrior)"></i>战士·主力量</span>
   </div>
-  <p>每 30 秒一波，共 15 波。点 3×3 格买英雄（最多3人，各4个技能位），怪死后<b>全体英雄吃经验自动升级</b>，Lv5 可转职。技能书买入背包后<b>拖到英雄身上</b>学习，同名书升级。怪物优先仇恨英雄。金矿/伐木场最高10级。</p>
+  <p>魔兽式属性：主属性加攻击、力量加血、敏捷加护甲攻速、护甲按公式减伤、魔抗按百分比扣技能伤害。打怪全体吃经验升级。技能书/装备（白绿蓝紫四档品质）都从商店 roll 进背包，<b>拖到英雄身上</b>穿戴学习。</p>
   <button class="lg" id="startBtn">开 始</button>
 </div>
 
@@ -183,48 +174,87 @@
 
 <script>
 'use strict';
-/* ================= 基础数据 ================= */
-const ROWS=3, HCOLS=3, BCOLS=9, COLS=HCOLS+BCOLS, TOTAL_WAVES=15, HERO_COST=50, MAX_HEROES=3, MAX_SLOTS=4, MAX_SKILL_LV=5;
+/* ================= 职业（魔兽式属性）================= */
+const ROWS=3, HCOLS=3, BCOLS=9, COLS=HCOLS+BCOLS, TOTAL_WAVES=15, HERO_COST=50, MAX_HEROES=3;
+const MAX_SLOTS=4, MAX_SKILL_LV=5, MAX_EQUIP=4, MAX_HERO_LV=15;
 const COL_CLASS=['mage','archer','warrior'];
+/* bat=基础攻击间隔s wep=武器基础攻击 main=主属性(加攻) grow=每级属性成长 */
 const CLASSES={
-  mage:  {name:'法师',color:'#4f8dff',hp:70, dmg:16,range:9,  rate:.8,splash:1.1,attr:{str:6, agi:10,int:18},desc:'远程·溅射·可打任意行'},
-  archer:{name:'游侠',color:'#57d474',hp:90, dmg:12,range:6,  rate:2, splash:0,  attr:{str:9, agi:18,int:8}, desc:'中程·可打相邻行'},
-  warrior:{name:'战士',color:'#ff5d5d',hp:240,dmg:22,range:1.6,rate:1, splash:0,  attr:{str:18,agi:8, int:6}, desc:'近战·高血量·挡怪'},
+  mage:  {name:'法师',color:'#4f8dff',hpB:60,wep:6, bat:1.9,baseArmor:1,range:9,  splash:1.1,main:'int',
+          attr:{str:8, agi:12,int:24},grow:{str:1.1,agi:1.4,int:3.2},desc:'远程溅射·主智力'},
+  archer:{name:'游侠',color:'#57d474',hpB:70,wep:8, bat:1.3,baseArmor:2,range:6,  splash:0,  main:'agi',
+          attr:{str:10,agi:22,int:12},grow:{str:1.4,agi:2.9,int:1.5},desc:'中程速射·主敏捷'},
+  warrior:{name:'战士',color:'#ff5d5d',hpB:90,wep:15,bat:1.7,baseArmor:4,range:1.6,splash:0,  main:'str',
+          attr:{str:22,agi:10,int:8}, grow:{str:2.7,agi:1.3,int:1.0},desc:'近战坦克·主力量'},
 };
 const ADV={
-  mage:  {name:'大法师',atk:1.8,hp:1.5,rate:1,  range:1,  splash:.4},
-  archer:{name:'神射手',atk:1.7,hp:1.4,rate:1.3,range:1.5,splash:0},
-  warrior:{name:'狂战士',atk:1.8,hp:1.8,rate:1.1,range:.4, splash:0},
+  mage:  {name:'大法师',atk:1.6,hp:1.4,bat:1,  range:1,  splash:.4},
+  archer:{name:'神射手',atk:1.5,hp:1.3,bat:.85,range:1.5,splash:0},
+  warrior:{name:'狂战士',atk:1.6,hp:1.6,bat:.9, range:.4, splash:0},
 };
 const ADV_LV=5, ADV_GOLD=150, ADV_WOOD=50;
-/* 打怪升级：全体英雄吃经验 */
-const MAX_HERO_LV=15;
 function xpNeed(lv){return 40+45*(lv-1);}
+/* 魔兽护甲减伤公式 */
+function armorRed(a){const v=a*.06;return v>0?v/(1+v):0;}
 
-/* 技能书池（蓝=稀有 绿=普通；同名书拖给英雄可升级，上限Lv5） */
+/* ================= 技能书 ================= */
 const SKB={
   '狂战士之血':{cat:'str',q:'qblue', short:'狂血',cd:0, desc:'被动：血越低回血越快、受伤越少（血量50%时约每秒回2%×等级）'},
-  '荆棘光环':  {cat:'str',q:'qgreen',short:'荆棘',cd:0, desc:'被动：反弹15%×等级伤害，附加0.4×力量×等级'},
+  '荆棘光环':  {cat:'str',q:'qgreen',short:'荆棘',cd:0, desc:'被动：反弹15%×等级伤害，附加0.4×力量×等级（魔法伤害）'},
   '多重射击':  {cat:'agi',q:'qblue', short:'多重',cd:0, desc:'被动：普攻额外射击 等级×0.5 个敌人（70%伤害）'},
-  '沁毒射击':  {cat:'agi',q:'qgreen',short:'沁毒',cd:0, desc:'被动：普攻附带毒伤 = 敏捷×(0.35+0.15×等级)'},
-  '召唤熊德':  {cat:'int',q:'qblue', short:'熊德',cd:22,desc:'主动：召唤熊灵上前线作战，属性随智力成长'},
-  '火球术':    {cat:'int',q:'qgreen',short:'火球',cd:7, desc:'主动：单体高伤（智力×3×等级+40），显示弹道线'},
-  '冰风暴':    {cat:'int',q:'qgreen',short:'冰风',cd:10,desc:'主动：范围AOE+减速，显示技能范围圈'},
+  '沁毒射击':  {cat:'agi',q:'qgreen',short:'沁毒',cd:0, desc:'被动：普攻附带毒伤=敏捷×(0.35+0.15×等级)（魔法伤害）'},
+  '召唤熊德':  {cat:'int',q:'qblue', short:'熊德',cd:22,desc:'主动：召近战熊灵冲锋接敌，属性随智力成长'},
+  '火球术':    {cat:'int',q:'qgreen',short:'火球',cd:7, desc:'主动：单体魔法伤害（智力×3×等级+40），弹道线'},
+  '冰风暴':    {cat:'int',q:'qgreen',short:'冰风',cd:10,desc:'主动：范围魔法AOE+减速，显示范围圈'},
 };
 const CATS={str:{label:'力量',color:'#ff5d5d'},agi:{label:'敏捷',color:'#57d474'},int:{label:'智力',color:'#4f8dff'}};
 const PACK_COST=80, ROLL_COST=40, PACK_N=4;
-const ITEMS={
-  blade:{name:'利刃',base:60,desc:'攻击 +30%'},
-  armor:{name:'护甲',base:50,desc:'生命上限 +40% 并回满'},
-  boots:{name:'迅捷靴',base:55,desc:'攻速 +25%'},
+
+/* ================= 装备（roll品质）================= */
+const EQ_KINDS={
+  sword:{n:'利剑',s:'剑',roll:m=>({atk:Math.round(7*m)})},
+  plate:{n:'胸甲',s:'甲',roll:m=>({armor:Math.round(3*m),hp:Math.round(35*m)})},
+  boots:{n:'战靴',s:'靴',roll:m=>({aspd:Math.round(10*m)/100})},
+  ring: {n:'指环',s:'戒',roll:m=>({all:Math.round(3*m)})},
+  cloak:{n:'披风',s:'披',roll:m=>({mres:Math.round(8*m)/100,hp:Math.round(20*m)})},
 };
+const QUALS=[
+  {k:'common',n:'普通',c:'#c8d2dc',m:1,  w:55},
+  {k:'fine',  n:'精良',c:'#5ad48a',m:1.7,w:27},
+  {k:'rare',  n:'稀有',c:'#4fa8ff',m:2.6,w:13},
+  {k:'epic',  n:'史诗',c:'#b070ff',m:4,  w:5},
+];
+const EQ_ROLL1=45, EQ_ROLL4=160;
+function rollQuality(){
+  let r=Math.random()*100;
+  for(const q of QUALS){if(r<q.w)return q;r-=q.w;}
+  return QUALS[0];
+}
+function rollEquip(){
+  const kinds=Object.keys(EQ_KINDS);
+  const kind=kinds[Math.floor(Math.random()*kinds.length)];
+  const q=rollQuality();
+  return {t:'eq',kind,q:q.k,stats:EQ_KINDS[kind].roll(q.m)};
+}
+function qOf(item){return QUALS.find(q=>q.k===item.q);}
+function eqDesc(item){
+  const s=item.stats,p=[];
+  if(s.atk)p.push('攻击+'+s.atk);
+  if(s.armor)p.push('护甲+'+s.armor);
+  if(s.hp)p.push('生命+'+s.hp);
+  if(s.aspd)p.push('攻速+'+Math.round(s.aspd*100)+'%');
+  if(s.all)p.push('全属性+'+s.all);
+  if(s.mres)p.push('魔抗+'+Math.round(s.mres*100)+'%');
+  return p.join(' ');
+}
+
+/* ================= 怪物（带护甲/魔抗）================= */
 const MOBS={
-  normal:{hp:40, spd:1.1,atk:8, reward:7, xp:5, r:.30,lives:1,color:'#c95bff'},
-  fast:  {hp:26, spd:1.9,atk:6, reward:8, xp:6, r:.23,lives:1,color:'#ff9d4d'},
-  tank:  {hp:150,spd:.7, atk:14,reward:14,xp:12,r:.38,lives:2,color:'#8a6bff'},
-  boss:  {hp:700,spd:.55,atk:30,reward:70,xp:60,r:.47,lives:3,color:'#ff3860'},
+  normal:{hp:40, spd:1.1,atk:8, reward:7, xp:5, r:.30,lives:1,armor:0,mres:0,  color:'#c95bff'},
+  fast:  {hp:26, spd:1.9,atk:6, reward:8, xp:6, r:.23,lives:1,armor:0,mres:0,  color:'#ff9d4d'},
+  tank:  {hp:150,spd:.7, atk:14,reward:14,xp:12,r:.38,lives:2,armor:6,mres:.15,color:'#8a6bff'},
+  boss:  {hp:700,spd:.55,atk:30,reward:70,xp:60,r:.47,lives:3,armor:10,mres:.3,color:'#ff3860'},
 };
-/* 金木商店：上限10级，前期便宜、线性走高（约1~5分钟回本） */
 const INCOME_MAX=10;
 function mineCost(lv){return 45+30*(lv-1);}
 function millCost(lv){return 35+25*(lv-1);}
@@ -234,7 +264,7 @@ const WAVE_EVERY=30;
 let gold,wood,lives,wave,queue,spawnT,incomeT,waveT,cleared,hudAcc;
 let mineLv,millLv;
 let heroes,mobs,shots,fx,nums,bears,inv;
-let sel=null,bookSel=null,speed=1,running=false,over=false,openShop=null;
+let sel=null,invSel=null,speed=1,running=false,over=false,openShop=null;
 
 /* ================= 画布 ================= */
 const cv=document.getElementById('cv'),ctx=cv.getContext('2d');
@@ -251,32 +281,39 @@ window.addEventListener('resize',()=>setTimeout(resize,60));
 
 /* ================= 英雄 ================= */
 function makeHero(cls,row,col){
-  const h={cls,row,col,lv:1,xp:0,tier:0,items:{blade:0,armor:0,boots:0},
+  const h={cls,row,col,lv:1,xp:0,tier:0,equips:[],
     skills:{},cds:{},cd:0,flash:0,alive:true};
   calc(h);h.hp=h.maxHp;
   return h;
 }
 function calc(h){
   const b=CLASSES[h.cls],a=h.tier?ADV[h.cls]:null;
-  const lvMul=Math.pow(1.12,h.lv-1);
-  let atk=b.dmg*(a?a.atk:1)*lvMul;
-  let hp =b.hp *(a?a.hp :1)*lvMul;
-  let rate=b.rate*(a?a.rate:1);
-  let range=b.range+(a?a.range:0);
-  let splash=b.splash+(a?a.splash:0);
-  atk*=Math.pow(1.3,h.items.blade);
-  hp *=Math.pow(1.4,h.items.armor);
-  rate*=Math.pow(1.25,h.items.boots);
-  // 力敏智三属性（技能系数），随等级/转职成长
-  const am=(a?1.4:1)*(1+0.15*(h.lv-1));
-  h.str=Math.round(b.attr.str*am);
-  h.agi=Math.round(b.attr.agi*am);
-  h.int=Math.round(b.attr.int*am);
-  h.atk=atk;h.maxHp=Math.round(hp);h.rate=rate;h.range=range;h.splash=splash;
+  const am=h.tier?1.35:1;
+  // 属性 = (基础+成长×等级) ×转职加成 + 装备全属性
+  let eqAtk=0,eqArmor=0,eqHp=0,eqAspd=0,eqAll=0,eqMres=0;
+  for(const e of h.equips){
+    const s=e.stats;
+    eqAtk+=s.atk||0;eqArmor+=s.armor||0;eqHp+=s.hp||0;
+    eqAspd+=s.aspd||0;eqAll+=s.all||0;eqMres+=s.mres||0;
+  }
+  h.str=Math.round((b.attr.str+b.grow.str*(h.lv-1))*am)+eqAll;
+  h.agi=Math.round((b.attr.agi+b.grow.agi*(h.lv-1))*am)+eqAll;
+  h.int=Math.round((b.attr.int+b.grow.int*(h.lv-1))*am)+eqAll;
+  // 攻击 = 武器×转职 + 主属性 + 装备
+  h.atk=Math.round(b.wep*(a?a.atk:1)+h[b.main]+eqAtk);
+  // 生命 = (基础+力量×8)×转职 + 装备
+  h.maxHp=Math.round((b.hpB+h.str*8)*(a?a.hp:1)+eqHp);
+  // 护甲 = 基础 + 敏捷/7 + 装备（魔兽减伤公式）
+  h.armor=Math.round((b.baseArmor+h.agi/7+eqArmor)*10)/10;
+  // 魔抗：基础25% + 装备，上限75%
+  h.mres=Math.min(.75,.25+eqMres);
+  // 攻击间隔 = 基础bat×转职 / (1+敏捷×1.2%+装备攻速)，下限0.35s
+  h.interval=Math.max(.35,b.bat*(a?a.bat:1)/(1+h.agi*.012+eqAspd));
+  h.range=b.range+(a?a.range:0);
+  h.splash=b.splash+(a?a.splash:0);
 }
 function heroAt(c,r){return heroes.find(h=>h.col===c&&h.row===r);}
 function bearIn(row){return bears.find(b=>b.row===row&&!b.dead);}
-/* 该行最前方的可被攻击单位：熊灵优先于英雄 */
 function frontUnit(row){
   const br=bearIn(row);
   if(br)return br;
@@ -285,7 +322,6 @@ function frontUnit(row){
   return best;
 }
 function rowDefended(row){return !!frontUnit(row);}
-function anyDefendedRow(){for(let r=0;r<ROWS;r++)if(rowDefended(r))return true;return false;}
 function nearestDefendedRow(row){
   let best=-1,bd=99;
   for(let r=0;r<ROWS;r++)if(rowDefended(r)&&Math.abs(r-row)<bd){bd=Math.abs(r-row);best=r;}
@@ -299,7 +335,7 @@ function reset(){
   waveT=WAVE_EVERY;cleared=true;hudAcc=0;
   mineLv=1;millLv=1;
   heroes=[];mobs=[];shots=[];fx=[];nums=[];bears=[];inv=[];
-  sel=null;bookSel=null;over=false;openShop=null;
+  sel=null;invSel=null;over=false;openShop=null;
   closeShop();updateHUD();renderInfo();renderInv();
 }
 function waveComp(w){
@@ -323,10 +359,11 @@ function spawnMob(type){
   const row=Math.floor(Math.random()*ROWS);
   mobs.push({type,row,y:row,x:COLS+.5,
     hp:b.hp*mul,maxHp:b.hp*mul,spd:b.spd,atk:b.atk*mul,r:b.r,
-    reward:b.reward,xp:b.xp,lives:b.lives,color:b.color,cd:0,fight:false,slowT:0,slowF:0});
+    reward:b.reward,xp:b.xp,lives:b.lives,armor:b.armor,mres:b.mres,
+    color:b.color,cd:0,fight:false,slowT:0,slowF:0});
 }
 
-/* ================= 伤害与飘字 ================= */
+/* ================= 伤害 ================= */
 function dnum(x,y,val,color){
   if(nums.length>70)nums.shift();
   nums.push({x,y:y-.25,txt:String(Math.max(1,Math.round(val))),color:color||'#fff',t:.8,max:.8});
@@ -343,7 +380,9 @@ function damage(m,d,color){
     fx.push({type:'ring',x:m.x,y:m.y+.5,rr:m.r*1.7,t:.28,max:.28,color:m.color});
   }
 }
-/* 击杀经验：每个英雄都吃满额经验，攒够自动升级 */
+/* 物理伤害吃怪物护甲，魔法伤害吃怪物魔抗 */
+function physDamage(m,d,color){damage(m,d*(1-armorRed(m.armor)),color);}
+function magDamage(m,d,color){damage(m,d*(1-m.mres),color);}
 function gainXp(x){
   let leveled=false;
   for(const h of heroes){
@@ -351,11 +390,20 @@ function gainXp(x){
     h.xp+=x;
     while(h.xp>=xpNeed(h.lv)&&h.lv<MAX_HERO_LV){
       h.xp-=xpNeed(h.lv);h.lv++;calc(h);h.hp=h.maxHp;leveled=true;
-      fx.push({type:'ring',x:h.col+.5,y:h.row+.5,rr:.75,t:.5,max:.5,color:'#f0e46a'});
-      dnum(h.col+.5,h.row+.3,h.lv,'#f0e46a');
+      levelFx(h.col+.5,h.row+.5);
     }
   }
   if(leveled&&sel)renderInfo();
+}
+/* 升级特效：金圈+八向飞溅+LV飘字 */
+function levelFx(x,y){
+  fx.push({type:'ring',x,y,rr:.85,t:.5,max:.5,color:'#f0e46a'});
+  fx.push({type:'aoe',x,y,rr:.55,t:.35,max:.35,color:'#f0e46a'});
+  for(let i=0;i<8;i++){
+    const a=Math.PI/4*i;
+    fx.push({type:'spark',x,y,ax:Math.cos(a),ay:Math.sin(a),t:.45,max:.45,color:'#ffe98a'});
+  }
+  nums.push({x,y:y-.55,txt:'LV UP',color:'#f0e46a',t:1,max:1});
 }
 
 /* ================= 更新 ================= */
@@ -376,13 +424,12 @@ function update(dt){
     if(spawnT<=0){const t=queue.shift();spawnMob(t);spawnT=t==='fast'?.5:.9;}
   }
   const STOP=HCOLS+.35;
-  /* ---- 怪物：仇恨优先英雄——本行没有守军就转去最近的有守军的行 ---- */
+  /* 仇恨：本行无守军就转去最近有守军的行 */
   for(const m of mobs){
     if(m.x<=STOP+2&&!rowDefended(m.row)){
       const r=nearestDefendedRow(m.row);
       if(r>=0)m.row=r;
     }
-    // 平滑换行动画
     if(m.y!==m.row){
       const d=m.row-m.y,step=2*dt;
       m.y=Math.abs(d)<=step?m.row:m.y+Math.sign(d)*step;
@@ -396,7 +443,6 @@ function update(dt){
       const spd=m.spd*(m.slowT>0?1-m.slowF:1);
       if(m.slowT>0)m.slowT-=dt;
       m.fight=false;
-      // 熊灵挡路：怪被挡在熊灵面前，转而攻击熊灵
       const br=bearIn(r);
       if(br&&m.x>br.x&&m.x-br.x<=.68){
         m.cd-=dt;
@@ -418,7 +464,7 @@ function update(dt){
       }
     }
   }
-  /* ---- 熊灵：近战召唤物，主动冲向本行最近的怪贴脸砍 ---- */
+  /* 熊灵 */
   for(const br of bears){
     br.t-=dt;
     if(br.t<=0||br.hp<=0){br.dead=true;continue;}
@@ -430,27 +476,25 @@ function update(dt){
     }
     if(best){
       const gap=best.x-br.x;
-      if(gap>.8){br.x=Math.min(br.x+1.8*dt,COLS-.6);}       // 冲锋接敌
-      else if(br.cd<=0){                                     // 近战劈砍
+      if(gap>.8){br.x=Math.min(br.x+1.8*dt,COLS-.6);}
+      else if(br.cd<=0){
         br.cd=1;
-        damage(best,br.atk,'#c9a068');
+        physDamage(best,br.atk,'#c9a068');
         fx.push({type:'ring',x:best.x,y:best.y+.5,rr:.3,t:.15,max:.15,color:'#c9a068'});
       }
-    }else if(br.x>HCOLS+.45){br.x=Math.max(HCOLS+.45,br.x-1.8*dt);}  // 没怪就撤回战线
+    }else if(br.x>HCOLS+.45){br.x=Math.max(HCOLS+.45,br.x-1.8*dt);}
   }
   bears=bears.filter(b=>!b.dead);
-  /* ---- 英雄 ---- */
+  /* 英雄 */
   for(const h of heroes){
     if(!h.alive)continue;
     if(h.flash>0)h.flash-=dt;
     const hx=h.col+.5,hy=h.row+.5;
-    // 狂战士之血：按失血比例回血
     const bb=h.skills['狂战士之血'];
     if(bb){
       const miss=1-h.hp/h.maxHp;
       if(miss>0)h.hp=Math.min(h.maxHp,h.hp+h.maxHp*.02*bb*miss*2*dt);
     }
-    // 主动技能
     for(const name in h.skills){
       const def=SKB[name];
       if(!def.cd)continue;
@@ -458,7 +502,6 @@ function update(dt){
       if(h.cds[name]>0)continue;
       if(castSkill(h,name,h.skills[name],hx,hy))h.cds[name]=def.cd;
     }
-    // 普攻
     h.cd-=dt;if(h.cd>0)continue;
     let best=null;
     for(const m of mobs){
@@ -469,9 +512,8 @@ function update(dt){
       if(d<=h.range+m.r&&(!best||m.x<best.x))best=m;
     }
     if(best){
-      h.cd=1/h.rate;
+      h.cd=h.interval;
       attack(h,hx,hy,best);
-      // 多重射击：额外攻击 等级×0.5 个敌人
       const ms=h.skills['多重射击'];
       if(ms){
         let extra=Math.floor(ms/2)+((ms%2)&&Math.random()<.5?1:0);
@@ -487,7 +529,7 @@ function update(dt){
       }
     }
   }
-  /* ---- 子弹 ---- */
+  /* 子弹 */
   const SPD=10;
   for(const s of shots){
     if(s.target&&!s.target.dead){s.tx=s.target.x;s.ty=s.target.y+.5;}
@@ -506,7 +548,6 @@ function update(dt){
   fx=fx.filter(f=>f.t>0);
   for(const n of nums){n.t-=dt;n.y-=.7*dt;}
   nums=nums.filter(n=>n.t>0);
-  /* ---- 清场结算 ---- */
   const empty=!queue.length&&!mobs.length;
   if(!empty)cleared=false;
   else if(!cleared&&wave>0){
@@ -518,16 +559,15 @@ function update(dt){
     renderInfo();
   }
 }
-/* 普攻：战士近战直击，远程发射弹 */
 function attack(h,hx,hy,m,mul,color){
   mul=mul||1;
   const poison=h.skills['沁毒射击']?h.agi*(.35+.15*h.skills['沁毒射击']):0;
   if(h.cls==='warrior'){
-    damage(m,h.atk*mul,color);
-    if(poison)damage(m,poison,'#7ce87c');
+    physDamage(m,h.atk*mul,color);
+    if(poison)magDamage(m,poison,'#7ce87c');
     fx.push({type:'ring',x:m.x,y:m.y+.5,rr:.35,t:.15,max:.15,color:color||CLASSES[h.cls].color});
     if(h.splash>0)for(const o of mobs){
-      if(o!==m&&!o.dead&&Math.hypot(o.x-m.x,o.y-m.y)<=h.splash+o.r)damage(o,h.atk*.6*mul);
+      if(o!==m&&!o.dead&&Math.hypot(o.x-m.x,o.y-m.y)<=h.splash+o.r)physDamage(o,h.atk*.6*mul);
     }
   }else{
     shots.push({x:hx,y:hy,target:m,tx:m.x,ty:m.y+.5,
@@ -535,10 +575,9 @@ function attack(h,hx,hy,m,mul,color){
   }
 }
 function shotHit(s,m){
-  damage(s.target===m?m:m,s.dmg,s.color==='#7fe8ff'?'#7fe8ff':undefined);
-  if(s.poison&&s.target===m)damage(m,s.poison,'#7ce87c');
+  physDamage(m,s.dmg,s.color==='#7fe8ff'?'#7fe8ff':undefined);
+  if(s.poison&&s.target===m)magDamage(m,s.poison,'#7ce87c');
 }
-/* 怪物攻击我方单位（英雄或熊灵） */
 function hitUnit(u,m){
   if(u.isBear){
     u.hp-=m.atk;
@@ -546,7 +585,7 @@ function hitUnit(u,m){
     return;
   }
   const h=u;
-  let dmg=m.atk;
+  let dmg=m.atk*(1-armorRed(h.armor));   // 英雄护甲减伤
   const bb=h.skills['狂战士之血'];
   if(bb){
     const miss=1-h.hp/h.maxHp;
@@ -555,18 +594,17 @@ function hitUnit(u,m){
   h.hp-=dmg;h.flash=.12;
   dnum(h.col+.5,h.row+.5,dmg,'#ff8080');
   const th=h.skills['荆棘光环'];
-  if(th)damage(m,m.atk*.15*th+h.str*.4*th,'#9dff9d');
+  if(th)magDamage(m,m.atk*.15*th+h.str*.4*th,'#9dff9d');
   if(h.hp<=0){
     h.hp=0;h.alive=false;
     fx.push({type:'ring',x:h.col+.5,y:h.row+.5,rr:.7,t:.35,max:.35,color:'#fff'});
     renderInfo();
   }
 }
-/* 主动技能释放 */
 function castSkill(h,name,lv,hx,hy){
   if(name==='召唤熊德'){
     if(bearIn(h.row)||!mobs.length)return false;
-    bears.push({isBear:true,row:h.row,x:HCOLS+.55,
+    bears.push({isBear:true,row:h.row,x:HCOLS+.45,
       hp:120+h.int*6*lv,maxHp:120+h.int*6*lv,atk:8+h.int*.7*lv,
       t:12+2*lv,cd:0,dead:false});
     fx.push({type:'ring',x:HCOLS+.55,y:h.row+.5,rr:.8,t:.4,max:.4,color:'#c9a068'});
@@ -575,22 +613,20 @@ function castSkill(h,name,lv,hx,hy){
   if(name==='火球术'){
     let t=null;for(const m of mobs)if(!m.dead&&(!t||m.x<t.x))t=m;
     if(!t)return false;
-    // 指定单体：显示弹道线
     fx.push({type:'line',x1:hx,y1:hy,x2:t.x,y2:t.y+.5,t:.35,max:.35,color:'#ffb04f'});
     fx.push({type:'ring',x:t.x,y:t.y+.5,rr:.6,t:.3,max:.3,color:'#ffb04f'});
-    damage(t,40+h.int*3*lv,'#ffb04f');
+    magDamage(t,40+h.int*3*lv,'#ffb04f');
     return true;
   }
   if(name==='冰风暴'){
     let t=null;for(const m of mobs)if(!m.dead&&(!t||m.x<t.x))t=m;
     if(!t)return false;
     const R=1.6+.1*lv;
-    // AOE：显示技能范围圈
     fx.push({type:'aoe',x:t.x,y:t.y+.5,rr:R,t:.55,max:.55,color:'#7fd8ff'});
     for(const m of mobs){
       if(m.dead)continue;
       if(Math.hypot(m.x-t.x,m.y-t.y)<=R+m.r){
-        damage(m,25+h.int*1.2*lv,'#7fd8ff');
+        magDamage(m,25+h.int*1.2*lv,'#7fd8ff');
         m.slowT=2;m.slowF=Math.min(.75,.4+.05*lv);
       }
     }
@@ -639,6 +675,7 @@ function draw(){
     ctx.strokeStyle='#8ab8d8';ctx.lineWidth=.06;
     ctx.strokeRect(sel.col+.06,sel.row+.06,.88,.88);
   }
+  ctx.textAlign='center';
   // 英雄
   for(const h of heroes){
     const b=CLASSES[h.cls],x=h.col+.5,y=h.row+.5;
@@ -648,9 +685,14 @@ function draw(){
     ctx.globalAlpha=1;
     if(h.tier){ctx.strokeStyle='#f0c46a';ctx.lineWidth=.05;ctx.strokeRect(x-.34,y-.34,.68,.68);}
     if(h.alive){
-      ctx.fillStyle='rgba(0,0,0,.6)';ctx.fillRect(x-.34,y-.47,.68,.09);
-      ctx.fillStyle='#6ee7a0';ctx.fillRect(x-.34,y-.47,.68*Math.max(h.hp/h.maxHp,0),.09);
-      // 经验条（蓝，方块下方）
+      // 血条 + 等级显示在血条左端
+      ctx.fillStyle='rgba(0,0,0,.6)';ctx.fillRect(x-.24,y-.47,.58,.09);
+      ctx.fillStyle='#6ee7a0';ctx.fillRect(x-.24,y-.47,.58*Math.max(h.hp/h.maxHp,0),.09);
+      ctx.fillStyle='#0a0e16';ctx.fillRect(x-.45,y-.5,.2,.16);
+      ctx.strokeStyle='#f0c46a';ctx.lineWidth=.02;ctx.strokeRect(x-.45,y-.5,.2,.16);
+      ctx.fillStyle='#f0c46a';ctx.font='600 .13px -apple-system,sans-serif';
+      ctx.fillText(h.lv,x-.35,y-.375);
+      // 经验条
       ctx.fillStyle='rgba(0,0,0,.6)';ctx.fillRect(x-.34,y+.37,.68,.06);
       ctx.fillStyle='#4f8dff';ctx.fillRect(x-.34,y+.37,.68*(h.lv>=MAX_HERO_LV?1:Math.min(h.xp/xpNeed(h.lv),1)),.06);
     }
@@ -672,12 +714,10 @@ function draw(){
     ctx.fillStyle='rgba(0,0,0,.6)';ctx.fillRect(m.x-m.r,y-m.r-.15,m.r*2,.08);
     ctx.fillStyle='#6ee7a0';ctx.fillRect(m.x-m.r,y-m.r-.15,m.r*2*Math.max(m.hp/m.maxHp,0),.08);
   }
-  // 子弹
   for(const s of shots){
     ctx.fillStyle=s.color;
     ctx.beginPath();ctx.arc(s.x,s.y,.09,0,7);ctx.fill();
   }
-  // 特效
   for(const f of fx){
     const k=1-f.t/f.max;
     if(f.type==='line'){
@@ -689,14 +729,16 @@ function draw(){
       ctx.fillStyle=f.color;ctx.globalAlpha=.22*(1-k);ctx.fill();
       ctx.globalAlpha=1-k;ctx.strokeStyle=f.color;ctx.lineWidth=.05;ctx.stroke();
       ctx.globalAlpha=1;
+    }else if(f.type==='spark'){
+      const d=.25+k*1.1;
+      ctx.beginPath();ctx.arc(f.x+f.ax*d,f.y+f.ay*d,.06*(1-k)+.02,0,7);
+      ctx.fillStyle=f.color;ctx.globalAlpha=1-k;ctx.fill();ctx.globalAlpha=1;
     }else{
       ctx.beginPath();ctx.arc(f.x,f.y,f.rr*(.4+.6*k),0,7);
       ctx.strokeStyle=f.color;ctx.globalAlpha=1-k;ctx.lineWidth=.06;ctx.stroke();ctx.globalAlpha=1;
     }
   }
-  // 伤害飘字
   ctx.font='600 .3px -apple-system,sans-serif';
-  ctx.textAlign='center';
   for(const n of nums){
     ctx.fillStyle=n.color;ctx.globalAlpha=Math.min(1,n.t/n.max*1.6);
     ctx.fillText(n.txt,n.x,n.y);
@@ -726,18 +768,29 @@ function updateHUD(){
 function selHero(){return sel?heroAt(sel.col,sel.row):null;}
 function skillLine(h){
   const ks=Object.keys(h.skills);
-  if(!ks.length)return '<span>无技能 · 0/'+MAX_SLOTS+'</span>';
-  return ks.map(n=>`<span style="color:${CATS[SKB[n].cat].color}">${SKB[n].short}${h.skills[n]}</span>`).join(' ')+` <span>${ks.length}/${MAX_SLOTS}</span>`;
+  if(!ks.length)return '<span>技0/'+MAX_SLOTS+'</span>';
+  return ks.map(n=>`<span style="color:${CATS[SKB[n].cat].color}">${SKB[n].short}${h.skills[n]}</span>`).join(' ');
+}
+function equipLine(h){
+  if(!h.equips.length)return '<span>装0/'+MAX_EQUIP+'</span>';
+  return h.equips.map(e=>`<span style="color:${qOf(e).c}">${EQ_KINDS[e.kind].s}</span>`).join(' ');
 }
 
 function renderInfo(){
   if(over)return;
   if(openShop){info.innerHTML=shopHTML();return;}
-  if(bookSel){
-    const d=SKB[bookSel];
-    info.innerHTML=`<div class="card"><b style="color:${CATS[d.cat].color}">${bookSel}</b>
-      <span style="color:var(--${d.q==='qblue'?'qblue':'qgreen'})">[${d.q==='qblue'?'蓝':'绿'}]</span>
-      <span>${CATS[d.cat].label}系</span><br><span>${d.desc}</span><br><span>把书拖到英雄方块上学习，同名书升级（上限Lv${MAX_SKILL_LV}）</span></div>`;
+  if(invSel!=null&&inv[invSel]){
+    const it=inv[invSel];
+    if(it.t==='book'){
+      const d=SKB[it.name];
+      info.innerHTML=`<div class="card"><b style="color:${CATS[d.cat].color}">${it.name}</b>
+        <span style="color:var(--${d.q==='qblue'?'qblue':'qgreen'})">[${d.q==='qblue'?'蓝':'绿'}]</span>
+        <span>${CATS[d.cat].label}系技能书</span><br><span>${d.desc}</span><br><span>拖到英雄上学习，同名升级（上限Lv${MAX_SKILL_LV}）</span></div>`;
+    }else{
+      const q=qOf(it);
+      info.innerHTML=`<div class="card"><b style="color:${q.c}">${q.n}·${EQ_KINDS[it.kind].n}</b><br>
+        <span>${eqDesc(it)}</span><br><span>拖到英雄上穿戴（${MAX_EQUIP}个装备位）</span></div>`;
+    }
     return;
   }
   const h=selHero();
@@ -745,23 +798,24 @@ function renderInfo(){
   if(sel&&!h){
     const cls=COL_CLASS[sel.col],b=CLASSES[cls];
     html=`<div class="card"><b style="color:${b.color}">初始${b.name}</b> <span>${b.desc}</span><br>
-      <span>HP ${b.hp} · 攻 ${b.dmg} · 攻速 ${b.rate}/s · 力${b.attr.str} 敏${b.attr.agi} 智${b.attr.int}</span></div>
+      <span>HP ${b.hpB+b.attr.str*8} · 攻 ${b.wep+b.attr[b.main]} · 间隔 ${b.bat}s · 甲 ${b.baseArmor}</span><br>
+      <span>力${b.attr.str}(+${b.grow.str}) 敏${b.attr.agi}(+${b.grow.agi}) 智${b.attr.int}(+${b.grow.int})</span></div>
       <button class="btn" id="buyAt" data-cost="${HERO_COST}" data-lock="${heroes.length>=MAX_HEROES?1:0}" ${gold<HERO_COST||heroes.length>=MAX_HEROES?'disabled':''}>
         买入 <span class="cost">${HERO_COST}金</span>${heroes.length>=MAX_HEROES?'<br><span class="sub">已满3人</span>':''}</button>`;
   }else if(h){
     const b=CLASSES[h.cls];
     const advOK=!h.tier&&h.lv>=ADV_LV, canAdv=advOK&&gold>=ADV_GOLD&&wood>=ADV_WOOD;
-    const xpTxt=h.lv>=MAX_HERO_LV?'满级':`经验 ${Math.floor(h.xp)}/${xpNeed(h.lv)}`;
-    html=`<div class="card"><b style="color:${b.color}">${dispName(h)}</b> <b>Lv${h.lv}</b>
-      <span>${xpTxt} · HP ${Math.ceil(h.hp)}/${h.maxHp} · 攻 ${Math.round(h.atk)} · 攻速 ${h.rate.toFixed(1)}/s</span><br>
-      <span>力${h.str} 敏${h.agi} 智${h.int}</span> · ${skillLine(h)}</div>`;
+    const xpTxt=h.lv>=MAX_HERO_LV?'满级':`${Math.floor(h.xp)}/${xpNeed(h.lv)}`;
+    html=`<div class="card"><b style="color:${b.color}">${dispName(h)}</b> <b>Lv${h.lv}</b> <span>经验${xpTxt}</span><br>
+      <span>HP ${Math.ceil(h.hp)}/${h.maxHp} · 攻 ${h.atk} · 间隔 ${h.interval.toFixed(2)}s · 甲 ${h.armor}(${Math.round(armorRed(h.armor)*100)}%) · 抗 ${Math.round(h.mres*100)}%</span><br>
+      <span>力${h.str} 敏${h.agi} 智${h.int}</span> · ${skillLine(h)} · ${equipLine(h)}</div>`;
     if(!h.tier){
       html+=`<button class="btn" id="advBtn" data-cost="${ADV_GOLD}" data-wood="${ADV_WOOD}" data-lock="${advOK?0:1}" ${canAdv?'':'disabled'}>
         转职·${ADV[h.cls].name}<br><span class="sub">需Lv${ADV_LV}</span> <span class="cost">${ADV_GOLD}金</span>+<span class="costw">${ADV_WOOD}木</span></button>`;
     }
   }else{
     const n=mobs.length+queue.length;
-    html=`<div class="hint">${n?'第 '+wave+' 波 — 剩余 '+n:'点 3×3 格子买英雄；技能书从背包拖到英雄身上学习'}</div>`;
+    html=`<div class="hint">${n?'第 '+wave+' 波 — 剩余 '+n:'点 3×3 格子买英雄；技能书/装备从背包拖到英雄身上'}</div>`;
   }
   info.innerHTML=html;
   const ba=document.getElementById('buyAt');
@@ -778,15 +832,16 @@ function renderInfo(){
     if(gold>=ADV_GOLD&&wood>=ADV_WOOD){
       gold-=ADV_GOLD;wood-=ADV_WOOD;
       hh.tier=1;calc(hh);hh.hp=hh.maxHp;
+      levelFx(hh.col+.5,hh.row+.5);
       updateHUD();renderInfo();
     }
   };
 }
 
-/* ---- 商店（信息区内切换） ---- */
+/* ---- 商店 ---- */
 function setShop(kind){
   openShop=openShop===kind?null:kind;
-  bookSel=null;
+  invSel=null;
   for(const k in tiles)tiles[k].classList.toggle('on',k===openShop);
   renderInfo();
 }
@@ -806,14 +861,13 @@ function shopHTML(){
         <span class="sub">全池7种·半价</span></button>`;
   }
   if(openShop==='item'){
-    const h=selHero(),lock=h?0:1;
-    return `<div class="card shopHead"><b>装备商店</b><br><span>${h?'给'+dispName(h)+'买':'先点选一个英雄'}</span></div>`+
-      Object.entries(ITEMS).map(([k,it])=>{
-        const price=h?it.base+h.items[k]*25:it.base;
-        return `<button class="btn grow" data-item="${k}" data-cost="${price}" data-lock="${lock}" ${h&&gold>=price?'':'disabled'}>
-          <b>${it.name}</b> <span class="cost">${price}金</span>
-          <span class="sub">${it.desc}${h?' · 已购'+h.items[k]:''}</span></button>`;
-      }).join('');
+    return `<div class="card shopHead"><b>装备商店</b><br><span>随机部位+品质<br>白55/绿27/蓝13/紫5%</span></div>
+      <button class="btn grow" data-eqroll="1" data-cost="${EQ_ROLL1}" data-lock="0" ${gold>=EQ_ROLL1?'':'disabled'}>
+        <b>roll ×1</b> <span class="cost">${EQ_ROLL1}金</span>
+        <span class="sub">剑/甲/靴/戒/披 随机一件</span></button>
+      <button class="btn grow" data-eqroll="4" data-cost="${EQ_ROLL4}" data-lock="0" ${gold>=EQ_ROLL4?'':'disabled'}>
+        <b>roll ×4</b> <span class="cost">${EQ_ROLL4}金</span>
+        <span class="sub">四连抽，略有折扣</span></button>`;
   }
   const isMine=openShop==='mine';
   const lv=isMine?mineLv:millLv, cost=isMine?mineCost(lv):millCost(lv);
@@ -835,39 +889,61 @@ tiles.item.addEventListener('click',()=>setShop('item'));
 tiles.mine.addEventListener('click',()=>setShop('mine'));
 tiles.mill.addEventListener('click',()=>setShop('mill'));
 
-/* ---- 技能书背包：购买入包、拖拽学习 ---- */
+/* ---- 背包（技能书+装备混放）---- */
 function buyPack(cat){
   const cost=cat==='roll'?ROLL_COST:PACK_COST;
   if(gold<cost)return;
   gold-=cost;
   const pool=cat==='roll'?Object.keys(SKB):Object.keys(SKB).filter(n=>SKB[n].cat===cat);
-  for(let i=0;i<PACK_N;i++)inv.push(pool[Math.floor(Math.random()*pool.length)]);
+  for(let i=0;i<PACK_N;i++)inv.push({t:'book',name:pool[Math.floor(Math.random()*pool.length)]});
+  updateHUD();renderInfo();renderInv();
+}
+function buyEquip(n){
+  const cost=n===4?EQ_ROLL4:EQ_ROLL1;
+  if(gold<cost)return;
+  gold-=cost;
+  for(let i=0;i<n;i++)inv.push(rollEquip());
   updateHUD();renderInfo();renderInv();
 }
 function renderInv(){
   invEl.querySelectorAll('.book').forEach(e=>e.remove());
-  inv.forEach((name,i)=>{
-    const d=SKB[name];
+  inv.forEach((it,i)=>{
     const el=document.createElement('div');
-    el.className='book '+d.q;
+    el.className='book';
     el.dataset.idx=i;
-    el.innerHTML=`${d.short}<small>${CATS[d.cat].label}</small>`;
+    if(it.t==='book'){
+      const d=SKB[it.name];
+      el.style.borderColor=d.q==='qblue'?'var(--qblue)':'var(--qgreen)';
+      el.style.color=CATS[d.cat].color;
+      el.innerHTML=`${d.short}<small>技能书</small>`;
+    }else{
+      const q=qOf(it);
+      el.style.borderColor=q.c;
+      el.style.color=q.c;
+      el.innerHTML=`${EQ_KINDS[it.kind].s}<small>${q.n}</small>`;
+    }
     invEl.appendChild(el);
   });
 }
-function learnBook(idx,h){
-  const name=inv[idx];if(!name||!h)return false;
-  const cur=h.skills[name]||0;
-  if(cur>=MAX_SKILL_LV){showToast(`${name} 已满级`);return false;}
-  if(!cur&&Object.keys(h.skills).length>=MAX_SLOTS){showToast('技能位已满（4个）');return false;}
-  h.skills[name]=cur+1;
+function applyItem(idx,h){
+  const it=inv[idx];if(!it||!h)return;
+  if(it.t==='book'){
+    const cur=h.skills[it.name]||0;
+    if(cur>=MAX_SKILL_LV){showToast(`${it.name} 已满级`);return;}
+    if(!cur&&Object.keys(h.skills).length>=MAX_SLOTS){showToast('技能位已满（4个）');return;}
+    h.skills[it.name]=cur+1;
+    fx.push({type:'ring',x:h.col+.5,y:h.row+.5,rr:.6,t:.4,max:.4,color:CATS[SKB[it.name].cat].color});
+  }else{
+    if(h.equips.length>=MAX_EQUIP){showToast('装备位已满（4件）');return;}
+    h.equips.push(it);
+    const ratio=h.hp/h.maxHp;calc(h);h.hp=Math.round(h.maxHp*ratio);
+    fx.push({type:'ring',x:h.col+.5,y:h.row+.5,rr:.6,t:.4,max:.4,color:qOf(it).c});
+  }
   inv.splice(idx,1);
   renderInv();
   if(selHero()===h)renderInfo();
-  fx.push({type:'ring',x:h.col+.5,y:h.row+.5,rr:.6,t:.4,max:.4,color:CATS[SKB[name].cat].color});
-  return true;
 }
-/* 指针拖拽（触屏可用）：短按=查看说明，拖到英雄=学习 */
+/* 拖拽：短按查看说明，拖到英雄上使用 */
 let drag=null;
 invEl.addEventListener('pointerdown',ev=>{
   const el=ev.target.closest('.book');if(!el)return;
@@ -888,15 +964,15 @@ window.addEventListener('pointerup',ev=>{
   if(!drag)return;
   ghost.style.display='none';
   const {idx,moved}=drag;drag=null;
-  if(!moved){ // 短按：查看技能说明
-    bookSel=inv[idx];closeShop();sel=null;renderInfo();
+  if(!moved){
+    invSel=idx;closeShop();sel=null;renderInfo();
     return;
   }
   const rect=cv.getBoundingClientRect();
   const c=Math.floor((ev.clientX-rect.left)/cell),r=Math.floor((ev.clientY-rect.top)/cell);
   if(c>=0&&c<HCOLS&&r>=0&&r<ROWS){
     const h=heroAt(c,r);
-    if(h)learnBook(idx,h);
+    if(h)applyItem(idx,h);
     else showToast('拖到已购买的英雄方块上');
   }
 });
@@ -904,6 +980,7 @@ window.addEventListener('pointerup',ev=>{
 info.addEventListener('click',ev=>{
   const b=ev.target.closest('button');if(!b||b.disabled)return;
   if(b.dataset.pack){buyPack(b.dataset.pack);return;}
+  if(b.dataset.eqroll){buyEquip(+b.dataset.eqroll);return;}
   if(b.dataset.shop){
     const isMine=b.dataset.shop==='mine';
     const lv=isMine?mineLv:millLv;
@@ -912,16 +989,6 @@ info.addEventListener('click',ev=>{
     if(gold>=cost){gold-=cost;if(isMine)mineLv++;else millLv++;updateHUD();renderInfo();}
     return;
   }
-  if(b.dataset.item){
-    const h=selHero();if(!h)return;
-    const k=b.dataset.item,price=ITEMS[k].base+h.items[k]*25;
-    if(gold>=price){
-      gold-=price;h.items[k]++;
-      const ratio=h.hp/h.maxHp;calc(h);
-      h.hp=k==='armor'?h.maxHp:Math.round(h.maxHp*ratio);
-    }
-    updateHUD();renderInfo();
-  }
 });
 cv.addEventListener('pointerdown',ev=>{
   if(!running)return;
@@ -929,7 +996,7 @@ cv.addEventListener('pointerdown',ev=>{
   const c=Math.floor((ev.clientX-rect.left)/cell),r=Math.floor((ev.clientY-rect.top)/cell);
   if(c<0||c>=COLS||r<0||r>=ROWS)return;
   sel=c<HCOLS?{col:c,row:r}:null;
-  bookSel=null;
+  invSel=null;
   if(sel)closeShop();
   renderInfo();
 });
