@@ -132,6 +132,20 @@
   #overlay .cls{display:flex;gap:14px;font-size:12px;color:var(--ink-dim)}
   #overlay .cls i{display:inline-block;width:10px;height:10px;margin-right:4px;border-radius:2px}
 
+  /* ---- 紧凑模式（伪全屏）：压缩顶栏/信息区/商店条，放大战场 ---- */
+  #app.max header{padding:2px 8px;gap:8px}
+  #app.max .stat b{font-size:12px}
+  #app.max .stat small{font-size:9px}
+  #app.max .hbtn{padding:2px 7px;font-size:11px}
+  #app.max #info{min-height:40px;padding:3px 10px}
+  #app.max #info .hint,#app.max #info .card{font-size:10.5px;line-height:1.35}
+  #app.max .btn{padding:5px 8px;font-size:11px}
+  #app.max .tile{min-width:46px;padding:3px 6px;font-size:10px;gap:1px}
+  #app.max .tile .ic{width:11px;height:11px}
+  #app.max .tile .lv{font-size:8px}
+  #app.max #dock{padding-top:4px;padding-bottom:calc(env(safe-area-inset-bottom) + 4px)}
+  #app.max #stage{padding-top:2px}
+
   /* ---- 竖屏提示 ---- */
   #rotate{position:fixed;inset:0;z-index:50;background:var(--bg);display:none;
     flex-direction:column;align-items:center;justify-content:center;gap:12px;color:var(--ink-dim);text-align:center}
@@ -176,7 +190,7 @@
     <span><i style="background:var(--archer)"></i>游侠</span>
     <span><i style="background:var(--warrior)"></i>战士</span>
   </div>
-  <p>点左侧 3×3 格查看该列职业的购买信息，买入英雄（最多3人）。英雄可升级，5级后花金币+木头转职。金矿/伐木场提供每秒产出，技能商店按力量/敏捷/智力买技能书（或半价全池roll），每次4本。守住 15 波。</p>
+  <p>开局立刻来第1波，之后每 30 秒固定来一波，共 15 波。点左侧 3×3 格买英雄（最多3人），可升级、5级转职。金矿/伐木场初始1级每秒产出，技能商店按力/敏/智买技能书（全池roll半价），每次4本。</p>
   <button class="lg" id="startBtn">开 始</button>
 </div>
 
@@ -230,9 +244,10 @@ const MOBS={
 };
 function mineCost(lv){return 80+lv*70;}   // 金矿升级（金）
 function millCost(lv){return 60+lv*60;}   // 伐木场升级（金）
+const WAVE_EVERY=30;                       // 每30秒固定出一波
 
 /* ================= 状态 ================= */
-let gold,wood,lives,wave,waveActive,queue,spawnT,incomeT;
+let gold,wood,lives,wave,queue,spawnT,incomeT,waveT,cleared,hudAcc;
 let mineLv,millLv;
 let heroes,mobs,shots,fx;
 let sel=null,speed=1,running=false,over=false,openShop=null;
@@ -292,8 +307,9 @@ function dispName(h){return h.tier?ADV[h.cls].name:CLASSES[h.cls].name;}
 
 /* ================= 流程 ================= */
 function reset(){
-  gold=60;wood=0;lives=10;wave=0;waveActive=false;queue=[];spawnT=0;incomeT=0;
-  mineLv=0;millLv=0;
+  gold=60;wood=0;lives=10;wave=0;queue=[];spawnT=0;incomeT=0;
+  waveT=WAVE_EVERY;cleared=true;hudAcc=0;
+  mineLv=1;millLv=1;                     // 金矿/伐木场初始1级
   heroes=[];mobs=[];shots=[];fx=[];
   sel=null;over=false;openShop=null;
   closeSheet();updateHUD();renderInfo();
@@ -310,8 +326,8 @@ function waveComp(w){
   return list;
 }
 function startWave(){
-  if(waveActive||wave>=TOTAL_WAVES)return;
-  wave++;waveActive=true;queue=waveComp(wave);spawnT=0;
+  if(wave>=TOTAL_WAVES)return;
+  wave++;queue.push(...waveComp(wave));
   updateHUD();renderInfo();
 }
 function spawnMob(type){
@@ -329,7 +345,15 @@ function update(dt){
     incomeT-=1;
     if(mineLv||millLv){gold+=mineLv;wood+=millLv;updateHUD();refreshAfford();}
   }
-  if(waveActive&&queue.length){
+  // 每30秒固定来一波
+  if(wave<TOTAL_WAVES){
+    waveT-=dt;
+    if(waveT<=0){waveT=WAVE_EVERY;startWave();}
+  }
+  // HUD 倒计时刷新（每0.25秒）
+  hudAcc+=dt;
+  if(hudAcc>=.25){hudAcc=0;updateHUD();}
+  if(queue.length){
     spawnT-=dt;
     if(spawnT<=0){const t=queue.shift();spawnMob(t);spawnT=t==='fast'?.5:.9;}
   }
@@ -415,8 +439,11 @@ function update(dt){
   shots=shots.filter(s=>!s.dead);
   for(const f of fx)f.t-=dt;
   fx=fx.filter(f=>f.t>0);
-  if(waveActive&&!queue.length&&!mobs.length){
-    waveActive=false;
+  // 清场奖励：场上打空时结算一次并复活英雄
+  const empty=!queue.length&&!mobs.length;
+  if(!empty)cleared=false;
+  else if(!cleared&&wave>0){
+    cleared=true;
     gold+=20+wave*6;
     for(const h of heroes){h.alive=true;h.hp=h.maxHp;}
     updateHUD();
@@ -478,6 +505,7 @@ function endGame(win){
 function begin(){
   document.getElementById('overlay').classList.add('hide');
   reset();running=true;resize();
+  startWave();waveT=WAVE_EVERY;   // 开局立刻来第1波，之后每30秒一波
 }
 
 /* ================= 绘制 ================= */
@@ -554,7 +582,8 @@ function showToast(msg){
 }
 function updateHUD(){
   uiMoney.textContent=Math.floor(gold);uiWood.textContent=Math.floor(wood);
-  uiLife.textContent=lives;uiWave.textContent=wave+'/'+TOTAL_WAVES;
+  uiLife.textContent=lives;
+  uiWave.textContent=wave+'/'+TOTAL_WAVES+(running&&!over&&wave<TOTAL_WAVES?' · '+Math.ceil(waveT)+'s':'');
   document.getElementById('mineLvT').textContent='Lv'+mineLv+(mineLv?' +'+mineLv+'/s':'');
   document.getElementById('millLvT').textContent='Lv'+millLv+(millLv?' +'+millLv+'/s':'');
 }
@@ -590,9 +619,8 @@ function renderInfo(){
         转职·${ADV[h.cls].name}<br><span class="sub">需Lv${ADV_LV}</span> <span class="cost">${ADV_GOLD}金</span>+<span class="costw">${ADV_WOOD}木</span></button>`;
     }
   }else{
-    html=`<div class="hint">${waveActive?'第 '+wave+' 波 — 剩余 '+(mobs.length+queue.length):'点 3×3 格子查看职业/英雄信息'}</div>`;
-    if(!waveActive)
-      html+=`<button class="btn primary" id="nextWave">${wave===0?'开战':'下一波'} ▶</button>`;
+    const n=mobs.length+queue.length;
+    html=`<div class="hint">${n?'第 '+wave+' 波 — 剩余 '+n:'点 3×3 格子查看职业/英雄信息，每'+WAVE_EVERY+'秒自动来一波'}</div>`;
   }
   info.innerHTML=html;
   const ba=document.getElementById('buyAt');
@@ -619,8 +647,6 @@ function renderInfo(){
       updateHUD();renderInfo();
     }
   };
-  const nw=document.getElementById('nextWave');
-  if(nw)nw.onclick=()=>{startWave();};
 }
 
 /* ---- 商店弹层 ---- */
@@ -730,20 +756,31 @@ document.getElementById('speedBtn').addEventListener('click',ev=>{
   ev.currentTarget.textContent='×'+speed;
   ev.currentTarget.classList.toggle('on',speed===2);
 });
-/* 全屏 */
-document.getElementById('fsBtn').addEventListener('click',()=>{
+/* 全屏：能真全屏就真全屏（安卓/电脑），否则降级为紧凑模式放大战场（iPhone） */
+const fsBtn=document.getElementById('fsBtn');
+function setCompact(on){
+  document.getElementById('app').classList.toggle('max',on);
+  fsBtn.classList.toggle('on',on);
+  setTimeout(resize,60);
+}
+fsBtn.addEventListener('click',()=>{
   const doc=document,el=doc.documentElement;
   if(doc.fullscreenElement||doc.webkitFullscreenElement){
     (doc.exitFullscreen||doc.webkitExitFullscreen).call(doc);
-  }else{
-    const rq=el.requestFullscreen||el.webkitRequestFullscreen;
-    if(rq){
-      try{const p=rq.call(el);if(p&&p.catch)p.catch(()=>showToast('当前环境不支持全屏'));}
-      catch(e){showToast('当前环境不支持全屏');}
-    }else{
-      showToast('iPhone Safari 不支持网页全屏<br>可用"添加到主屏幕"获得全屏体验');
-    }
+    setCompact(false);
+    return;
   }
+  if(document.getElementById('app').classList.contains('max')){setCompact(false);return;}
+  const rq=el.requestFullscreen||el.webkitRequestFullscreen;
+  let native=false;
+  if(rq){
+    try{
+      const p=rq.call(el);native=true;
+      if(p&&p.catch)p.catch(()=>{setCompact(true);showToast('此环境不支持真全屏，已切换紧凑模式');});
+    }catch(e){native=false;}
+  }
+  setCompact(true);
+  if(!native)showToast('iPhone 网页无法真全屏，已切换紧凑模式<br>真全屏需打包成 app 或做成 PWA');
 });
 document.getElementById('startBtn').addEventListener('click',begin);
 
