@@ -82,6 +82,21 @@
   #info .card.shopHead{flex:0 0 auto;max-width:118px}
   #info .btn .sub{display:block;color:var(--ink-dim);font-size:9.5px;margin-top:1px;line-height:1.3}
   #info .btn.grow{flex:1;text-align:left}
+  /* 英雄面板：左属性 | 4技能栏 | 2×3装备栏 */
+  .hcard{flex:1;min-width:0;font-size:10px;line-height:1.4}
+  .hcard .dim{color:var(--ink-dim);font-size:9.5px}
+  .hgrid{display:grid;grid-template-columns:repeat(4,max-content);gap:1px 10px;
+    font-size:9.5px;color:var(--ink-dim);margin-top:3px}
+  .hgrid b{color:var(--ink);font-weight:600;font-size:10px}
+  .slotgrid{display:grid;gap:4px;flex-shrink:0;align-self:center}
+  .slotgrid.sk{grid-template-columns:repeat(2,30px);grid-template-rows:repeat(2,30px)}
+  .slotgrid.eq{grid-template-columns:repeat(3,30px);grid-template-rows:repeat(2,30px)}
+  .slotTitle{font-size:8px;color:var(--ink-dim);text-align:center;grid-column:1/-1;line-height:1}
+  .slot{border:1px dashed #24344f;border-radius:6px;display:flex;flex-direction:column;
+    align-items:center;justify-content:center;font-size:9px;color:#33465f;line-height:1.1;
+    touch-action:none;-webkit-user-select:none;user-select:none}
+  .slot.f{border-style:solid;font-weight:600;background:rgba(255,255,255,.04)}
+  .slot.f i{font-style:normal;font-size:7.5px;opacity:.85}
   .btn{
     border:1px solid var(--line);border-radius:6px;background:#16223a;color:var(--ink);
     padding:6px 9px;text-align:center;font-size:12px;line-height:1.3;flex-shrink:0;
@@ -176,7 +191,7 @@
 'use strict';
 /* ================= 职业（魔兽式属性）================= */
 const ROWS=3, HCOLS=3, BCOLS=9, COLS=HCOLS+BCOLS, TOTAL_WAVES=15, HERO_COST=50, MAX_HEROES=3;
-const MAX_SLOTS=4, MAX_SKILL_LV=5, MAX_EQUIP=4, MAX_HERO_LV=15;
+const MAX_SLOTS=4, MAX_SKILL_LV=5, MAX_EQUIP=6, MAX_HERO_LV=15;   // 装备栏2×3
 const COL_CLASS=['mage','archer','warrior'];
 /* bat=基础攻击间隔s wep=武器基础攻击 main=主属性(加攻) grow=每级属性成长 */
 const CLASSES={
@@ -210,42 +225,45 @@ const SKB={
 const CATS={str:{label:'力量',color:'#ff5d5d'},agi:{label:'敏捷',color:'#57d474'},int:{label:'智力',color:'#4f8dff'}};
 const PACK_COST=80, ROLL_COST=40, PACK_N=4;
 
-/* ================= 装备（roll品质）================= */
-const EQ_KINDS={
-  sword:{n:'利剑',s:'剑',roll:m=>({atk:Math.round(7*m)})},
-  plate:{n:'胸甲',s:'甲',roll:m=>({armor:Math.round(3*m),hp:Math.round(35*m)})},
-  boots:{n:'战靴',s:'靴',roll:m=>({aspd:Math.round(15*m)})},
-  ring: {n:'指环',s:'戒',roll:m=>({all:Math.round(3*m)})},
-  cloak:{n:'披风',s:'披',roll:m=>({mres:Math.round(8*m)/100,hp:Math.round(20*m)})},
+/* ================= 装备池（用户自定义，持续扩充）================= */
+const QUALS={
+  common:{n:'白色',c:'#c8d2dc',w:50},
+  fine:  {n:'绿色',c:'#5ad48a',w:35},
+  rare:  {n:'蓝色',c:'#4fa8ff',w:15},
+  epic:  {n:'紫色',c:'#b070ff',w:0},   // 预留
 };
-const QUALS=[
-  {k:'common',n:'普通',c:'#c8d2dc',m:1,  w:55},
-  {k:'fine',  n:'精良',c:'#5ad48a',m:1.7,w:27},
-  {k:'rare',  n:'稀有',c:'#4fa8ff',m:2.6,w:13},
-  {k:'epic',  n:'史诗',c:'#b070ff',m:4,  w:5},
+const EQUIPS=[
+  {id:'sword1',   n:'新手剑',  s:'新剑',q:'common',stats:{atk:10}},
+  {id:'bow1',     n:'新手弓',  s:'新弓',q:'common',stats:{aspd:15}},
+  {id:'staff1',   n:'新手法杖',s:'法杖',q:'common',stats:{cdr:.05}},
+  {id:'hammer',   n:'狼牙锤',  s:'狼牙',q:'fine',  stats:{str:15}},
+  {id:'shield1',  n:'小圆盾',  s:'圆盾',q:'fine',  stats:{armor:10}},
+  {id:'fang',     n:'毒牙之刃',s:'毒牙',q:'fine',  stats:{agi:15}},
+  {id:'thunderbow',n:'雷鸣弓', s:'雷弓',q:'rare',  stats:{bat:.1,aspd:20}},
+  {id:'poorshield',n:'穷鬼盾', s:'穷盾',q:'rare',  stats:{block:20}},
 ];
+const EQ_BY_ID=Object.fromEntries(EQUIPS.map(e=>[e.id,e]));
 const EQ_ROLL1=45, EQ_ROLL4=160;
-function rollQuality(){
-  let r=Math.random()*100;
-  for(const q of QUALS){if(r<q.w)return q;r-=q.w;}
-  return QUALS[0];
-}
 function rollEquip(){
-  const kinds=Object.keys(EQ_KINDS);
-  const kind=kinds[Math.floor(Math.random()*kinds.length)];
-  const q=rollQuality();
-  return {t:'eq',kind,q:q.k,stats:EQ_KINDS[kind].roll(q.m)};
+  let r=Math.random()*100,qk='common';
+  for(const[k,q]of Object.entries(QUALS)){if(r<q.w){qk=k;break;}r-=q.w;}
+  const pool=EQUIPS.filter(e=>e.q===qk);
+  return {t:'eq',id:pool[Math.floor(Math.random()*pool.length)].id};
 }
-function qOf(item){return QUALS.find(q=>q.k===item.q);}
-function eqDesc(item){
-  const s=item.stats,p=[];
+function eqDef(item){return EQ_BY_ID[item.id];}
+function qOf(item){return QUALS[eqDef(item).q];}
+function eqDesc(def){
+  const s=def.stats,p=[];
   if(s.atk)p.push('攻击+'+s.atk);
+  if(s.str)p.push('力量+'+s.str);
+  if(s.agi)p.push('敏捷+'+s.agi);
   if(s.armor)p.push('护甲+'+s.armor);
-  if(s.hp)p.push('生命+'+s.hp);
   if(s.aspd)p.push('攻速+'+s.aspd);
-  if(s.all)p.push('全属性+'+s.all);
-  if(s.mres)p.push('魔抗+'+Math.round(s.mres*100)+'%');
-  return p.join(' ');
+  if(s.cdr)p.push('技能CD-'+Math.round(s.cdr*100)+'%');
+  if(s.bat)p.push('攻击间隔-'+s.bat);
+  if(s.block)p.push('格挡普攻伤害'+s.block);
+  if(s.hp)p.push('生命+'+s.hp);
+  return p.join(' · ');
 }
 
 /* ================= 怪物（带护甲/魔抗）================= */
@@ -289,28 +307,27 @@ function makeHero(cls,row,col){
 function calc(h){
   const b=CLASSES[h.cls],a=h.tier?ADV[h.cls]:null;
   const am=h.tier?1.35:1;
-  // 属性 = (基础+成长×等级) ×转职加成 + 装备全属性
-  let eqAtk=0,eqArmor=0,eqHp=0,eqAspd=0,eqAll=0,eqMres=0;
+  let eqAtk=0,eqArmor=0,eqHp=0,eqAspd=0,eqStr=0,eqAgi=0,eqMres=0,eqCdr=0,eqBat=0,eqBlock=0;
   for(const e of h.equips){
-    const s=e.stats;
-    eqAtk+=s.atk||0;eqArmor+=s.armor||0;eqHp+=s.hp||0;
-    eqAspd+=s.aspd||0;eqAll+=s.all||0;eqMres+=s.mres||0;
+    const s=eqDef(e).stats;
+    eqAtk+=s.atk||0;eqArmor+=s.armor||0;eqHp+=s.hp||0;eqAspd+=s.aspd||0;
+    eqStr+=s.str||0;eqAgi+=s.agi||0;eqMres+=s.mres||0;
+    eqCdr+=s.cdr||0;eqBat+=s.bat||0;eqBlock+=s.block||0;
   }
-  h.str=Math.round((b.attr.str+b.grow.str*(h.lv-1))*am)+eqAll;
-  h.agi=Math.round((b.attr.agi+b.grow.agi*(h.lv-1))*am)+eqAll;
-  h.int=Math.round((b.attr.int+b.grow.int*(h.lv-1))*am)+eqAll;
-  // 攻击 = 武器×转职 + 主属性 + 装备
+  // 装备加的力/敏一样吃派生（力加血、敏加甲加攻速）
+  h.str=Math.round((b.attr.str+b.grow.str*(h.lv-1))*am)+eqStr;
+  h.agi=Math.round((b.attr.agi+b.grow.agi*(h.lv-1))*am)+eqAgi;
+  h.int=Math.round((b.attr.int+b.grow.int*(h.lv-1))*am);
   h.atk=Math.round(b.wep*(a?a.atk:1)+h[b.main]+eqAtk);
-  // 生命 = (基础+力量×8)×转职 + 装备
   h.maxHp=Math.round((b.hpB+h.str*8)*(a?a.hp:1)+eqHp);
-  // 护甲 = 基础 + 敏捷/7 + 装备（魔兽减伤公式）
   h.armor=Math.round((b.baseArmor+h.agi/7+eqArmor)*10)/10;
-  // 魔抗：基础25% + 装备，上限75%
   h.mres=Math.min(.75,.25+eqMres);
-  // 魔兽/DotA公式：每秒攻击 = (1+攻速/100)/BAT；1点敏捷=1攻速
-  // 攻速上限400 ⇒ 每秒最多A的次数 = 5/BAT（间隔1→5下/s，间隔2→2.5下/s）
+  // 魔兽/DotA公式：每秒攻击=(1+攻速/100)/BAT；1敏=1攻速；上限400⇒最多5/BAT次每秒
+  const bat=Math.max(.4,b.bat*(a?a.bat:1)-eqBat);
   h.ias=Math.min(400,h.agi+eqAspd);
-  h.interval=b.bat*(a?a.bat:1)/(1+h.ias/100);
+  h.interval=bat/(1+h.ias/100);
+  h.cdr=Math.min(.5,eqCdr);      // 技能CD缩减，上限50%
+  h.block=eqBlock;               // 普攻固定格挡
   h.range=b.range+(a?a.range:0);
   h.splash=b.splash+(a?a.splash:0);
 }
@@ -502,7 +519,7 @@ function update(dt){
       if(!def.cd)continue;
       h.cds[name]=(h.cds[name]||0)-dt;
       if(h.cds[name]>0)continue;
-      if(castSkill(h,name,h.skills[name],hx,hy))h.cds[name]=def.cd;
+      if(castSkill(h,name,h.skills[name],hx,hy))h.cds[name]=def.cd*(1-h.cdr);
     }
     h.cd-=dt;if(h.cd>0)continue;
     let best=null;
@@ -587,7 +604,8 @@ function hitUnit(u,m){
     return;
   }
   const h=u;
-  let dmg=m.atk*(1-armorRed(h.armor));   // 英雄护甲减伤
+  // 穷鬼盾类固定格挡先扣，再吃护甲减伤
+  let dmg=Math.max(0,m.atk-h.block)*(1-armorRed(h.armor));
   const bb=h.skills['狂战士之血'];
   if(bb){
     const miss=1-h.hp/h.maxHp;
@@ -768,15 +786,6 @@ function updateHUD(){
   document.getElementById('millLvT').textContent='Lv'+millLv+' +'+millLv+'/s';
 }
 function selHero(){return sel?heroAt(sel.col,sel.row):null;}
-function skillLine(h){
-  const ks=Object.keys(h.skills);
-  if(!ks.length)return '<span>技0/'+MAX_SLOTS+'</span>';
-  return ks.map(n=>`<span style="color:${CATS[SKB[n].cat].color}">${SKB[n].short}${h.skills[n]}</span>`).join(' ');
-}
-function equipLine(h){
-  if(!h.equips.length)return '<span>装0/'+MAX_EQUIP+'</span>';
-  return h.equips.map(e=>`<span style="color:${qOf(e).c}">${EQ_KINDS[e.kind].s}</span>`).join(' ');
-}
 
 function renderInfo(){
   if(over)return;
@@ -789,9 +798,9 @@ function renderInfo(){
         <span style="color:var(--${d.q==='qblue'?'qblue':'qgreen'})">[${d.q==='qblue'?'蓝':'绿'}]</span>
         <span>${CATS[d.cat].label}系技能书</span><br><span>${d.desc}</span><br><span>拖到英雄上学习，同名升级（上限Lv${MAX_SKILL_LV}）</span></div>`;
     }else{
-      const q=qOf(it);
-      info.innerHTML=`<div class="card"><b style="color:${q.c}">${q.n}·${EQ_KINDS[it.kind].n}</b><br>
-        <span>${eqDesc(it)}</span><br><span>拖到英雄上穿戴（${MAX_EQUIP}个装备位）</span></div>`;
+      const d=eqDef(it),q=qOf(it);
+      info.innerHTML=`<div class="card"><b style="color:${q.c}">${d.n}</b> <span style="color:${q.c}">[${q.n}]</span><br>
+        <span>${eqDesc(d)}</span><br><span>拖到英雄上穿戴（${MAX_EQUIP}个装备位）</span></div>`;
     }
     return;
   }
@@ -807,10 +816,35 @@ function renderInfo(){
   }else if(h){
     const b=CLASSES[h.cls];
     const advOK=!h.tier&&h.lv>=ADV_LV, canAdv=advOK&&gold>=ADV_GOLD&&wood>=ADV_WOOD;
-    const xpTxt=h.lv>=MAX_HERO_LV?'满级':`${Math.floor(h.xp)}/${xpNeed(h.lv)}`;
-    html=`<div class="card"><b style="color:${b.color}">${dispName(h)}</b> <b>Lv${h.lv}</b> <span>经验${xpTxt}</span><br>
-      <span>HP ${Math.ceil(h.hp)}/${h.maxHp} · 攻 ${h.atk} · 攻速${h.ias}(${h.interval.toFixed(2)}s/击) · 甲 ${h.armor}(${Math.round(armorRed(h.armor)*100)}%) · 抗 ${Math.round(h.mres*100)}%</span><br>
-      <span>力${h.str} 敏${h.agi} 智${h.int}</span> · ${skillLine(h)} · ${equipLine(h)}</div>`;
+    const xpTxt=h.lv>=MAX_HERO_LV?'满级':`经验 ${Math.floor(h.xp)}/${xpNeed(h.lv)}`;
+    // 4个技能栏（空栏虚线，学了填充；长按看介绍）
+    const names=Object.keys(h.skills),sk=[];
+    for(let i=0;i<MAX_SLOTS;i++){
+      const n=names[i];
+      sk.push(n?`<div class="slot f" data-lps="${n}" style="border-color:${CATS[SKB[n].cat].color};color:${CATS[SKB[n].cat].color}">${SKB[n].short}<i>Lv${h.skills[n]}</i></div>`
+              :'<div class="slot">空</div>');
+    }
+    // 2×3装备栏
+    const eq=[];
+    for(let i=0;i<MAX_EQUIP;i++){
+      const e=h.equips[i];
+      eq.push(e?`<div class="slot f" data-lpe="${i}" style="border-color:${qOf(e).c};color:${qOf(e).c}">${eqDef(e).s}</div>`
+              :'<div class="slot">空</div>');
+    }
+    html=`<div class="hcard">
+      <div><b style="color:${b.color}">${dispName(h)}</b> <span class="dim">Lv${h.lv} · ${xpTxt}</span></div>
+      <div class="hgrid">
+        <span>HP <b>${Math.ceil(h.hp)}/${h.maxHp}</b></span>
+        <span>攻击 <b>${h.atk}</b></span>
+        <span>攻速 <b>${h.ias}</b> ${h.interval.toFixed(2)}s</span>
+        <span>护甲 <b>${h.armor}</b> ${Math.round(armorRed(h.armor)*100)}%</span>
+        <span style="color:#ff9d9d">力 <b>${h.str}</b></span>
+        <span style="color:#8ce8a8">敏 <b>${h.agi}</b></span>
+        <span style="color:#8db8ff">智 <b>${h.int}</b></span>
+        <span>抗 <b>${Math.round(h.mres*100)}%</b>${h.cdr?' CD-'+Math.round(h.cdr*100)+'%':''}${h.block?' 挡'+h.block:''}</span>
+      </div></div>
+      <div class="slotgrid sk">${sk.join('')}</div>
+      <div class="slotgrid eq">${eq.join('')}</div>`;
     if(!h.tier){
       html+=`<button class="btn" id="advBtn" data-cost="${ADV_GOLD}" data-wood="${ADV_WOOD}" data-lock="${advOK?0:1}" ${canAdv?'':'disabled'}>
         转职·${ADV[h.cls].name}<br><span class="sub">需Lv${ADV_LV}</span> <span class="cost">${ADV_GOLD}金</span>+<span class="costw">${ADV_WOOD}木</span></button>`;
@@ -863,10 +897,10 @@ function shopHTML(){
         <span class="sub">全池7种·半价</span></button>`;
   }
   if(openShop==='item'){
-    return `<div class="card shopHead"><b>装备商店</b><br><span>随机部位+品质<br>白55/绿27/蓝13/紫5%</span></div>
+    return `<div class="card shopHead"><b>装备商店</b><br><span>白50/绿35/蓝15%</span></div>
       <button class="btn grow" data-eqroll="1" data-cost="${EQ_ROLL1}" data-lock="0" ${gold>=EQ_ROLL1?'':'disabled'}>
         <b>roll ×1</b> <span class="cost">${EQ_ROLL1}金</span>
-        <span class="sub">剑/甲/靴/戒/披 随机一件</span></button>
+        <span class="sub">从装备池随机一件</span></button>
       <button class="btn grow" data-eqroll="4" data-cost="${EQ_ROLL4}" data-lock="0" ${gold>=EQ_ROLL4?'':'disabled'}>
         <b>roll ×4</b> <span class="cost">${EQ_ROLL4}金</span>
         <span class="sub">四连抽，略有折扣</span></button>`;
@@ -919,10 +953,10 @@ function renderInv(){
       el.style.color=CATS[d.cat].color;
       el.innerHTML=`${d.short}<small>技能书</small>`;
     }else{
-      const q=qOf(it);
+      const d=eqDef(it),q=qOf(it);
       el.style.borderColor=q.c;
       el.style.color=q.c;
-      el.innerHTML=`${EQ_KINDS[it.kind].s}<small>${q.n}</small>`;
+      el.innerHTML=`${d.s}<small>${q.n}</small>`;
     }
     invEl.appendChild(el);
   });
@@ -936,7 +970,7 @@ function applyItem(idx,h){
     h.skills[it.name]=cur+1;
     fx.push({type:'ring',x:h.col+.5,y:h.row+.5,rr:.6,t:.4,max:.4,color:CATS[SKB[it.name].cat].color});
   }else{
-    if(h.equips.length>=MAX_EQUIP){showToast('装备位已满（4件）');return;}
+    if(h.equips.length>=MAX_EQUIP){showToast('装备位已满（'+MAX_EQUIP+'件）');return;}
     h.equips.push(it);
     const ratio=h.hp/h.maxHp;calc(h);h.hp=Math.round(h.maxHp*ratio);
     fx.push({type:'ring',x:h.col+.5,y:h.row+.5,rr:.6,t:.4,max:.4,color:qOf(it).c});
@@ -978,6 +1012,25 @@ window.addEventListener('pointerup',ev=>{
     else showToast('拖到已购买的英雄方块上');
   }
 });
+
+/* 长按技能栏/装备栏查看介绍 */
+let lpTimer=null;
+info.addEventListener('pointerdown',ev=>{
+  const s=ev.target.closest('[data-lps],[data-lpe]');
+  if(!s)return;
+  clearTimeout(lpTimer);
+  lpTimer=setTimeout(()=>{
+    const h=selHero();if(!h)return;
+    if(s.dataset.lps){
+      const n=s.dataset.lps,d=SKB[n];
+      showToast(`<b style="color:${CATS[d.cat].color}">${n}</b> Lv${h.skills[n]}<br>${d.desc}`);
+    }else{
+      const e=h.equips[+s.dataset.lpe];
+      if(e){const d=eqDef(e),q=qOf(e);showToast(`<b style="color:${q.c}">${d.n}</b> [${q.n}]<br>${eqDesc(d)}`);}
+    }
+  },420);
+});
+['pointerup','pointercancel','pointerleave'].forEach(t=>info.addEventListener(t,()=>clearTimeout(lpTimer)));
 
 info.addEventListener('click',ev=>{
   const b=ev.target.closest('button');if(!b||b.disabled)return;
