@@ -705,6 +705,7 @@ cv.addEventListener('pointerdown',ev=>{
   const c=Math.floor((ev.clientX-rect.left)/cell),r=Math.floor((ev.clientY-rect.top)/cell);
   if(c<0||c>=COLS||r<0||r>=ROWS)return;
   sel=c<HCOLS?{col:c,row:r}:null;
+  if(sel)closeSheet();   // 点了格子/英雄就关闭商店，信息区切到选中对象
   renderInfo();
 });
 document.getElementById('speedBtn').addEventListener('click',ev=>{
