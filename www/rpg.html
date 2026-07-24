@@ -12,6 +12,7 @@
     --ink:#d5e4ee;
     --ink-dim:#68809a;
     --gold:#f0c46a;
+    --wood:#c98f5b;
     --hp:#6ee7a0;
     --mage:#4f8dff;
     --archer:#57d474;
@@ -28,84 +29,105 @@
   #app{height:100%;height:100dvh;display:flex;flex-direction:column;
     padding-left:env(safe-area-inset-left);padding-right:env(safe-area-inset-right)}
 
-  /* ---- 顶部 HUD（横屏压扁） ---- */
+  /* ---- 顶部 HUD ---- */
   header{
-    display:flex;align-items:center;gap:16px;
-    padding:6px 14px;border-bottom:1px solid var(--line);background:var(--bg2);
+    display:flex;align-items:center;gap:12px;
+    padding:5px 12px;border-bottom:1px solid var(--line);background:var(--bg2);
   }
-  .stat{display:flex;align-items:baseline;gap:4px}
-  .stat b{font-family:ui-monospace,"SF Mono",Menlo,monospace;font-size:15px;font-weight:600;font-variant-numeric:tabular-nums}
+  .stat{display:flex;align-items:baseline;gap:3px}
+  .stat b{font-family:ui-monospace,"SF Mono",Menlo,monospace;font-size:14px;font-weight:600;font-variant-numeric:tabular-nums}
   .stat small{font-size:10px;color:var(--ink-dim)}
-  .money b{color:var(--gold)} .life b{color:var(--hp)} .wave b{color:#8ab8d8}
-  #speedBtn{
-    margin-left:auto;background:none;border:1px solid var(--line);color:#8ab8d8;
-    border-radius:4px;padding:3px 10px;font-size:12px;
+  .money b{color:var(--gold)} .woodS b{color:var(--wood)} .life b{color:var(--hp)} .wave b{color:#8ab8d8}
+  header .hbtn{
+    background:none;border:1px solid var(--line);color:#8ab8d8;
+    border-radius:4px;padding:3px 9px;font-size:12px;
     font-family:ui-monospace,"SF Mono",Menlo,monospace;
   }
-  #speedBtn.on{background:#8ab8d8;color:#0a0e16;border-color:#8ab8d8}
+  header .hbtn.on{background:#8ab8d8;color:#0a0e16;border-color:#8ab8d8}
+  #speedBtn{margin-left:auto}
 
-  /* ---- 战场：占大头、顶到上方 ---- */
+  /* ---- 战场（顶置） ---- */
   #stage{flex:1;position:relative;display:flex;justify-content:center;align-items:flex-start;
-    padding-top:6px;min-height:0;background:var(--bg)}
+    padding-top:4px;min-height:0;background:var(--bg)}
   canvas{display:block;touch-action:none}
 
-  /* ---- 底栏：信息 + 商店方块占位 ---- */
-  #dock{
-    display:flex;align-items:stretch;gap:10px;
-    padding:8px 12px calc(env(safe-area-inset-bottom) + 8px);
-    border-top:1px solid var(--line);background:var(--bg2);
+  /* ---- 信息区（战场下方） ---- */
+  #info{
+    min-height:56px;display:flex;align-items:center;gap:10px;
+    padding:6px 12px;border-top:1px solid var(--line);background:var(--bg2);
   }
-  #info{flex:1;display:flex;align-items:center;gap:10px;min-width:0}
   #info .hint{flex:1;color:var(--ink-dim);font-size:12px;line-height:1.5}
   #info .card{flex:1;font-size:11px;line-height:1.5;min-width:0}
   #info .card b{font-size:13px}
   #info .card span{color:var(--ink-dim)}
   .btn{
     border:1px solid var(--line);border-radius:6px;background:#16223a;color:var(--ink);
-    padding:7px 10px;text-align:center;font-size:12px;line-height:1.3;
+    padding:7px 10px;text-align:center;font-size:12px;line-height:1.3;flex-shrink:0;
   }
   .btn:disabled{opacity:.35}
   .btn .cost{color:var(--gold);font-size:11px;font-variant-numeric:tabular-nums}
+  .btn .costw{color:var(--wood);font-size:11px;font-variant-numeric:tabular-nums}
   .btn.primary{background:#2a6ee0;border-color:#2a6ee0;color:#fff;font-weight:600;padding:8px 14px}
 
-  .tile{
-    width:58px;border:1px solid var(--line);border-radius:8px;background:#16223a;
-    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;
-    font-size:11px;color:var(--ink);
+  /* ---- 商店条（信息区下方） ---- */
+  #dock{
+    display:flex;align-items:stretch;gap:8px;
+    padding:6px 12px calc(env(safe-area-inset-bottom) + 6px);
+    background:var(--bg2);
   }
-  .tile .ic{width:16px;height:16px;border-radius:4px}
+  #dock .spacer{flex:1}
+  .tile{
+    min-width:60px;border:1px solid var(--line);border-radius:8px;background:#16223a;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;
+    font-size:11px;color:var(--ink);padding:5px 8px;position:relative;
+  }
+  .tile .ic{width:14px;height:14px;border-radius:4px}
+  .tile .lv{font-size:9px;color:var(--ink-dim)}
   .tile.on{border-color:#8ab8d8;background:#1b2c48}
-  #tileSkill .ic{background:linear-gradient(135deg,var(--mage),var(--archer))}
-  #tileItem .ic{background:var(--gold)}
+  #tileSkill .ic{background:linear-gradient(135deg,var(--mage),var(--warrior))}
+  #tileItem .ic{background:#9db8d8}
+  #tileMine .ic{background:var(--gold)}
+  #tileMill .ic{background:var(--wood)}
 
   /* ---- 商店弹层 ---- */
   #sheet{
     position:fixed;left:0;right:0;bottom:0;z-index:20;
     background:var(--bg2);border-top:1px solid #2b3d5e;
-    max-height:72%;display:flex;flex-direction:column;
+    max-height:76%;display:flex;flex-direction:column;
     padding-left:env(safe-area-inset-left);padding-right:env(safe-area-inset-right);
     box-shadow:0 -12px 30px rgba(0,0,0,.5);
   }
   #sheet.hide{display:none}
-  #sheetHead{display:flex;align-items:center;gap:8px;padding:8px 14px;font-size:12px;color:var(--ink-dim)}
+  #sheetHead{display:flex;align-items:center;gap:8px;padding:8px 14px;font-size:12px;color:var(--ink-dim);flex-wrap:wrap}
   #sheetHead b{color:var(--ink);font-size:13px}
   #sheetClose{margin-left:auto;background:none;border:1px solid var(--line);color:var(--ink-dim);
     border-radius:4px;padding:3px 12px;font-size:12px}
   #sheetBody{overflow-y:auto;padding:0 12px calc(env(safe-area-inset-bottom) + 12px);
-    display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+    display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+  #sheetBody.cols1{grid-template-columns:1fr}
+  #sheetBody.cols3{grid-template-columns:repeat(3,1fr)}
   #sheetBody .btn{text-align:left;padding:8px 10px}
   #sheetBody .btn b{font-size:13px}
   #sheetBody .btn .sub{display:block;color:var(--ink-dim);font-size:10.5px;margin-top:2px;line-height:1.4}
 
+  /* ---- 提示气泡 ---- */
+  #toast{
+    position:fixed;left:50%;top:14%;transform:translateX(-50%);z-index:60;
+    background:#1b2c48;border:1px solid #2b3d5e;color:var(--ink);
+    padding:8px 16px;border-radius:8px;font-size:12px;max-width:80%;
+    opacity:0;transition:opacity .25s;pointer-events:none;text-align:center;line-height:1.6;
+  }
+  #toast.show{opacity:1}
+
   /* ---- 开始/结束遮罩 ---- */
   #overlay{
-    position:fixed;inset:0;z-index:30;background:rgba(10,14,22,.9);
+    position:fixed;inset:0;z-index:30;background:rgba(10,14,22,.92);
     display:flex;flex-direction:column;align-items:center;justify-content:center;
     gap:12px;text-align:center;padding:20px;
   }
   #overlay.hide{display:none}
   #overlay h1{font-size:26px;letter-spacing:.14em;color:#8ab8d8}
-  #overlay p{color:var(--ink-dim);font-size:13px;line-height:1.8;max-width:420px}
+  #overlay p{color:var(--ink-dim);font-size:13px;line-height:1.8;max-width:460px}
   #overlay .lg{border:1px solid #2a6ee0;background:#2a6ee0;color:#fff;border-radius:8px;padding:10px 40px;font-size:16px;letter-spacing:.2em}
   #overlay .cls{display:flex;gap:14px;font-size:12px;color:var(--ink-dim)}
   #overlay .cls i{display:inline-block;width:10px;height:10px;margin-right:4px;border-radius:2px}
@@ -122,16 +144,21 @@
 <body>
 <div id="app">
   <header>
-    <div class="stat money"><b id="uiMoney">0</b><small>金币</small></div>
+    <div class="stat money"><b id="uiMoney">0</b><small>金</small></div>
+    <div class="stat woodS"><b id="uiWood">0</b><small>木</small></div>
     <div class="stat life"><b id="uiLife">0</b><small>基地</small></div>
-    <div class="stat wave"><b id="uiWave">0/15</b><small>波次</small></div>
-    <button id="speedBtn">×1</button>
+    <div class="stat wave"><b id="uiWave">0/15</b><small>波</small></div>
+    <button class="hbtn" id="speedBtn">×1</button>
+    <button class="hbtn" id="fsBtn">⛶ 全屏</button>
   </header>
   <div id="stage"><canvas id="cv"></canvas></div>
+  <div id="info"><div class="hint"></div></div>
   <div id="dock">
-    <div id="info"><div class="hint"></div></div>
-    <button class="tile" id="tileSkill"><span class="ic"></span>技能</button>
-    <button class="tile" id="tileItem"><span class="ic"></span>装备</button>
+    <div class="spacer" id="dockMsg"></div>
+    <button class="tile" id="tileSkill"><span class="ic"></span>技能<span class="lv">出4本书</span></button>
+    <button class="tile" id="tileItem"><span class="ic"></span>装备<span class="lv">强化</span></button>
+    <button class="tile" id="tileMine"><span class="ic"></span>金矿<span class="lv" id="mineLvT">Lv0</span></button>
+    <button class="tile" id="tileMill"><span class="ic"></span>伐木场<span class="lv" id="millLvT">Lv0</span></button>
   </div>
 </div>
 
@@ -140,14 +167,16 @@
   <div id="sheetBody"></div>
 </div>
 
+<div id="toast"></div>
+
 <div id="overlay">
   <h1>方块战线</h1>
   <div class="cls">
     <span><i style="background:var(--mage)"></i>法师</span>
-    <span><i style="background:var(--archer)"></i>射手</span>
+    <span><i style="background:var(--archer)"></i>游侠</span>
     <span><i style="background:var(--warrior)"></i>战士</span>
   </div>
-  <p>怪物从右侧压来。买英雄放进左侧 3×3 格——放哪一列就是哪个职业（最多 3 人）。点右下角方块打开技能/装备商店强化英雄，守住 15 波。</p>
+  <p>点左侧 3×3 格查看该列职业的购买信息，买入英雄（最多3人）。英雄可升级，5级后花金币+木头转职。金矿/伐木场提供每秒产出，技能商店按力量/敏捷/智力买技能书（或半价全池roll），每次4本。守住 15 波。</p>
   <button class="lg" id="startBtn">开 始</button>
 </div>
 
@@ -159,57 +188,98 @@
 const ROWS=3, HCOLS=3, BCOLS=9, COLS=HCOLS+BCOLS, TOTAL_WAVES=15, HERO_COST=50, MAX_HEROES=3;
 const COL_CLASS=['mage','archer','warrior'];
 const CLASSES={
-  mage:  {name:'法师',color:'#4f8dff',hp:70, dmg:16,range:9,  rate:.8,desc:'远程·溅射·可打任意行'},
-  archer:{name:'射手',color:'#57d474',hp:90, dmg:12,range:6,  rate:2, desc:'中程·可打相邻行'},
-  warrior:{name:'战士',color:'#ff5d5d',hp:240,dmg:22,range:1.6,rate:1, desc:'近战·高血量·挡怪'},
+  mage:  {name:'法师',color:'#4f8dff',hp:70, dmg:16,range:9,  rate:.8,splash:1.1,desc:'远程·溅射·可打任意行'},
+  archer:{name:'游侠',color:'#57d474',hp:90, dmg:12,range:6,  rate:2, splash:0,  desc:'中程·可打相邻行'},
+  warrior:{name:'战士',color:'#ff5d5d',hp:240,dmg:22,range:1.6,rate:1, splash:0,  desc:'近战·高血量·挡怪'},
 };
+/* 转职：等级5 · 150金+50木 */
+const ADV={
+  mage:  {name:'大法师',atk:1.8,hp:1.5,rate:1,  range:1,  splash:.4},
+  archer:{name:'神射手',atk:1.7,hp:1.4,rate:1.3,range:1.5,splash:0},
+  warrior:{name:'狂战士',atk:1.8,hp:1.8,rate:1.1,range:.4, splash:0},
+};
+const ADV_LV=5, ADV_GOLD=150, ADV_WOOD=50;
+function lvCost(lv){return 30+lv*25;}   // 升级花费（金）
+
+/* 转职后解锁的主动技能 */
 const SKILLS={
-  mage:  {name:'火球术', cost:80,cd:6,desc:'每6秒轰炸最前排，范围3倍伤害'},
-  archer:{name:'箭雨',   cost:70,cd:5,desc:'每5秒射5个目标各1.5倍伤害'},
-  warrior:{name:'旋风斩',cost:70,cd:5,desc:'每5秒对身边所有敌人2倍伤害'},
+  mage:  {name:'火球术', cd:6,desc:'轰炸最前排，范围3倍伤害'},
+  archer:{name:'箭雨',   cd:5,desc:'射5个目标各1.5倍伤害'},
+  warrior:{name:'旋风斩',cd:5,desc:'对身边所有敌人2倍伤害'},
 };
+/* 技能书池：力量/敏捷/智力 各4种 */
+const BOOKS={
+  str:{label:'力量',color:'#ff5d5d',pool:{
+    '铁壁':'生命上限+25%','再生':'每秒回2%生命','荆棘':'反弹所受伤害25%','巨力':'攻击+20%'}},
+  agi:{label:'敏捷',color:'#57d474',pool:{
+    '疾风':'攻速+15%','连击':'15%几率追击一次','闪避':'15%几率闪避','精准':'攻+10% 射程+0.5'}},
+  int:{label:'智力',color:'#4f8dff',pool:{
+    '奥术':'攻击+15%','冷却':'技能CD-15%','溅射':'攻击溅射+0.5','汲取':'该英雄击杀+1金'}},
+};
+const PACK_COST=80, ROLL_COST=40, PACK_N=4;
 const ITEMS={
   blade:{name:'利刃',base:60,desc:'攻击 +30%'},
   armor:{name:'护甲',base:50,desc:'生命上限 +40% 并回满'},
   boots:{name:'迅捷靴',base:55,desc:'攻速 +25%'},
 };
 const MOBS={
-  normal:{hp:40, spd:1.1,atk:8, reward:6, r:.30,lives:1,color:'#c95bff'},
-  fast:  {hp:26, spd:1.9,atk:6, reward:7, r:.23,lives:1,color:'#ff9d4d'},
-  tank:  {hp:150,spd:.7, atk:14,reward:12,r:.38,lives:2,color:'#8a6bff'},
-  boss:  {hp:700,spd:.55,atk:30,reward:60,r:.47,lives:3,color:'#ff3860'},
+  normal:{hp:40, spd:1.1,atk:8, reward:7, r:.30,lives:1,color:'#c95bff'},
+  fast:  {hp:26, spd:1.9,atk:6, reward:8, r:.23,lives:1,color:'#ff9d4d'},
+  tank:  {hp:150,spd:.7, atk:14,reward:14,r:.38,lives:2,color:'#8a6bff'},
+  boss:  {hp:700,spd:.55,atk:30,reward:70,r:.47,lives:3,color:'#ff3860'},
 };
+function mineCost(lv){return 80+lv*70;}   // 金矿升级（金）
+function millCost(lv){return 60+lv*60;}   // 伐木场升级（金）
 
 /* ================= 状态 ================= */
-let money,lives,wave,waveActive,queue,spawnT;
+let gold,wood,lives,wave,waveActive,queue,spawnT,incomeT;
+let mineLv,millLv;
 let heroes,mobs,shots,fx;
-let sel=null,placing=false,speed=1,running=false,over=false,openShop=null;
+let sel=null,speed=1,running=false,over=false,openShop=null;
 
 /* ================= 画布 ================= */
 const cv=document.getElementById('cv'),ctx=cv.getContext('2d');
 let cell=30,dpr=1;
 function resize(){
   const st=document.getElementById('stage');
-  const w=st.clientWidth-8,h=st.clientHeight-12;
+  const w=st.clientWidth-8,h=st.clientHeight-10;
   cell=Math.floor(Math.min(w/COLS,h/ROWS));
   dpr=Math.min(window.devicePixelRatio||1,2);
   cv.width=COLS*cell*dpr;cv.height=ROWS*cell*dpr;
   cv.style.width=COLS*cell+'px';cv.style.height=ROWS*cell+'px';
 }
-window.addEventListener('resize',()=>setTimeout(resize,50));
+window.addEventListener('resize',()=>setTimeout(resize,60));
+document.addEventListener('fullscreenchange',()=>setTimeout(resize,60));
 
 /* ================= 英雄 ================= */
 function makeHero(cls,row,col){
-  const h={cls,row,col,items:{blade:0,armor:0,boots:0},skill:false,skillCd:0,cd:0,flash:0,alive:true};
+  const h={cls,row,col,lv:1,tier:0,items:{blade:0,armor:0,boots:0},books:{},
+    skillCd:0,cd:0,flash:0,alive:true};
   calc(h);h.hp=h.maxHp;
   return h;
 }
+function bk(h,name){return h.books[name]||0;}
 function calc(h){
-  const b=CLASSES[h.cls];
-  h.atk=b.dmg*Math.pow(1.3,h.items.blade);
-  h.maxHp=Math.round(b.hp*Math.pow(1.4,h.items.armor));
-  h.rate=b.rate*Math.pow(1.25,h.items.boots);
-  h.range=b.range;
+  const b=CLASSES[h.cls],a=h.tier?ADV[h.cls]:null;
+  const lvMul=Math.pow(1.12,h.lv-1);
+  let atk=b.dmg*(a?a.atk:1)*lvMul;
+  let hp =b.hp *(a?a.hp :1)*lvMul;
+  let rate=b.rate*(a?a.rate:1);
+  let range=b.range+(a?a.range:0);
+  let splash=b.splash+(a?a.splash:0);
+  // 装备
+  atk*=Math.pow(1.3,h.items.blade);
+  hp *=Math.pow(1.4,h.items.armor);
+  rate*=Math.pow(1.25,h.items.boots);
+  // 技能书
+  hp *=Math.pow(1.25,bk(h,'铁壁'));
+  atk*=Math.pow(1.2, bk(h,'巨力'));
+  rate*=Math.pow(1.15,bk(h,'疾风'));
+  atk*=Math.pow(1.1, bk(h,'精准'));range+=.5*bk(h,'精准');
+  atk*=Math.pow(1.15,bk(h,'奥术'));
+  splash+=.5*bk(h,'溅射');
+  h.atk=atk;h.maxHp=Math.round(hp);h.rate=rate;h.range=range;h.splash=splash;
+  h.skillCdMax=SKILLS[h.cls].cd*Math.pow(.85,bk(h,'冷却'));
 }
 function heroAt(c,r){return heroes.find(h=>h.col===c&&h.row===r);}
 function frontHero(row){
@@ -218,12 +288,14 @@ function frontHero(row){
   return best;
 }
 function rowDefended(row){return heroes.some(h=>h.alive&&h.row===row);}
+function dispName(h){return h.tier?ADV[h.cls].name:CLASSES[h.cls].name;}
 
 /* ================= 流程 ================= */
 function reset(){
-  money=60;lives=10;wave=0;waveActive=false;queue=[];spawnT=0;
+  gold=60;wood=0;lives=10;wave=0;waveActive=false;queue=[];spawnT=0;incomeT=0;
+  mineLv=0;millLv=0;
   heroes=[];mobs=[];shots=[];fx=[];
-  sel=null;placing=false;over=false;openShop=null;
+  sel=null;over=false;openShop=null;
   closeSheet();updateHUD();renderInfo();
 }
 function waveComp(w){
@@ -251,6 +323,12 @@ function spawnMob(type){
 
 /* ================= 更新 ================= */
 function update(dt){
+  // 每秒产出
+  incomeT+=dt;
+  while(incomeT>=1){
+    incomeT-=1;
+    if(mineLv||millLv){gold+=mineLv;wood+=millLv;updateHUD();refreshAfford();}
+  }
   if(waveActive&&queue.length){
     spawnT-=dt;
     if(spawnT<=0){const t=queue.shift();spawnMob(t);spawnT=t==='fast'?.5:.9;}
@@ -272,8 +350,16 @@ function update(dt){
         if(m.cd<=0){
           m.cd=1;
           const h=frontHero(r);
-          if(h){h.hp-=m.atk;h.flash=.12;
-            if(h.hp<=0){h.hp=0;h.alive=false;fx.push({x:h.col+.5,y:h.row+.5,rr:.7,t:.35,max:.35,color:'#fff'});}
+          if(h){
+            const dodge=Math.min(.15*bk(h,'闪避'),.6);
+            if(Math.random()>=dodge){
+              h.hp-=m.atk;h.flash=.12;
+              const th=bk(h,'荆棘');
+              if(th)damage(m,m.atk*.25*th,h);
+              if(h.hp<=0){h.hp=0;h.alive=false;fx.push({x:h.col+.5,y:h.row+.5,rr:.7,t:.35,max:.35,color:'#fff'});renderInfo();}
+            }else{
+              fx.push({x:h.col+.5,y:h.row+.5,rr:.4,t:.2,max:.2,color:'#8ab8d8'});
+            }
           }
         }
       }
@@ -282,11 +368,16 @@ function update(dt){
   for(const h of heroes){
     if(!h.alive)continue;
     if(h.flash>0)h.flash-=dt;
+    // 再生
+    const rg=bk(h,'再生');
+    if(rg)h.hp=Math.min(h.maxHp,h.hp+h.maxHp*.02*rg*dt);
     const hx=h.col+.5,hy=h.row+.5,b=CLASSES[h.cls];
-    if(h.skill){
+    // 转职技能
+    if(h.tier){
       h.skillCd-=dt;
-      if(h.skillCd<=0&&castSkill(h,hx,hy))h.skillCd=SKILLS[h.cls].cd;
+      if(h.skillCd<=0&&castSkill(h,hx,hy))h.skillCd=h.skillCdMax;
     }
+    // 普攻
     h.cd-=dt;if(h.cd>0)continue;
     let best=null;
     for(const m of mobs){
@@ -298,12 +389,13 @@ function update(dt){
     }
     if(best){
       h.cd=1/h.rate;
+      const combo=Math.random()<Math.min(.15*bk(h,'连击'),.75);
       if(h.cls==='warrior'){
-        damage(best,h.atk);
-        fx.push({x:best.x,y:best.row+.5,rr:.35,t:.15,max:.15,color:b.color});
+        meleeHit(h,best);
+        if(combo&&!best.dead)meleeHit(h,best);
       }else{
-        shots.push({x:hx,y:hy,target:best,tx:best.x,ty:best.row+.5,
-          dmg:h.atk,cls:h.cls,color:b.color});
+        fireShot(h,hx,hy,best);
+        if(combo)fireShot(h,hx,hy,best);
       }
     }
   }
@@ -313,10 +405,10 @@ function update(dt){
     const dx=s.tx-s.x,dy=s.ty-s.y,l=Math.hypot(dx,dy);
     if(l<SPD*dt){
       s.dead=true;
-      if(s.cls==='mage'){
-        fx.push({x:s.tx,y:s.ty,rr:1.1,t:.22,max:.22,color:s.color});
-        for(const m of mobs){if(!m.dead&&Math.hypot(m.x-s.tx,(m.row+.5)-s.ty)<=1.1+m.r)damage(m,s.dmg);}
-      }else if(s.target&&!s.target.dead)damage(s.target,s.dmg);
+      if(s.splash>0){
+        fx.push({x:s.tx,y:s.ty,rr:s.splash,t:.22,max:.22,color:s.color});
+        for(const m of mobs){if(!m.dead&&Math.hypot(m.x-s.tx,(m.row+.5)-s.ty)<=s.splash+m.r)damage(m,s.dmg,s.src);}
+      }else if(s.target&&!s.target.dead)damage(s.target,s.dmg,s.src);
     }else{s.x+=dx/l*SPD*dt;s.y+=dy/l*SPD*dt;}
   }
   mobs=mobs.filter(m=>!m.dead);
@@ -325,11 +417,22 @@ function update(dt){
   fx=fx.filter(f=>f.t>0);
   if(waveActive&&!queue.length&&!mobs.length){
     waveActive=false;
-    money+=15+wave*5;
+    gold+=20+wave*6;
     for(const h of heroes){h.alive=true;h.hp=h.maxHp;}
     updateHUD();
     if(wave>=TOTAL_WAVES){endGame(true);return;}
     renderInfo();if(openShop)renderSheet();
+  }
+}
+function fireShot(h,hx,hy,m){
+  shots.push({x:hx,y:hy,target:m,tx:m.x,ty:m.row+.5,
+    dmg:h.atk,splash:h.splash,src:h,color:CLASSES[h.cls].color});
+}
+function meleeHit(h,m){
+  damage(m,h.atk,h);
+  fx.push({x:m.x,y:m.row+.5,rr:.35,t:.15,max:.15,color:CLASSES[h.cls].color});
+  if(h.splash>0)for(const o of mobs){
+    if(o!==m&&!o.dead&&Math.hypot(o.x-m.x,o.row-m.row)<=h.splash+o.r)damage(o,h.atk*.6,h);
   }
 }
 function castSkill(h,hx,hy){
@@ -337,26 +440,29 @@ function castSkill(h,hx,hy){
     let t=null;for(const m of mobs)if(!m.dead&&(!t||m.x<t.x))t=m;
     if(!t)return false;
     fx.push({x:t.x,y:t.row+.5,rr:1.8,t:.4,max:.4,color:'#ffb04f'});
-    for(const m of mobs)if(!m.dead&&Math.hypot(m.x-t.x,m.row-t.row)<=1.8+m.r)damage(m,h.atk*3);
+    for(const m of mobs)if(!m.dead&&Math.hypot(m.x-t.x,m.row-t.row)<=1.8+m.r)damage(m,h.atk*3,h);
     return true;
   }
   if(h.cls==='archer'){
     const ts=mobs.filter(m=>!m.dead&&Math.abs(m.row-h.row)<=1&&m.x-hx<=h.range+2)
                  .sort((a,b)=>a.x-b.x).slice(0,5);
     if(!ts.length)return false;
-    for(const m of ts){damage(m,h.atk*1.5);fx.push({x:m.x,y:m.row+.5,rr:.3,t:.2,max:.2,color:CLASSES.archer.color});}
+    for(const m of ts){damage(m,h.atk*1.5,h);fx.push({x:m.x,y:m.row+.5,rr:.3,t:.2,max:.2,color:CLASSES.archer.color});}
     return true;
   }
   const ts=mobs.filter(m=>!m.dead&&Math.hypot(m.x-hx,(m.row+.5)-hy)<=2.4);
   if(!ts.length)return false;
   fx.push({x:hx,y:hy,rr:2.4,t:.3,max:.3,color:CLASSES.warrior.color});
-  for(const m of ts)damage(m,h.atk*2);
+  for(const m of ts)damage(m,h.atk*2,h);
   return true;
 }
-function damage(m,d){
+function damage(m,d,src){
+  if(m.dead)return;
   m.hp-=d;
-  if(m.hp<=0&&!m.dead){
-    m.dead=true;money+=m.reward;updateHUD();refreshAfford();
+  if(m.hp<=0){
+    m.dead=true;
+    gold+=m.reward+(src?bk(src,'汲取'):0);
+    updateHUD();refreshAfford();
     fx.push({x:m.x,y:m.row+.5,rr:m.r*1.7,t:.28,max:.28,color:m.color});
   }
 }
@@ -366,7 +472,7 @@ function endGame(win){
   ov.classList.remove('hide');
   ov.innerHTML=win
     ?'<h1>战线守住了</h1><p>15 波全部击退。</p><button class="lg" id="startBtn">再来一局</button>'
-    :`<h1 style="color:var(--warrior)">基地陷落</h1><p>坚持到了第 ${wave} 波。试试先买战士挡线，再补射手输出。</p><button class="lg" id="startBtn">重新开始</button>`;
+    :`<h1 style="color:var(--warrior)">基地陷落</h1><p>坚持到了第 ${wave} 波。试试先买战士挡线，攒经济再转职。</p><button class="lg" id="startBtn">重新开始</button>`;
   document.getElementById('startBtn').onclick=begin;
 }
 function begin(){
@@ -384,7 +490,7 @@ function draw(){
   ctx.clearRect(0,0,COLS,ROWS);
   for(let c=0;c<HCOLS;c++){
     const col=CLASSES[COL_CLASS[c]].color;
-    ctx.fillStyle=rgba(col,placing?.22:.09);
+    ctx.fillStyle=rgba(col,.09);
     for(let r=0;r<ROWS;r++)ctx.fillRect(c+.03,r+.03,.94,.94);
   }
   ctx.fillStyle='#0d1420';
@@ -406,10 +512,12 @@ function draw(){
     ctx.globalAlpha=h.alive?1:.45;
     ctx.fillRect(x-.32,y-.32,.64,.64);
     ctx.globalAlpha=1;
+    // 转职金边
+    if(h.tier){ctx.strokeStyle='#f0c46a';ctx.lineWidth=.05;ctx.strokeRect(x-.34,y-.34,.68,.68);}
     if(h.alive){
       ctx.fillStyle='rgba(0,0,0,.6)';ctx.fillRect(x-.34,y-.47,.68,.09);
       ctx.fillStyle='#6ee7a0';ctx.fillRect(x-.34,y-.47,.68*Math.max(h.hp/h.maxHp,0),.09);
-      if(h.skill&&h.skillCd<=0){ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(x+.26,y-.26,.07,0,7);ctx.fill();}
+      if(h.tier&&h.skillCd<=0){ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(x+.26,y-.26,.07,0,7);ctx.fill();}
     }
   }
   for(const m of mobs){
@@ -431,37 +539,86 @@ function draw(){
 }
 
 /* ================= UI ================= */
-const uiMoney=document.getElementById('uiMoney'),uiLife=document.getElementById('uiLife'),
-      uiWave=document.getElementById('uiWave'),info=document.getElementById('info'),
+const uiMoney=document.getElementById('uiMoney'),uiWood=document.getElementById('uiWood'),
+      uiLife=document.getElementById('uiLife'),uiWave=document.getElementById('uiWave'),
+      info=document.getElementById('info'),dockMsg=document.getElementById('dockMsg'),
       sheet=document.getElementById('sheet'),sheetBody=document.getElementById('sheetBody'),
       sheetTitle=document.getElementById('sheetTitle'),sheetSub=document.getElementById('sheetSub'),
-      tileSkill=document.getElementById('tileSkill'),tileItem=document.getElementById('tileItem');
-function updateHUD(){uiMoney.textContent=Math.floor(money);uiLife.textContent=lives;uiWave.textContent=wave+'/'+TOTAL_WAVES;}
+      toast=document.getElementById('toast');
+const tiles={skill:document.getElementById('tileSkill'),item:document.getElementById('tileItem'),
+             mine:document.getElementById('tileMine'),mill:document.getElementById('tileMill')};
+let toastT=null;
+function showToast(msg){
+  toast.innerHTML=msg;toast.classList.add('show');
+  clearTimeout(toastT);toastT=setTimeout(()=>toast.classList.remove('show'),2200);
+}
+function updateHUD(){
+  uiMoney.textContent=Math.floor(gold);uiWood.textContent=Math.floor(wood);
+  uiLife.textContent=lives;uiWave.textContent=wave+'/'+TOTAL_WAVES;
+  document.getElementById('mineLvT').textContent='Lv'+mineLv+(mineLv?' +'+mineLv+'/s':'');
+  document.getElementById('millLvT').textContent='Lv'+millLv+(millLv?' +'+millLv+'/s':'');
+}
 function selHero(){return sel?heroAt(sel.col,sel.row):null;}
+function bookSummary(h){
+  const c={str:0,agi:0,int:0};
+  for(const[cat,def]of Object.entries(BOOKS))
+    for(const name in def.pool)c[cat]+=bk(h,name);
+  return `力${c.str} 敏${c.agi} 智${c.int}`;
+}
 
 function renderInfo(){
   if(over)return;
   const h=selHero();
   let html='';
-  if(placing){
-    html='<div class="hint">点左侧 3×3 空格放英雄：蓝列=法师 · 绿列=射手 · 红列=战士</div><button class="btn" id="cancelPlace">取消</button>';
+  if(sel&&!h){
+    // 空格：显示该列职业购买信息
+    const cls=COL_CLASS[sel.col],b=CLASSES[cls];
+    html=`<div class="card"><b style="color:${b.color}">初始${b.name}</b> <span>${b.desc}</span><br>
+      <span>HP ${b.hp} · 攻 ${b.dmg} · 攻速 ${b.rate}/s · 射程 ${b.range}</span></div>
+      <button class="btn" id="buyAt" ${gold<HERO_COST||heroes.length>=MAX_HEROES?'disabled':''}>
+        买入 <span class="cost">${HERO_COST}金</span>${heroes.length>=MAX_HEROES?'<br><span class="sub">已满3人</span>':''}</button>`;
   }else if(h){
     const b=CLASSES[h.cls];
-    html=`<div class="card"><b style="color:${b.color}">${b.name}</b> <span>${b.desc}</span><br>
+    const advOK=!h.tier&&h.lv>=ADV_LV, canAdv=advOK&&gold>=ADV_GOLD&&wood>=ADV_WOOD;
+    html=`<div class="card"><b style="color:${b.color}">${dispName(h)}</b> <b>Lv${h.lv}</b> <span>${bookSummary(h)}</span><br>
       HP ${Math.ceil(h.hp)}/${h.maxHp} · 攻 ${Math.round(h.atk)} · 攻速 ${h.rate.toFixed(1)}/s
-      ${h.skill?' · ['+SKILLS[h.cls].name+']':''}</div>`;
+      ${h.tier?' · ['+SKILLS[h.cls].name+']':''}</div>
+      <button class="btn" id="lvUp" data-cost="${lvCost(h.lv)}" ${gold<lvCost(h.lv)?'disabled':''}>
+        升级 <span class="cost">${lvCost(h.lv)}金</span></button>`;
+    if(!h.tier){
+      html+=`<button class="btn" id="advBtn" ${canAdv?'':'disabled'}>
+        转职·${ADV[h.cls].name}<br><span class="sub">需Lv${ADV_LV}</span> <span class="cost">${ADV_GOLD}金</span>+<span class="costw">${ADV_WOOD}木</span></button>`;
+    }
   }else{
-    html=`<div class="hint">${waveActive?'第 '+wave+' 波 — 剩余 '+(mobs.length+queue.length):'点英雄查看 · 点右侧方块开商店'}</div>`;
-    if(heroes.length<MAX_HEROES)
-      html+=`<button class="btn" id="buyHero" data-cost="${HERO_COST}" ${money<HERO_COST?'disabled':''}>买英雄 <span class="cost">${HERO_COST}</span></button>`;
+    html=`<div class="hint">${waveActive?'第 '+wave+' 波 — 剩余 '+(mobs.length+queue.length):'点 3×3 格子查看职业/英雄信息'}</div>`;
     if(!waveActive)
       html+=`<button class="btn primary" id="nextWave">${wave===0?'开战':'下一波'} ▶</button>`;
   }
   info.innerHTML=html;
-  const bh=document.getElementById('buyHero');
-  if(bh)bh.onclick=()=>{placing=true;sel=null;closeSheet();renderInfo();};
-  const cp=document.getElementById('cancelPlace');
-  if(cp)cp.onclick=()=>{placing=false;renderInfo();};
+  const ba=document.getElementById('buyAt');
+  if(ba)ba.onclick=()=>{
+    if(gold>=HERO_COST&&heroes.length<MAX_HEROES&&sel&&!heroAt(sel.col,sel.row)){
+      gold-=HERO_COST;
+      heroes.push(makeHero(COL_CLASS[sel.col],sel.row,sel.col));
+      updateHUD();renderInfo();if(openShop)renderSheet();
+    }
+  };
+  const lu=document.getElementById('lvUp');
+  if(lu)lu.onclick=()=>{
+    const hh=selHero();if(!hh)return;
+    const c=lvCost(hh.lv);
+    if(gold>=c){gold-=c;hh.lv++;calc(hh);hh.hp=hh.maxHp;updateHUD();renderInfo();}
+  };
+  const ab=document.getElementById('advBtn');
+  if(ab)ab.onclick=()=>{
+    const hh=selHero();if(!hh||hh.tier||hh.lv<ADV_LV)return;
+    if(gold>=ADV_GOLD&&wood>=ADV_WOOD){
+      gold-=ADV_GOLD;wood-=ADV_WOOD;
+      hh.tier=1;hh.skillCd=0;calc(hh);hh.hp=hh.maxHp;
+      showToast(`转职成功：<b style="color:${CLASSES[hh.cls].color}">${ADV[hh.cls].name}</b>，解锁技能[${SKILLS[hh.cls].name}]`);
+      updateHUD();renderInfo();
+    }
+  };
   const nw=document.getElementById('nextWave');
   if(nw)nw.onclick=()=>{startWave();};
 }
@@ -470,82 +627,123 @@ function renderInfo(){
 function openSheet(kind){
   openShop=kind;
   sheet.classList.remove('hide');
-  tileSkill.classList.toggle('on',kind==='skill');
-  tileItem.classList.toggle('on',kind==='item');
+  for(const k in tiles)tiles[k].classList.toggle('on',k===kind);
   renderSheet();
 }
 function closeSheet(){
   openShop=null;
   sheet.classList.add('hide');
-  tileSkill.classList.remove('on');
-  tileItem.classList.remove('on');
+  for(const k in tiles)tiles[k].classList.remove('on');
 }
 function renderSheet(){
   const h=selHero();
+  sheetBody.className='';
   if(openShop==='skill'){
     sheetTitle.textContent='技能商店';
-    sheetSub.textContent=h?`— 给${CLASSES[h.cls].name}买`:'— 先在场上点选一个英雄';
-    sheetBody.innerHTML=Object.entries(SKILLS).map(([cls,s])=>{
-      const mine=h&&h.cls===cls;
-      const owned=mine&&h.skill;
-      const can=mine&&!owned&&money>=s.cost;
-      return `<button class="btn" data-skill="${cls}" data-cost="${s.cost}" ${can?'':'disabled'}>
-        <b style="color:${CLASSES[cls].color}">${s.name}</b> <span class="cost">${owned?'已学':s.cost}</span>
-        <span class="sub">${s.desc}${mine?'':' ·（限'+CLASSES[cls].name+'）'}</span></button>`;
-    }).join('');
+    sheetSub.textContent=h?`— 给${dispName(h)}买，每次${PACK_N}本`:'— 先在场上点选一个英雄';
+    sheetBody.innerHTML=Object.entries(BOOKS).map(([cat,d])=>{
+      const can=h&&gold>=PACK_COST;
+      return `<button class="btn" data-pack="${cat}" data-cost="${PACK_COST}" ${can?'':'disabled'}>
+        <b style="color:${d.color}">${d.label}技能</b> <span class="cost">${PACK_COST}金</span>
+        <span class="sub">${Object.keys(d.pool).join('/')} 中随机${PACK_N}本</span></button>`;
+    }).join('')+
+    `<button class="btn" data-pack="roll" data-cost="${ROLL_COST}" ${h&&gold>=ROLL_COST?'':'disabled'}>
+      <b style="color:#f0c46a">全池ROLL</b> <span class="cost">${ROLL_COST}金</span>
+      <span class="sub">全部12种技能书中随机${PACK_N}本，半价碰运气</span></button>`;
   }else if(openShop==='item'){
+    sheetBody.className='cols3';
     sheetTitle.textContent='装备商店';
-    sheetSub.textContent=h?`— 给${CLASSES[h.cls].name}买`:'— 先在场上点选一个英雄';
+    sheetSub.textContent=h?`— 给${dispName(h)}买`:'— 先在场上点选一个英雄';
     sheetBody.innerHTML=Object.entries(ITEMS).map(([k,it])=>{
       const price=h?it.base+h.items[k]*25:it.base;
-      const can=h&&money>=price;
+      const can=h&&gold>=price;
       return `<button class="btn" data-item="${k}" data-cost="${price}" ${can?'':'disabled'}>
-        <b>${it.name}</b> <span class="cost">${price}</span>
+        <b>${it.name}</b> <span class="cost">${price}金</span>
         <span class="sub">${it.desc}${h?' · 已购'+h.items[k]:''}</span></button>`;
     }).join('');
+  }else if(openShop==='mine'||openShop==='mill'){
+    sheetBody.className='cols1';
+    const isMine=openShop==='mine';
+    const lv=isMine?mineLv:millLv, cost=isMine?mineCost(lv):millCost(lv);
+    sheetTitle.textContent=isMine?'金矿':'伐木场';
+    sheetSub.textContent=`当前 Lv${lv}，每秒 +${lv} ${isMine?'金币':'木头'}`;
+    sheetBody.innerHTML=`<button class="btn" data-shop="${openShop}" data-cost="${cost}" ${gold>=cost?'':'disabled'}>
+      <b>升级到 Lv${lv+1}</b> <span class="cost">${cost}金</span>
+      <span class="sub">每秒产出 +${lv} → +${lv+1} ${isMine?'金币':'木头'}${isMine?'':'（木头用于转职）'}</span></button>`;
   }
 }
 function refreshAfford(){if(openShop)renderSheet();}
-tileSkill.addEventListener('click',()=>openShop==='skill'?closeSheet():openSheet('skill'));
-tileItem.addEventListener('click',()=>openShop==='item'?closeSheet():openSheet('item'));
+tiles.skill.addEventListener('click',()=>openShop==='skill'?closeSheet():openSheet('skill'));
+tiles.item.addEventListener('click',()=>openShop==='item'?closeSheet():openSheet('item'));
+tiles.mine.addEventListener('click',()=>openShop==='mine'?closeSheet():openSheet('mine'));
+tiles.mill.addEventListener('click',()=>openShop==='mill'?closeSheet():openSheet('mill'));
 document.getElementById('sheetClose').addEventListener('click',closeSheet);
 
+function buyPack(cat){
+  const h=selHero();if(!h)return;
+  const cost=cat==='roll'?ROLL_COST:PACK_COST;
+  if(gold<cost)return;
+  gold-=cost;
+  let pool=[];
+  if(cat==='roll')for(const d of Object.values(BOOKS))pool.push(...Object.keys(d.pool));
+  else pool=Object.keys(BOOKS[cat].pool);
+  const got={};
+  for(let i=0;i<PACK_N;i++){
+    const name=pool[Math.floor(Math.random()*pool.length)];
+    h.books[name]=(h.books[name]||0)+1;
+    got[name]=(got[name]||0)+1;
+  }
+  calc(h);if(h.hp>h.maxHp)h.hp=h.maxHp;
+  showToast('获得技能书：'+Object.entries(got).map(([n,c])=>c>1?n+'×'+c:n).join('、'));
+  updateHUD();renderInfo();renderSheet();
+}
 sheetBody.addEventListener('click',ev=>{
   const b=ev.target.closest('button');if(!b||b.disabled)return;
+  if(b.dataset.pack){buyPack(b.dataset.pack);return;}
+  if(b.dataset.shop){
+    const isMine=b.dataset.shop==='mine';
+    const cost=isMine?mineCost(mineLv):millCost(millLv);
+    if(gold>=cost){gold-=cost;if(isMine)mineLv++;else millLv++;updateHUD();renderSheet();}
+    return;
+  }
   const h=selHero();if(!h)return;
-  if(b.dataset.skill&&b.dataset.skill===h.cls&&!h.skill&&money>=SKILLS[h.cls].cost){
-    money-=SKILLS[h.cls].cost;h.skill=true;h.skillCd=0;
-  }else if(b.dataset.item){
+  if(b.dataset.item){
     const k=b.dataset.item,price=ITEMS[k].base+h.items[k]*25;
-    if(money>=price){
-      money-=price;h.items[k]++;
+    if(gold>=price){
+      gold-=price;h.items[k]++;
       const ratio=h.hp/h.maxHp;calc(h);
       h.hp=k==='armor'?h.maxHp:Math.round(h.maxHp*ratio);
     }
+    updateHUD();renderInfo();renderSheet();
   }
-  updateHUD();renderInfo();renderSheet();
 });
 cv.addEventListener('pointerdown',ev=>{
   if(!running)return;
   const rect=cv.getBoundingClientRect();
   const c=Math.floor((ev.clientX-rect.left)/cell),r=Math.floor((ev.clientY-rect.top)/cell);
   if(c<0||c>=COLS||r<0||r>=ROWS)return;
-  if(placing){
-    if(c<HCOLS&&!heroAt(c,r)&&money>=HERO_COST&&heroes.length<MAX_HEROES){
-      money-=HERO_COST;
-      heroes.push(makeHero(COL_CLASS[c],r,c));
-      placing=false;sel={col:c,row:r};
-      updateHUD();
-    }
-  }else{
-    sel=(c<HCOLS&&heroAt(c,r))?{col:c,row:r}:null;
-  }
+  sel=c<HCOLS?{col:c,row:r}:null;
   renderInfo();if(openShop)renderSheet();
 });
 document.getElementById('speedBtn').addEventListener('click',ev=>{
   speed=speed===1?2:1;
   ev.currentTarget.textContent='×'+speed;
   ev.currentTarget.classList.toggle('on',speed===2);
+});
+/* 全屏 */
+document.getElementById('fsBtn').addEventListener('click',()=>{
+  const doc=document,el=doc.documentElement;
+  if(doc.fullscreenElement||doc.webkitFullscreenElement){
+    (doc.exitFullscreen||doc.webkitExitFullscreen).call(doc);
+  }else{
+    const rq=el.requestFullscreen||el.webkitRequestFullscreen;
+    if(rq){
+      try{const p=rq.call(el);if(p&&p.catch)p.catch(()=>showToast('当前环境不支持全屏'));}
+      catch(e){showToast('当前环境不支持全屏');}
+    }else{
+      showToast('iPhone Safari 不支持网页全屏<br>可用"添加到主屏幕"获得全屏体验');
+    }
+  }
 });
 document.getElementById('startBtn').addEventListener('click',begin);
 
