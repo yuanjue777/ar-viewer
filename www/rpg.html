@@ -110,9 +110,12 @@
     display:flex;align-items:center;gap:7px;
     height:52px;padding:4px 12px calc(env(safe-area-inset-bottom) + 4px);
     background:var(--bg2);border-top:1px solid var(--line);
-    overflow-x:auto;overflow-y:hidden;
   }
   #inv .invLabel{font-size:10px;color:var(--ink-dim);flex-shrink:0;line-height:1.3}
+  #invItems{flex:1;display:flex;align-items:center;gap:7px;overflow-x:auto;overflow-y:hidden;min-width:0}
+  #sellAll{flex-shrink:0;border:1px solid #7d3c4c;border-radius:7px;background:rgba(255,92,122,.08);
+    color:#ff8ea0;font-size:10px;line-height:1.2;padding:5px 8px;text-align:center}
+  #sellAll:disabled{opacity:.35}
   .book{
     width:40px;height:40px;flex-shrink:0;border-radius:7px;background:#16223a;
     display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;
@@ -169,7 +172,11 @@
     <div class="spacer"></div>
   </div>
   <div id="info"><div class="hint"></div></div>
-  <div id="inv"><div class="invLabel">背包</div></div>
+  <div id="inv">
+    <div class="invLabel">背包</div>
+    <div id="invItems"></div>
+    <button id="sellAll">一键<br>出售</button>
+  </div>
 </div>
 
 <div id="dragGhost"></div>
@@ -264,7 +271,10 @@ function pickBook(pool){
   return pool[pool.length-1];
 }
 const CATS={str:{label:'力量',color:'#ff5d5d'},agi:{label:'敏捷',color:'#57d474'},int:{label:'智力',color:'#4f8dff'}};
-const PACK_COST=80, ROLL_COST=40, PACK_N=4;
+const PACK_COST=200, ROLL_COST=100, PACK_N=4;
+/* 出售返还：技能书30金，装备按品质 */
+const SELL_BOOK=30, SELL_EQ={common:20,fine:40,rare:80,epic:160};
+function sellValue(it){return it.t==='book'?SELL_BOOK:(SELL_EQ[eqDef(it).q]||20);}
 
 /* ================= 装备池（用户自定义，持续扩充）================= */
 const QUALS={
@@ -956,7 +966,7 @@ function draw(){
 /* ================= UI ================= */
 const uiMoney=document.getElementById('uiMoney'),uiWood=document.getElementById('uiWood'),
       uiLife=document.getElementById('uiLife'),uiWave=document.getElementById('uiWave'),
-      info=document.getElementById('info'),invEl=document.getElementById('inv'),
+      info=document.getElementById('info'),invEl=document.getElementById('invItems'),
       toast=document.getElementById('toast'),ghost=document.getElementById('dragGhost');
 const tiles={skill:document.getElementById('tileSkill'),item:document.getElementById('tileItem'),
              mine:document.getElementById('tileMine'),mill:document.getElementById('tileMill')};
@@ -1009,15 +1019,15 @@ function renderInfo(){
     const names=Object.keys(h.skills),sk=[];
     for(let i=0;i<MAX_SLOTS;i++){
       const n=names[i];
-      sk.push(n?`<div class="slot f" data-lps="${n}" style="border-color:${CATS[SKB[n].cat].color};color:${CATS[SKB[n].cat].color}">${SKB[n].short}<i>Lv${h.skills[n]}</i></div>`
-              :'<div class="slot">空</div>');
+      sk.push(n?`<div class="slot f" data-skslot="${i}" data-lps="${n}" style="border-color:${CATS[SKB[n].cat].color};color:${CATS[SKB[n].cat].color}">${SKB[n].short}<i>Lv${h.skills[n]}</i></div>`
+              :`<div class="slot" data-skslot="${i}">空</div>`);
     }
     // 2×3装备栏
     const eq=[];
     for(let i=0;i<MAX_EQUIP;i++){
       const e=h.equips[i];
-      eq.push(e?`<div class="slot f" data-lpe="${i}" style="border-color:${qOf(e).c};color:${qOf(e).c}">${eqDef(e).s}</div>`
-              :'<div class="slot">空</div>');
+      eq.push(e?`<div class="slot f" data-eqslot="${i}" data-lpe="${i}" style="border-color:${qOf(e).c};color:${qOf(e).c}">${eqDef(e).s}</div>`
+              :`<div class="slot" data-eqslot="${i}">空</div>`);
     }
     html=`<div class="hcard">
       <div><b style="color:${b.color}">${dispName(h)}</b> <span class="dim">Lv${h.lv} · ${xpTxt}</span></div>
@@ -1141,6 +1151,13 @@ function refreshAfford(){
     b.disabled=b.dataset.lock==='1'||gold<+b.dataset.cost||wood<+(b.dataset.wood||0);
   });
 }
+document.getElementById('sellAll').addEventListener('click',()=>{
+  if(!inv.length)return;
+  const total=inv.reduce((s,it)=>s+sellValue(it),0);
+  gold+=total;inv=[];invSel=null;
+  showToast(`出售全部，获得 <b style="color:var(--gold)">${total}金</b>`);
+  updateHUD();renderInv();renderInfo();
+});
 tiles.skill.addEventListener('click',()=>setShop('skill'));
 tiles.item.addEventListener('click',()=>setShop('item'));
 tiles.mine.addEventListener('click',()=>setShop('mine'));
@@ -1165,7 +1182,11 @@ function buyEquip(tier){
   updateHUD();renderInfo();renderInv();
 }
 function renderInv(){
-  invEl.querySelectorAll('.book').forEach(e=>e.remove());
+  invEl.innerHTML='';
+  const sb=document.getElementById('sellAll');
+  const total=inv.reduce((s,it)=>s+sellValue(it),0);
+  sb.disabled=!inv.length;
+  sb.innerHTML=inv.length?`一键出售<br><span style="color:var(--gold);font-size:9px">+${total}金</span>`:'一键<br>出售';
   inv.forEach((it,i)=>{
     const el=document.createElement('div');
     el.className='book';
@@ -1184,16 +1205,37 @@ function renderInv(){
     invEl.appendChild(el);
   });
 }
-function applyItem(idx,h){
+/* slot: 可选目标栏位 {sk:i} 或 {eq:i}，用于覆盖 */
+function applyItem(idx,h,slot){
   const it=inv[idx];if(!it||!h)return;
   if(it.t==='book'){
-    const cur=h.skills[it.name]||0;
-    if(cur>=MAX_SKILL_LV){showToast(`${it.name} 已满级`);return;}
-    if(!cur&&Object.keys(h.skills).length>=MAX_SLOTS){showToast('技能位已满（4个）');return;}
-    h.skills[it.name]=cur+1;
+    const names=Object.keys(h.skills);
+    // 拖到已占用的技能栏 → 覆盖原技能
+    if(slot&&slot.sk!=null&&slot.sk<names.length&&names[slot.sk]!==it.name){
+      const old=names[slot.sk];
+      delete h.skills[old];
+      h.skills[it.name]=1;
+      showToast(`已用 <b style="color:${CATS[SKB[it.name].cat].color}">${it.name}</b> 覆盖 ${old}`);
+    }else{
+      const cur=h.skills[it.name]||0;
+      if(cur>=MAX_SKILL_LV){showToast(`${it.name} 已满级`);return;}
+      if(!cur&&names.length>=MAX_SLOTS){showToast('技能位已满，拖到某个技能上可覆盖');return;}
+      h.skills[it.name]=cur+1;
+    }
+    calc(h);
     fx.push({type:'ring',x:h.col+.5,y:h.row+.5,rr:.6,t:.4,max:.4,color:CATS[SKB[it.name].cat].color});
   }else{
-    if(h.equips.length>=MAX_EQUIP){showToast('装备位已满（'+MAX_EQUIP+'件）');return;}
+    // 拖到已占用的装备栏 → 覆盖，旧装备退回背包
+    if(slot&&slot.eq!=null&&slot.eq<h.equips.length){
+      const old=h.equips[slot.eq];
+      h.equips[slot.eq]=it;
+      inv.splice(idx,1);inv.push(old);
+      const ratio=h.hp/h.maxHp;calc(h);h.hp=Math.round(h.maxHp*ratio);
+      showToast(`已替换装备，<b style="color:${qOf(old).c}">${eqDef(old).n}</b> 退回背包`);
+      renderInv();if(selHero()===h)renderInfo();
+      return;
+    }
+    if(h.equips.length>=MAX_EQUIP){showToast('装备位已满，拖到某件装备上可替换');return;}
     h.equips.push(it);
     const ratio=h.hp/h.maxHp;calc(h);h.hp=Math.round(h.maxHp*ratio);
     fx.push({type:'ring',x:h.col+.5,y:h.row+.5,rr:.6,t:.4,max:.4,color:qOf(it).c});
@@ -1227,17 +1269,30 @@ window.addEventListener('pointerup',ev=>{
     invSel=idx;closeShop();sel=null;renderInfo();
     return;
   }
+  const it=inv[idx];if(!it)return;
+  // 先看是否落在英雄面板的技能栏/装备栏上（覆盖）
+  const under=document.elementFromPoint(ev.clientX,ev.clientY);
+  const slotEl=under&&under.closest('[data-skslot],[data-eqslot]');
+  const h=selHero();
+  if(slotEl&&h){
+    if(slotEl.dataset.skslot!=null&&it.t==='book'){applyItem(idx,h,{sk:+slotEl.dataset.skslot});return;}
+    if(slotEl.dataset.eqslot!=null&&it.t==='eq'){applyItem(idx,h,{eq:+slotEl.dataset.eqslot});return;}
+    showToast(it.t==='book'?'技能书要拖到技能栏':'装备要拖到装备栏');
+    return;
+  }
+  // 否则落在战场英雄方块上
   const rect=cv.getBoundingClientRect();
   const c=Math.floor((ev.clientX-rect.left)/cell),r=Math.floor((ev.clientY-rect.top)/cell);
   if(c>=0&&c<HCOLS&&r>=0&&r<ROWS){
-    const h=heroAt(c,r);
-    if(h)applyItem(idx,h);
+    const hh=heroAt(c,r);
+    if(hh)applyItem(idx,hh);
     else showToast('拖到已购买的英雄方块上');
   }
 });
 
+let lastTap={t:0,key:''};
 info.addEventListener('click',ev=>{
-  // 点击技能栏/装备栏直接查看介绍
+  // 点击技能栏/装备栏查看介绍；双击装备=脱下退回背包
   const s=ev.target.closest('[data-lps],[data-lpe]');
   if(s){
     const h=selHero();if(!h)return;
@@ -1245,8 +1300,19 @@ info.addEventListener('click',ev=>{
       const n=s.dataset.lps,d=SKB[n];
       showToast(`<b style="color:${CATS[d.cat].color}">${n}</b> [${QN[d.q]}] Lv${h.skills[n]}<br>${d.desc}`);
     }else{
-      const e=h.equips[+s.dataset.lpe];
-      if(e){const d=eqDef(e),q=qOf(e);showToast(`<b style="color:${q.c}">${d.n}</b> [${q.n}]<br>${eqDesc(d)}`);}
+      const ei=+s.dataset.lpe,e=h.equips[ei];if(!e)return;
+      const now=performance.now(),key='eq'+ei;
+      if(now-lastTap.t<350&&lastTap.key===key){
+        // 双击：脱下装备退回背包
+        lastTap={t:0,key:''};
+        h.equips.splice(ei,1);inv.push(e);
+        const ratio=h.hp/h.maxHp;calc(h);h.hp=Math.round(h.maxHp*ratio);
+        showToast(`已脱下 <b style="color:${qOf(e).c}">${eqDef(e).n}</b>，退回背包`);
+        renderInv();renderInfo();
+        return;
+      }
+      lastTap={t:now,key};
+      const d=eqDef(e),q=qOf(e);showToast(`<b style="color:${q.c}">${d.n}</b> [${q.n}]<br>${eqDesc(d)} · 双击脱下`);
     }
     return;
   }
