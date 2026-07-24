@@ -248,7 +248,7 @@ const SKB={
   '致命一击':  {cat:'agi',q:'qpurple',short:'致命',cd:0, desc:'被动：(15+5×等级)%几率暴击，造成(140+10×等级)%伤害，金色飘字'},
   '召唤熊德':  {cat:'int',q:'qblue',  short:'熊德',cd:22,mana:50,desc:'主动(50蓝)：召近战熊灵冲锋接敌，属性随智力成长'},
   '火球术':    {cat:'int',q:'qgreen', short:'火球',cd:7, mana:25,desc:'主动(25蓝)：单体魔法伤害（智力×3×等级+40），弹道线'},
-  '冰风暴':    {cat:'int',q:'qgreen', short:'冰风',cd:10,mana:35,desc:'主动(35蓝)：范围魔法AOE+减速，显示范围圈'},
+  '冰风暴':    {cat:'int',q:'qgreen', short:'冰风',cd:10,mana:35,desc:'主动(35蓝)：暴风雪，目标区域降下(3+等级)次冰雹，各(25+智×1.2×等级)魔法伤+减速，显示范围圈'},
   'CD光环':    {cat:'int',q:'qblue',  short:'CD环',cd:0, desc:'被动：主动技能冷却-4%×等级（与装备CD缩减叠加，总上限50%）'},
   '闪电链':    {cat:'int',q:'qblue',  short:'闪电',cd:4, mana:45,desc:'主动(45蓝)：CD短耗蓝高，闪电跳(2+等级)个目标，各(30+智×1.2×等级)魔法伤害'},
   '魂吸':      {cat:'int',q:'qpurple',short:'魂吸',cd:0, desc:'被动：每有敌方单位死亡+0.5智力，上限10+5×(等级-1)'},
@@ -333,8 +333,8 @@ const WAVE_EVERY=30;
 /* ================= 状态 ================= */
 let gold,wood,lives,wave,queue,spawnT,incomeT,waveT,cleared,hudAcc;
 let mineLv,millLv;
-let heroes,mobs,shots,fx,nums,bears,inv;
-let sel=null,invSel=null,speed=1,running=false,started=false,over=false,openShop=null;
+let heroes,mobs,shots,fx,nums,bears,inv,hails;
+let sel=null,invSel=null,speed=1,running=false,started=false,over=false,openShop=null,advPick=false;
 
 /* ================= 画布 ================= */
 const cv=document.getElementById('cv'),ctx=cv.getContext('2d');
@@ -414,8 +414,8 @@ function reset(){
   gold=60;wood=0;lives=10;wave=0;queue=[];spawnT=0;incomeT=0;
   waveT=WAVE_EVERY;cleared=true;hudAcc=0;
   mineLv=1;millLv=1;
-  heroes=[];mobs=[];shots=[];fx=[];nums=[];bears=[];inv=[];
-  sel=null;invSel=null;over=false;openShop=null;
+  heroes=[];mobs=[];shots=[];fx=[];nums=[];bears=[];inv=[];hails=[];
+  sel=null;invSel=null;over=false;openShop=null;advPick=false;
   closeShop();updateHUD();renderInfo();renderInv();
 }
 function waveComp(w){
@@ -585,6 +585,21 @@ function update(dt){
     }else if(br.x>HCOLS+.45){br.x=Math.max(HCOLS+.45,br.x-1.8*dt);}
   }
   bears=bears.filter(b=>!b.dead);
+  /* 暴风雪冰雹：到点落下，小片AOE伤害+减速 */
+  for(const hl of hails){
+    hl.delay-=dt;
+    if(hl.delay>0)continue;
+    hl.done=true;
+    fx.push({type:'ring',x:hl.x,y:hl.y,rr:hl.ir,t:.28,max:.28,color:'#bfeaff'});
+    for(const m of mobs){
+      if(m.dead)continue;
+      if(Math.hypot(m.x-hl.x,(m.y+.5)-hl.y)<=hl.ir+m.r){
+        magDamage(m,hl.dmg,'#7fd8ff');
+        m.slowT=2;m.slowF=hl.slow;
+      }
+    }
+  }
+  hails=hails.filter(h=>!h.done);
   /* 英雄 */
   for(const h of heroes){
     if(!h.alive)continue;
@@ -790,14 +805,13 @@ function castSkill(h,name,lv,hx,hy){
   if(name==='冰风暴'){
     const t=frontInRange(h,hx,hy);
     if(!t)return false;
-    const R=1.6+.1*lv;
-    fx.push({type:'aoe',x:t.x,y:t.y+.5,rr:R,t:.55,max:.55,color:'#7fd8ff'});
-    for(const m of mobs){
-      if(m.dead)continue;
-      if(Math.hypot(m.x-t.x,m.y-t.y)<=R+m.r){
-        magDamage(m,25+h.int*1.2*lv,'#7fd8ff');
-        m.slowT=2;m.slowF=Math.min(.75,.4+.05*lv);
-      }
+    // 暴风雪：在目标区域降下 3+等级 次冰雹，每次一小片AOE，整片范围显示范围圈
+    const R=1.6+.1*lv, strikes=3+lv, cx=t.x, cy=t.y+.5;
+    fx.push({type:'aoe',x:cx,y:cy,rr:R,t:.35+strikes*.35,max:.35+strikes*.35,color:'#7fd8ff'});
+    for(let i=0;i<strikes;i++){
+      const ang=Math.random()*7, rad=Math.random()*R;
+      hails.push({x:cx+Math.cos(ang)*rad,y:cy+Math.sin(ang)*rad,
+        delay:.15+i*.32,ir:.65,dmg:25+h.int*1.2*lv,slow:Math.min(.75,.4+.05*lv)});
     }
     return true;
   }
@@ -1021,15 +1035,20 @@ function renderInfo(){
       <div class="slotgrid sk">${sk.join('')}</div>
       <div class="slotgrid eq">${eq.join('')}</div>`;
     if(!h.tier){
-      // 转职分支：两条路线各一个按钮
-      const canBase=h.lv>=ADV_LV;
-      html+=`<div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0">`+
-        ADV[h.cls].map((br,i)=>{
-          const can=canBase&&gold>=ADV_GOLD&&wood>=ADV_WOOD;
-          return `<button class="btn" data-adv="${i}" data-cost="${ADV_GOLD}" data-wood="${ADV_WOOD}" data-lock="${canBase?0:1}" ${can?'':'disabled'} style="padding:4px 8px">
-            ${br.name} <span style="color:${b.color};font-size:9px">[${SPECS[br.key].n}]</span><br>
-            <span class="sub">${canBase?'':'需Lv'+ADV_LV+' '}</span><span class="cost">${ADV_GOLD}金</span>+<span class="costw">${ADV_WOOD}木</span></button>`;
-        }).join('')+`</div>`;
+      const canBase=h.lv>=ADV_LV, can=canBase&&gold>=ADV_GOLD&&wood>=ADV_WOOD;
+      if(!advPick){
+        // 单个转职按钮，点击后展开分支选择
+        html+=`<button class="btn" id="advOpen" data-lock="${canBase?0:1}" ${can?'':'disabled'}>
+          转职 ▸<br><span class="sub">${canBase?'选择支线':'需Lv'+ADV_LV}</span> <span class="cost">${ADV_GOLD}金</span>+<span class="costw">${ADV_WOOD}木</span></button>`;
+      }else{
+        // 展开：两条支线二选一
+        html+=`<div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0">`+
+          ADV[h.cls].map((br,i)=>
+            `<button class="btn" data-adv="${i}" data-cost="${ADV_GOLD}" data-wood="${ADV_WOOD}" data-lock="0" ${can?'':'disabled'} style="padding:4px 8px">
+              ${br.name} <span style="color:${b.color};font-size:9px">[${SPECS[br.key].n}]</span></button>`
+          ).join('')+
+          `<button class="btn" id="advCancel" style="padding:2px 8px;font-size:10px">取消</button></div>`;
+      }
     }else if(h.specLv<SPEC_MAX){
       const sc=specCost(h.specLv);
       html+=`<button class="btn" data-spec="1" data-cost="${sc.g}" data-wood="${sc.w}" data-lock="0" ${gold>=sc.g&&wood>=sc.w?'':'disabled'}>
@@ -1050,6 +1069,10 @@ function renderInfo(){
       updateHUD();renderInfo();
     }
   };
+  const ao=document.getElementById('advOpen');
+  if(ao)ao.onclick=()=>{advPick=true;renderInfo();};
+  const ac=document.getElementById('advCancel');
+  if(ac)ac.onclick=()=>{advPick=false;renderInfo();};
   info.querySelectorAll('[data-adv]').forEach(btn=>btn.onclick=()=>{
     const hh=selHero();if(!hh||hh.tier||hh.lv<ADV_LV)return;
     if(gold>=ADV_GOLD&&wood>=ADV_WOOD){
@@ -1057,6 +1080,7 @@ function renderInfo(){
       hh.tier=1;hh.branch=+btn.dataset.adv;hh.specLv=1;
       calc(hh);hh.hp=hh.maxHp;
       levelFx(hh.col+.5,hh.row+.5);
+      advPick=false;
       updateHUD();renderInfo();
     }
   });
@@ -1244,7 +1268,7 @@ cv.addEventListener('pointerdown',ev=>{
   const c=Math.floor((ev.clientX-rect.left)/cell),r=Math.floor((ev.clientY-rect.top)/cell);
   if(c<0||c>=COLS||r<0||r>=ROWS)return;
   sel=c<HCOLS?{col:c,row:r}:null;
-  invSel=null;
+  invSel=null;advPick=false;
   if(sel)closeShop();
   renderInfo();
 });
