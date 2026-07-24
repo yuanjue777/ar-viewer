@@ -214,7 +214,7 @@ const PACK_COST=80, ROLL_COST=40, PACK_N=4;
 const EQ_KINDS={
   sword:{n:'利剑',s:'剑',roll:m=>({atk:Math.round(7*m)})},
   plate:{n:'胸甲',s:'甲',roll:m=>({armor:Math.round(3*m),hp:Math.round(35*m)})},
-  boots:{n:'战靴',s:'靴',roll:m=>({aspd:Math.round(10*m)/100})},
+  boots:{n:'战靴',s:'靴',roll:m=>({aspd:Math.round(15*m)})},
   ring: {n:'指环',s:'戒',roll:m=>({all:Math.round(3*m)})},
   cloak:{n:'披风',s:'披',roll:m=>({mres:Math.round(8*m)/100,hp:Math.round(20*m)})},
 };
@@ -242,7 +242,7 @@ function eqDesc(item){
   if(s.atk)p.push('攻击+'+s.atk);
   if(s.armor)p.push('护甲+'+s.armor);
   if(s.hp)p.push('生命+'+s.hp);
-  if(s.aspd)p.push('攻速+'+Math.round(s.aspd*100)+'%');
+  if(s.aspd)p.push('攻速+'+s.aspd);
   if(s.all)p.push('全属性+'+s.all);
   if(s.mres)p.push('魔抗+'+Math.round(s.mres*100)+'%');
   return p.join(' ');
@@ -307,8 +307,9 @@ function calc(h){
   h.armor=Math.round((b.baseArmor+h.agi/7+eqArmor)*10)/10;
   // 魔抗：基础25% + 装备，上限75%
   h.mres=Math.min(.75,.25+eqMres);
-  // 攻击间隔 = 基础bat×转职 / (1+敏捷×1.2%+装备攻速)，下限0.35s
-  h.interval=Math.max(.35,b.bat*(a?a.bat:1)/(1+h.agi*.012+eqAspd));
+  // 魔兽/DotA公式：每秒攻击 = (1+攻速/100)/BAT；1点敏捷=1攻速，攻速上限400
+  h.ias=Math.min(400,h.agi+eqAspd);
+  h.interval=Math.max(.25,b.bat*(a?a.bat:1)/(1+h.ias/100));
   h.range=b.range+(a?a.range:0);
   h.splash=b.splash+(a?a.splash:0);
 }
@@ -807,7 +808,7 @@ function renderInfo(){
     const advOK=!h.tier&&h.lv>=ADV_LV, canAdv=advOK&&gold>=ADV_GOLD&&wood>=ADV_WOOD;
     const xpTxt=h.lv>=MAX_HERO_LV?'满级':`${Math.floor(h.xp)}/${xpNeed(h.lv)}`;
     html=`<div class="card"><b style="color:${b.color}">${dispName(h)}</b> <b>Lv${h.lv}</b> <span>经验${xpTxt}</span><br>
-      <span>HP ${Math.ceil(h.hp)}/${h.maxHp} · 攻 ${h.atk} · 间隔 ${h.interval.toFixed(2)}s · 甲 ${h.armor}(${Math.round(armorRed(h.armor)*100)}%) · 抗 ${Math.round(h.mres*100)}%</span><br>
+      <span>HP ${Math.ceil(h.hp)}/${h.maxHp} · 攻 ${h.atk} · 攻速${h.ias}(${h.interval.toFixed(2)}s/击) · 甲 ${h.armor}(${Math.round(armorRed(h.armor)*100)}%) · 抗 ${Math.round(h.mres*100)}%</span><br>
       <span>力${h.str} 敏${h.agi} 智${h.int}</span> · ${skillLine(h)} · ${equipLine(h)}</div>`;
     if(!h.tier){
       html+=`<button class="btn" id="advBtn" data-cost="${ADV_GOLD}" data-wood="${ADV_WOOD}" data-lock="${advOK?0:1}" ${canAdv?'':'disabled'}>
