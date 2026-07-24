@@ -175,7 +175,7 @@
     <span><i style="background:var(--archer)"></i>游侠</span>
     <span><i style="background:var(--warrior)"></i>战士</span>
   </div>
-  <p>每 30 秒一波，共 15 波。点 3×3 格买英雄（最多3人，各4个技能位）。技能商店按力/敏/智买技能书（全池roll半价），每次4本进背包，把书<b>拖到英雄身上</b>学习，同名书再拖可升级。怪物会优先仇恨英雄。</p>
+  <p>每 30 秒一波，共 15 波。点 3×3 格买英雄（最多3人，各4个技能位），怪死后<b>全体英雄吃经验自动升级</b>，Lv5 可转职。技能书买入背包后<b>拖到英雄身上</b>学习，同名书升级。怪物优先仇恨英雄。金矿/伐木场最高10级。</p>
   <button class="lg" id="startBtn">开 始</button>
 </div>
 
@@ -197,7 +197,9 @@ const ADV={
   warrior:{name:'狂战士',atk:1.8,hp:1.8,rate:1.1,range:.4, splash:0},
 };
 const ADV_LV=5, ADV_GOLD=150, ADV_WOOD=50;
-function lvCost(lv){return 30+lv*25;}
+/* 打怪升级：全体英雄吃经验 */
+const MAX_HERO_LV=15;
+function xpNeed(lv){return 40+45*(lv-1);}
 
 /* 技能书池（蓝=稀有 绿=普通；同名书拖给英雄可升级，上限Lv5） */
 const SKB={
@@ -217,13 +219,15 @@ const ITEMS={
   boots:{name:'迅捷靴',base:55,desc:'攻速 +25%'},
 };
 const MOBS={
-  normal:{hp:40, spd:1.1,atk:8, reward:7, r:.30,lives:1,color:'#c95bff'},
-  fast:  {hp:26, spd:1.9,atk:6, reward:8, r:.23,lives:1,color:'#ff9d4d'},
-  tank:  {hp:150,spd:.7, atk:14,reward:14,r:.38,lives:2,color:'#8a6bff'},
-  boss:  {hp:700,spd:.55,atk:30,reward:70,r:.47,lives:3,color:'#ff3860'},
+  normal:{hp:40, spd:1.1,atk:8, reward:7, xp:5, r:.30,lives:1,color:'#c95bff'},
+  fast:  {hp:26, spd:1.9,atk:6, reward:8, xp:6, r:.23,lives:1,color:'#ff9d4d'},
+  tank:  {hp:150,spd:.7, atk:14,reward:14,xp:12,r:.38,lives:2,color:'#8a6bff'},
+  boss:  {hp:700,spd:.55,atk:30,reward:70,xp:60,r:.47,lives:3,color:'#ff3860'},
 };
-function mineCost(lv){return 80+lv*70;}
-function millCost(lv){return 60+lv*60;}
+/* 金木商店：上限10级，前期便宜、线性走高（约1~5分钟回本） */
+const INCOME_MAX=10;
+function mineCost(lv){return 45+30*(lv-1);}
+function millCost(lv){return 35+25*(lv-1);}
 const WAVE_EVERY=30;
 
 /* ================= 状态 ================= */
@@ -247,7 +251,7 @@ window.addEventListener('resize',()=>setTimeout(resize,60));
 
 /* ================= 英雄 ================= */
 function makeHero(cls,row,col){
-  const h={cls,row,col,lv:1,tier:0,items:{blade:0,armor:0,boots:0},
+  const h={cls,row,col,lv:1,xp:0,tier:0,items:{blade:0,armor:0,boots:0},
     skills:{},cds:{},cd:0,flash:0,alive:true};
   calc(h);h.hp=h.maxHp;
   return h;
@@ -319,7 +323,7 @@ function spawnMob(type){
   const row=Math.floor(Math.random()*ROWS);
   mobs.push({type,row,y:row,x:COLS+.5,
     hp:b.hp*mul,maxHp:b.hp*mul,spd:b.spd,atk:b.atk*mul,r:b.r,
-    reward:b.reward,lives:b.lives,color:b.color,cd:0,fight:false,slowT:0,slowF:0});
+    reward:b.reward,xp:b.xp,lives:b.lives,color:b.color,cd:0,fight:false,slowT:0,slowF:0});
 }
 
 /* ================= 伤害与飘字 ================= */
@@ -334,9 +338,24 @@ function damage(m,d,color){
   if(m.hp<=0){
     m.dead=true;
     gold+=m.reward;
+    gainXp(m.xp);
     updateHUD();refreshAfford();
     fx.push({type:'ring',x:m.x,y:m.y+.5,rr:m.r*1.7,t:.28,max:.28,color:m.color});
   }
+}
+/* 击杀经验：每个英雄都吃满额经验，攒够自动升级 */
+function gainXp(x){
+  let leveled=false;
+  for(const h of heroes){
+    if(h.lv>=MAX_HERO_LV)continue;
+    h.xp+=x;
+    while(h.xp>=xpNeed(h.lv)&&h.lv<MAX_HERO_LV){
+      h.xp-=xpNeed(h.lv);h.lv++;calc(h);h.hp=h.maxHp;leveled=true;
+      fx.push({type:'ring',x:h.col+.5,y:h.row+.5,rr:.75,t:.5,max:.5,color:'#f0e46a'});
+      dnum(h.col+.5,h.row+.3,h.lv,'#f0e46a');
+    }
+  }
+  if(leveled&&sel)renderInfo();
 }
 
 /* ================= 更新 ================= */
@@ -377,6 +396,13 @@ function update(dt){
       const spd=m.spd*(m.slowT>0?1-m.slowF:1);
       if(m.slowT>0)m.slowT-=dt;
       m.fight=false;
+      // 熊灵挡路：怪被挡在熊灵面前，转而攻击熊灵
+      const br=bearIn(r);
+      if(br&&m.x>br.x&&m.x-br.x<=.68){
+        m.cd-=dt;
+        if(m.cd<=0){m.cd=1;hitUnit(br,m);}
+        continue;
+      }
       if(m.x<=STOP&&rowDefended(r)){m.fight=true;}
       else if(!blocked){
         m.x-=spd*dt;
@@ -392,17 +418,25 @@ function update(dt){
       }
     }
   }
-  /* ---- 熊灵 ---- */
+  /* ---- 熊灵：近战召唤物，主动冲向本行最近的怪贴脸砍 ---- */
   for(const br of bears){
     br.t-=dt;
     if(br.t<=0||br.hp<=0){br.dead=true;continue;}
-    br.cd-=dt;if(br.cd>0)continue;
+    br.cd-=dt;
     let best=null;
     for(const m of mobs){
       if(m.dead||m.row!==br.row)continue;
-      if(Math.abs(m.x-br.x)<=1.6+m.r&&(!best||m.x<best.x))best=m;
+      if(!best||m.x<best.x)best=m;
     }
-    if(best){br.cd=1;damage(best,br.atk,'#c9a068');fx.push({type:'ring',x:best.x,y:best.y+.5,rr:.3,t:.15,max:.15,color:'#c9a068'});}
+    if(best){
+      const gap=best.x-br.x;
+      if(gap>.8){br.x=Math.min(br.x+1.8*dt,COLS-.6);}       // 冲锋接敌
+      else if(br.cd<=0){                                     // 近战劈砍
+        br.cd=1;
+        damage(best,br.atk,'#c9a068');
+        fx.push({type:'ring',x:best.x,y:best.y+.5,rr:.3,t:.15,max:.15,color:'#c9a068'});
+      }
+    }else if(br.x>HCOLS+.45){br.x=Math.max(HCOLS+.45,br.x-1.8*dt);}  // 没怪就撤回战线
   }
   bears=bears.filter(b=>!b.dead);
   /* ---- 英雄 ---- */
@@ -616,6 +650,9 @@ function draw(){
     if(h.alive){
       ctx.fillStyle='rgba(0,0,0,.6)';ctx.fillRect(x-.34,y-.47,.68,.09);
       ctx.fillStyle='#6ee7a0';ctx.fillRect(x-.34,y-.47,.68*Math.max(h.hp/h.maxHp,0),.09);
+      // 经验条（蓝，方块下方）
+      ctx.fillStyle='rgba(0,0,0,.6)';ctx.fillRect(x-.34,y+.37,.68,.06);
+      ctx.fillStyle='#4f8dff';ctx.fillRect(x-.34,y+.37,.68*(h.lv>=MAX_HERO_LV?1:Math.min(h.xp/xpNeed(h.lv),1)),.06);
     }
   }
   // 熊灵
@@ -714,11 +751,10 @@ function renderInfo(){
   }else if(h){
     const b=CLASSES[h.cls];
     const advOK=!h.tier&&h.lv>=ADV_LV, canAdv=advOK&&gold>=ADV_GOLD&&wood>=ADV_WOOD;
+    const xpTxt=h.lv>=MAX_HERO_LV?'满级':`经验 ${Math.floor(h.xp)}/${xpNeed(h.lv)}`;
     html=`<div class="card"><b style="color:${b.color}">${dispName(h)}</b> <b>Lv${h.lv}</b>
-      <span>HP ${Math.ceil(h.hp)}/${h.maxHp} · 攻 ${Math.round(h.atk)} · 攻速 ${h.rate.toFixed(1)}/s</span><br>
-      <span>力${h.str} 敏${h.agi} 智${h.int}</span> · ${skillLine(h)}</div>
-      <button class="btn" id="lvUp" data-cost="${lvCost(h.lv)}" ${gold<lvCost(h.lv)?'disabled':''}>
-        升级 <span class="cost">${lvCost(h.lv)}金</span></button>`;
+      <span>${xpTxt} · HP ${Math.ceil(h.hp)}/${h.maxHp} · 攻 ${Math.round(h.atk)} · 攻速 ${h.rate.toFixed(1)}/s</span><br>
+      <span>力${h.str} 敏${h.agi} 智${h.int}</span> · ${skillLine(h)}</div>`;
     if(!h.tier){
       html+=`<button class="btn" id="advBtn" data-cost="${ADV_GOLD}" data-wood="${ADV_WOOD}" data-lock="${advOK?0:1}" ${canAdv?'':'disabled'}>
         转职·${ADV[h.cls].name}<br><span class="sub">需Lv${ADV_LV}</span> <span class="cost">${ADV_GOLD}金</span>+<span class="costw">${ADV_WOOD}木</span></button>`;
@@ -735,12 +771,6 @@ function renderInfo(){
       heroes.push(makeHero(COL_CLASS[sel.col],sel.row,sel.col));
       updateHUD();renderInfo();
     }
-  };
-  const lu=document.getElementById('lvUp');
-  if(lu)lu.onclick=()=>{
-    const hh=selHero();if(!hh)return;
-    const c=lvCost(hh.lv);
-    if(gold>=c){gold-=c;hh.lv++;calc(hh);hh.hp=hh.maxHp;updateHUD();renderInfo();}
   };
   const ab=document.getElementById('advBtn');
   if(ab)ab.onclick=()=>{
@@ -787,8 +817,11 @@ function shopHTML(){
   }
   const isMine=openShop==='mine';
   const lv=isMine?mineLv:millLv, cost=isMine?mineCost(lv):millCost(lv);
-  return `<div class="card shopHead"><b>${isMine?'金矿':'伐木场'} Lv${lv}</b><br><span>每秒 +${lv} ${isMine?'金币':'木头'}</span></div>
-    <button class="btn grow" data-shop="${openShop}" data-cost="${cost}" data-lock="0" ${gold>=cost?'':'disabled'}>
+  const head=`<div class="card shopHead"><b>${isMine?'金矿':'伐木场'} Lv${lv}/${INCOME_MAX}</b><br><span>每秒 +${lv} ${isMine?'金币':'木头'}</span></div>`;
+  if(lv>=INCOME_MAX)
+    return head+`<button class="btn grow" disabled><b>已满级</b><span class="sub">每秒 +${lv} ${isMine?'金币':'木头'}</span></button>`;
+  return head+
+    `<button class="btn grow" data-shop="${openShop}" data-cost="${cost}" data-lock="0" ${gold>=cost?'':'disabled'}>
       <b>升级到 Lv${lv+1}</b> <span class="cost">${cost}金</span>
       <span class="sub">每秒 +${lv} → +${lv+1}${isMine?'':'（木头用于转职）'}</span></button>`;
 }
@@ -873,7 +906,9 @@ info.addEventListener('click',ev=>{
   if(b.dataset.pack){buyPack(b.dataset.pack);return;}
   if(b.dataset.shop){
     const isMine=b.dataset.shop==='mine';
-    const cost=isMine?mineCost(mineLv):millCost(millLv);
+    const lv=isMine?mineLv:millLv;
+    if(lv>=INCOME_MAX)return;
+    const cost=isMine?mineCost(lv):millCost(lv);
     if(gold>=cost){gold-=cost;if(isMine)mineLv++;else millLv++;updateHUD();renderInfo();}
     return;
   }
