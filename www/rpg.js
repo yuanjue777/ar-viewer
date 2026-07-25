@@ -158,6 +158,10 @@ const INCOME_MAX=10;
 function mineCost(lv){return 45+30*(lv-1);}
 function millCost(lv){return 35+25*(lv-1);}
 const WAVE_EVERY=35;
+/* 波次类型：逢5(5/15/25)=精英波，逢10(10/20)=Boss关（只有Boss、数值额外拔高） */
+const BOSS_WAVE_MUL=2.5, ELITE_RS=1.2;
+function isBossWave(w){return w%10===0;}
+function isEliteWave(w){return w%10===5;}
 /* 怪物AI：仇恨范围>攻击范围（攻击距离见 MOBS.atkR），仇恨内只做轻微纵向贴靠 */
 const AGGRO_R=3.2, VEER_SPD=.7;
 /* 召唤物活动上限：守在左侧第4格附近，不追出去 */
@@ -270,15 +274,24 @@ function waveComp(w){
   // 数量封顶30只（约27秒出完，不与下一波堆叠），后期靠强度而非数量
   // 最后一波：大量小怪 + 多个Boss 的总攻
   const fin=w>=TOTAL_WAVES;
-  const list=[];const n=fin?45:Math.min(30,4+w*2);
+  const list=[];
+  if(isBossWave(w)){   // Boss关：清一色Boss，不带小怪，数值额外×BOSS_WAVE_MUL
+    for(let i=0;i<w/10;i++)list.push({t:'boss',mul:BOSS_WAVE_MUL,rs:1.25});
+    return list;
+  }
+  const n=fin?45:Math.min(30,4+w*2);
   for(let i=0;i<n;i++){
     let t='normal';
     if(w>=3&&i%3===2)t='fast';
     if(w>=4&&i%4===3)t='tank';
-    list.push(t);
+    list.push({t});
   }
-  if(w%5===0)list.push('boss');
-  if(fin)list.push('boss','boss');
+  if(isEliteWave(w)){  // 精英波：小怪之外额外来一批精英
+    const en=1+Math.floor(w/5);
+    for(let i=0;i<en;i++)
+      list.push({t:w>=15?'boss':'tank',elite:1,mul:1.6+.05*w,rs:ELITE_RS});
+  }
+  if(fin)list.push({t:'boss'},{t:'boss'},{t:'boss'});
   return list;
 }
 function startWave(){
@@ -286,8 +299,12 @@ function startWave(){
   wave++;
   // 整波一起入场（不再一只只放）：排成纵深队形从右边压上来
   const list=waveComp(wave);
-  for(let i=0;i<list.length;i++)
-    spawnMob(list[i],{dx:(i%8)*.55+Math.floor(i/8)*.85});
+  for(let i=0;i<list.length;i++){
+    const e=list[i];
+    spawnMob(e.t,{dx:(i%8)*.55+Math.floor(i/8)*.85,elite:e.elite,mul:e.mul,rs:e.rs});
+  }
+  if(isBossWave(wave))showToast(`<b style="color:#ff5d5d">第 ${wave} 波 · BOSS关</b>　只有Boss，但数值极高`);
+  else if(isEliteWave(wave))showToast(`<b style="color:#f0c46a">第 ${wave} 波 · 精英波</b>　混入精英怪`);
   updateHUD();renderInfo();
 }
 function spawnMob(type,opt){
@@ -303,7 +320,8 @@ function spawnMob(type,opt){
   mul*=opt.mul||1;
   mobs.push({type,row,y,x:COLS+.5+Math.random()*.4+(opt.dx||0),
     hp:b.hp*mul,maxHp:b.hp*mul,spd:b.spd,atk:b.atk*mul,r:b.r*(opt.rs||1),atkR:b.atkR,
-    reward:b.reward,xp:b.xp,lives:b.lives,armor:b.armor,mres:b.mres,
+    reward:Math.round(b.reward*(opt.elite?2:1)),xp:Math.round(b.xp*(opt.elite?2:1)),
+    lives:b.lives,armor:b.armor,mres:b.mres,elite:opt.elite||0,
     trial:opt.trial||null,bonus:opt.bonus||0,chest:opt.chest||0,
     color:b.color,cd:0,fight:false,slowT:0,slowF:0,frost:0,asT:0,asF:0});
 }
@@ -1152,6 +1170,13 @@ function drawMob(m,x,y){
     ctx.strokeStyle=tc;ctx.lineWidth=.12;
     ctx.beginPath();ctx.ellipse(0,1.02,.85,.24,0,0,7);ctx.stroke();
     ctx.globalAlpha=1;
+  }else if(m.elite){   // 精英怪：脚下金色双环
+    ctx.globalAlpha=.4+.3*Math.sin(gt*4+m.x);
+    ctx.strokeStyle='#f0c46a';ctx.lineWidth=.11;
+    ctx.beginPath();ctx.ellipse(0,1.02,.88,.25,0,0,7);ctx.stroke();
+    ctx.lineWidth=.06;
+    ctx.beginPath();ctx.ellipse(0,1.02,.62,.17,0,0,7);ctx.stroke();
+    ctx.globalAlpha=1;
   }
   const eye=(ex,ey,er)=>{
     ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(ex,ey,er,0,7);ctx.fill();
@@ -1655,7 +1680,8 @@ function renderInfo(){
   }else{
     const n=mobs.length+queue.length;
     html=`<div class="hint">${!started?'布阵阶段：买好英雄后点右上角 <b style="color:#8ab8d8">▶ 启动</b> 开始进攻':
-      n?'第 '+wave+' 波 — 剩余 '+n:'点 3×3 格子买英雄；技能书/装备从背包拖到英雄身上'}</div>`;
+      n?'第 '+wave+' 波'+(isBossWave(wave)?' <b style="color:#ff5d5d">· BOSS关</b>':isEliteWave(wave)?' <b style="color:#f0c46a">· 精英波</b>':'')+' — 剩余 '+n
+       :'点 3×3 格子买英雄；技能书/装备从背包拖到英雄身上'}</div>`;
   }
   info.innerHTML=html;
   const ba=document.getElementById('buyAt');
