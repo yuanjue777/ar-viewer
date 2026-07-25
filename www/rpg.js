@@ -1,6 +1,6 @@
 'use strict';
 /* ================= 职业（魔兽式属性）================= */
-const ROWS=3, HCOLS=3, BCOLS=9, COLS=HCOLS+BCOLS, TOTAL_WAVES=25, HERO_COST=50, MAX_HEROES=3;
+const ROWS=3, HCOLS=3, BCOLS=13, COLS=HCOLS+BCOLS, TOTAL_WAVES=25, HERO_COST=50, MAX_HEROES=3;
 const MAX_SLOTS=4, MAX_SKILL_LV=10, MAX_EQUIP=6, MAX_HERO_LV=15;   // 装备栏2×3
 const COL_CLASS=['mage','archer','warrior'];
 /* bat=基础攻击间隔s wep=武器基础攻击 main=主属性(加攻) grow=每级属性成长 */
@@ -156,6 +156,8 @@ const WAVE_EVERY=35;
 const AGGRO_R=3.2, VEER_SPD=.7;
 /* 召唤物活动上限：守在左侧第4格附近，不追出去 */
 const BEAR_MAX_X=4.15;
+/* 开波后英雄从左往右推进的速度（格/秒），清场后按1.8倍走回本阵 */
+const HERO_SPD=.55;
 
 /* ================= 四大试炼 =================
    点图标才开始；奖励挂在试炼怪身上（击杀即得）；CD 从左到右依次变长；
@@ -194,7 +196,7 @@ window.addEventListener('resize',()=>setTimeout(resize,60));
 
 /* ================= 英雄 ================= */
 function makeHero(cls,row,col){
-  const h={cls,row,col,lv:1,xp:0,tier:0,branch:-1,specLv:1,autoLearn:false,
+  const h={cls,row,col,x:col+.5,lv:1,xp:0,tier:0,branch:-1,specLv:1,autoLearn:false,
     soulInt:0,deathAgi:0,equips:[],
     skills:{},cds:{},cd:0,flash:0,anim:0,alive:true};
   calc(h);h.hp=h.maxHp;
@@ -267,7 +269,11 @@ function waveComp(w){
 }
 function startWave(){
   if(wave>=TOTAL_WAVES)return;
-  wave++;queue.push(...waveComp(wave));
+  wave++;
+  // 整波一起入场（不再一只只放）：排成纵深队形从右边压上来
+  const list=waveComp(wave);
+  for(let i=0;i<list.length;i++)
+    spawnMob(list[i],{dx:(i%8)*.55+Math.floor(i/8)*.85});
   updateHUD();renderInfo();
 }
 function spawnMob(type,opt){
@@ -385,7 +391,7 @@ function gainXp(x){
     h.xp+=x;
     while(h.xp>=xpNeed(h.lv)&&h.lv<MAX_HERO_LV){
       h.xp-=xpNeed(h.lv);h.lv++;calc(h);h.hp=h.maxHp;leveled=true;
-      levelFx(h.col+.5,h.row+.5);
+      levelFx(h.x,h.row+.5);
     }
   }
   if(leveled&&sel)renderInfo();
@@ -413,10 +419,6 @@ function update(dt){
       waveT-=dt;
       if(waveT<=0){waveT=WAVE_EVERY;startWave();}
     }
-    if(queue.length){
-      spawnT-=dt;
-      if(spawnT<=0){const t=queue.shift();spawnMob(t);spawnT=t==='fast'?.5:.9;}
-    }
   }
   hudAcc+=dt;
   if(hudAcc>=.25){hudAcc=0;updateHUD();}
@@ -429,7 +431,7 @@ function update(dt){
     let tgt=null,td=1e9;
     for(const h of heroes){
       if(!h.alive)continue;
-      const d=Math.hypot((h.col+.5)-m.x,h.row-m.y);
+      const d=Math.hypot(h.x-m.x,h.row-m.y);
       if(d<td){td=d;tgt=h;}
     }
     for(const br of bears){
@@ -478,13 +480,13 @@ function update(dt){
     }
     if(best){
       const gap=best.x-br.x;
-      if(gap>.8){br.x=Math.min(br.x+1.8*dt,BEAR_MAX_X);}   // 只在战线前方活动，不追远
+      if(gap>.8){br.x=Math.min(br.x+1.8*dt,br.maxX||BEAR_MAX_X);}   // 只在召唤者前方活动，不追远
       else if(br.cd<=0){
         br.cd=1;
         physDamage(best,br.atk,'#c9a068');
         fx.push({type:'ring',x:best.x,y:best.y+.5,rr:.3,t:.15,max:.15,color:'#c9a068'});
       }
-    }else if(br.x>HCOLS+.45){br.x=Math.max(HCOLS+.45,br.x-1.8*dt);}
+    }else if(br.x>br.home){br.x=Math.max(br.home,br.x-1.8*dt);}
   }
   bears=bears.filter(b=>!b.dead);
   /* 暴风雪冰雹：到点落下，小片AOE伤害+减速 */
@@ -548,7 +550,7 @@ function update(dt){
     if(!h.alive)continue;
     if(h.flash>0)h.flash-=dt;
     if(h.anim>0)h.anim-=dt;
-    const hx=h.col+.5,hy=h.row+.5;
+    const hx=h.x,hy=h.row+.5;
     const bb=h.skills['狂战士之血'];
     if(bb){
       const miss=1-h.hp/h.maxHp;
@@ -577,15 +579,15 @@ function update(dt){
           const heal=30+h.int*(.6+.4*h.specLv);
           for(const o of hurt){
             o.hp=Math.min(o.maxHp,o.hp+heal);
-            dnum(o.col+.5,o.row+.5,heal,'#7effc0');
-            fx.push({type:'ring',x:o.col+.5,y:o.row+.5,rr:.55,t:.35,max:.35,color:'#7effc0'});
-            for(let i=0;i<3;i++)fx.push({type:'heal',x:o.col+.5+(i-1)*.22,y:o.row+.45,
+            dnum(o.x,o.row+.5,heal,'#7effc0');
+            fx.push({type:'ring',x:o.x,y:o.row+.5,rr:.55,t:.35,max:.35,color:'#7effc0'});
+            for(let i=0;i<3;i++)fx.push({type:'heal',x:o.x+(i-1)*.22,y:o.row+.45,
               t:.6+i*.08,max:.6+i*.08,color:'#7effc0'});
           }
         }
       }
     }
-    h.cd-=dt;if(h.cd>0)continue;
+    h.cd-=dt;
     let best=null;
     for(const m of mobs){
       if(m.dead)continue;
@@ -594,7 +596,12 @@ function update(dt){
       const d=Math.hypot(m.x-hx,(m.y+.5)-hy);
       if(d<=h.range+m.r&&(!best||m.x<best.x))best=m;
     }
-    if(best){
+    // 开波后从左往右推进；没敌人时压上去，清场后走回本阵
+    const home=h.col+.5;
+    if(started&&!over&&mobs.length){
+      if(!best)h.x=Math.min(h.x+HERO_SPD*dt,COLS-.7);
+    }else if(h.x>home)h.x=Math.max(home,h.x-HERO_SPD*1.8*dt);
+    if(best&&h.cd<=0){
       h.cd=effInterval(h);
       attack(h,hx,hy,best);
       const ms=h.skills['多重射击'];
@@ -712,12 +719,12 @@ function hitUnit(u,m){
     dmg*=1-Math.min(.7,miss*(.25+.08*bb));
   }
   h.hp-=dmg;h.flash=.12;
-  dnum(h.col+.5,h.row+.5,dmg,'#ff8080');
+  dnum(h.x,h.row+.5,dmg,'#ff8080');
   const th=h.skills['荆棘光环'];
   if(th)magDamage(m,m.atk*.15*th+h.str*.4*th,'#9dff9d');
   if(h.hp<=0){
     h.hp=0;h.alive=false;
-    fx.push({type:'ring',x:h.col+.5,y:h.row+.5,rr:.7,t:.35,max:.35,color:'#fff'});
+    fx.push({type:'ring',x:h.x,y:h.row+.5,rr:.7,t:.35,max:.35,color:'#fff'});
     renderInfo();
   }
 }
@@ -737,10 +744,10 @@ function castSkill(h,name,lv,hx,hy){
     // 德鲁伊·自然之力：召唤物属性+20%×专精等级
     const sm=(h.tier&&advOf(h).key==='druid')?1+.2*h.specLv:1;
     const bhp=(120+h.int*6*lv)*sm;
-    bears.push({isBear:true,row:h.row,x:HCOLS+.45,
+    bears.push({isBear:true,row:h.row,x:h.x+.5,home:h.x+.5,maxX:h.x+2.6,
       hp:bhp,maxHp:bhp,atk:(8+h.int*.7*lv)*sm,
       t:12+2*lv,cd:0,dead:false});
-    fx.push({type:'ring',x:HCOLS+.55,y:h.row+.5,rr:.8,t:.4,max:.4,color:'#c9a068'});
+    fx.push({type:'ring',x:h.x+.5,y:h.row+.5,rr:.8,t:.4,max:.4,color:'#c9a068'});
     return true;
   }
   if(name==='火球术'){
@@ -1073,7 +1080,7 @@ function drawChest(ch){
   ctx.fillStyle='#2a1a0c';ctx.fillRect(-.03,-.02,.06,.07);           // 锁孔
   ctx.restore();
 }
-/* ===== 异世界背景（离屏预渲染，resize 时重画）===== */
+/* ===== 背景：只画左侧村庄，战斗区留纯色（离屏预渲染，resize 时重画）===== */
 let bgCv=null;
 function buildBG(){
   const W=Math.round(COLS*cell*dpr),H=Math.round(ROWS*cell*dpr);
@@ -1082,49 +1089,8 @@ function buildBG(){
   bgCv.width=W;bgCv.height=H;
   const g=bgCv.getContext('2d');
   g.setTransform(W/COLS,0,0,H/ROWS,0,0);   // 统一用格子坐标
-  const rnd=(s)=>{const x=Math.sin(s*127.1)*43758.5453;return x-Math.floor(x);};
-  /* --- 战斗区：异界荒原（冷色调，压暗以突出单位）--- */
-  const sky=g.createLinearGradient(0,0,0,ROWS);
-  sky.addColorStop(0,'#0c1830');sky.addColorStop(.5,'#0d1b2c');
-  sky.addColorStop(.78,'#0b1a24');sky.addColorStop(1,'#081218');
-  g.fillStyle=sky;g.fillRect(HCOLS,0,BCOLS,ROWS);
-  // 双月
-  g.fillStyle='rgba(120,200,220,.1)';
-  g.beginPath();g.arc(HCOLS+7.6,.6,.66,0,7);g.fill();
-  g.fillStyle='rgba(170,220,235,.17)';
-  g.beginPath();g.arc(HCOLS+7.6,.6,.42,0,7);g.fill();
-  g.fillStyle='rgba(255,170,120,.14)';
-  g.beginPath();g.arc(HCOLS+5.1,.32,.19,0,7);g.fill();
-  // 远景尖塔剪影
-  g.fillStyle='rgba(26,44,64,.75)';
-  for(let i=0;i<9;i++){
-    const x=HCOLS+.3+i*1.02+rnd(i)*.3, w=.34+rnd(i+9)*.3, h=.5+rnd(i+21)*.95;
-    g.beginPath();g.moveTo(x,ROWS*.66);g.lineTo(x+w/2,ROWS*.66-h);g.lineTo(x+w,ROWS*.66);g.closePath();g.fill();
-  }
-  // 浮空岛（青色辉光）
-  const isle=(x,y,w)=>{
-    g.fillStyle='rgba(28,48,66,.85)';
-    g.beginPath();g.moveTo(x-w,y);g.lineTo(x+w,y);g.lineTo(x+w*.25,y+w*1.15);g.closePath();g.fill();
-    g.fillStyle='rgba(44,74,92,.9)';
-    g.beginPath();g.ellipse(x,y,w,w*.26,0,0,7);g.fill();
-    g.fillStyle='rgba(120,230,215,.22)';
-    g.beginPath();g.ellipse(x,y-.02,w*.8,w*.12,0,0,7);g.fill();
-  };
-  isle(HCOLS+1.5,.7,.42);isle(HCOLS+4.4,.42,.28);isle(HCOLS+8.5,.92,.34);
-  // 地面与裂谷微光
-  g.fillStyle='rgba(16,34,42,.6)';g.fillRect(HCOLS,ROWS*.84,BCOLS,ROWS*.16);
-  g.strokeStyle='rgba(90,220,200,.13)';g.lineWidth=.035;
-  for(let i=0;i<5;i++){
-    const x=HCOLS+.8+i*1.9;
-    g.beginPath();g.moveTo(x,ROWS);g.lineTo(x+.35,ROWS*.88);g.lineTo(x+.15,ROWS*.74);g.stroke();
-  }
-  // 漂浮尘埃
-  for(let i=0;i<36;i++){
-    g.globalAlpha=.07+rnd(i+3)*.14;
-    g.fillStyle=i%3?'#9fd8ff':'#7ff0d8';
-    g.beginPath();g.arc(HCOLS+rnd(i)*BCOLS,rnd(i+7)*ROWS,.02+rnd(i+11)*.03,0,7);g.fill();
-  }
-  g.globalAlpha=1;
+  /* --- 战斗区：保持干净的纯色，不做背景画（做过异界场景，用户觉得违和已去掉）--- */
+  g.fillStyle='#0d1420';g.fillRect(HCOLS,0,BCOLS,ROWS);
   /* --- 左侧：出兵村庄 --- */
   const vg=g.createLinearGradient(0,0,0,ROWS);
   vg.addColorStop(0,'#101d31');vg.addColorStop(1,'#0a1420');
@@ -1202,7 +1168,7 @@ function draw(){
     ctx.fillStyle=rgba(col,.09);
     for(let r=0;r<ROWS;r++)ctx.fillRect(c+.03,r+.03,.94,.94);
   }
-  ctx.strokeStyle='rgba(120,140,190,.16)';ctx.lineWidth=.02;
+  ctx.strokeStyle='#1c2940';ctx.lineWidth=.02;
   ctx.beginPath();
   for(let c=HCOLS;c<=COLS;c++){ctx.moveTo(c,0);ctx.lineTo(c,ROWS);}
   for(let r=0;r<=ROWS;r++){ctx.moveTo(0,r);ctx.lineTo(COLS,r);}
@@ -1226,7 +1192,7 @@ function draw(){
   ctx.textAlign='center';
   // 英雄
   for(const h of heroes){
-    const x=h.col+.5,y=h.row+.5;
+    const x=h.x,y=h.row+.5;
     drawHero(h,x,y);
     if(h.alive){
       // 血条（等级框在左端）
@@ -1503,7 +1469,7 @@ function renderInfo(){
       gold-=ADV_GOLD;wood-=ADV_WOOD;
       hh.tier=1;hh.branch=+btn.dataset.adv;hh.specLv=1;
       calc(hh);hh.hp=hh.maxHp;
-      levelFx(hh.col+.5,hh.row+.5);
+      levelFx(hh.x,hh.row+.5);
       advPick=false;
       updateHUD();renderInfo();
     }
@@ -1515,7 +1481,7 @@ function renderInfo(){
     if(gold>=sc.g&&wood>=sc.w){
       gold-=sc.g;wood-=sc.w;hh.specLv++;
       calc(hh);
-      fx.push({type:'ring',x:hh.col+.5,y:hh.row+.5,rr:.7,t:.4,max:.4,color:'#f0c46a'});
+      fx.push({type:'ring',x:hh.x,y:hh.row+.5,rr:.7,t:.4,max:.4,color:'#f0c46a'});
       updateHUD();renderInfo();
     }
   };
@@ -1629,7 +1595,7 @@ function autoLearnPass(){
     const h=heroes.find(o=>o.autoLearn&&o.skills[it.name]&&o.skills[it.name]<MAX_SKILL_LV);
     if(!h)continue;
     h.skills[it.name]++;calc(h);
-    fx.push({type:'ring',x:h.col+.5,y:h.row+.5,rr:.6,t:.4,max:.4,color:CATS[SKB[it.name].cat].color});
+    fx.push({type:'ring',x:h.x,y:h.row+.5,rr:.6,t:.4,max:.4,color:CATS[SKB[it.name].cat].color});
     got.push(`${it.name}→Lv${h.skills[it.name]}`);
     inv.splice(i,1);
     if(invSel===i)invSel=null;
@@ -1686,7 +1652,7 @@ function applyItem(idx,h,slot){
       h.skills[it.name]=cur+1;
     }
     calc(h);
-    fx.push({type:'ring',x:h.col+.5,y:h.row+.5,rr:.6,t:.4,max:.4,color:CATS[SKB[it.name].cat].color});
+    fx.push({type:'ring',x:h.x,y:h.row+.5,rr:.6,t:.4,max:.4,color:CATS[SKB[it.name].cat].color});
   }else{
     // 拖到已占用的装备栏 → 覆盖，旧装备退回背包
     if(slot&&slot.eq!=null&&slot.eq<h.equips.length){
@@ -1701,7 +1667,7 @@ function applyItem(idx,h,slot){
     if(h.equips.length>=MAX_EQUIP){showToast('装备位已满，拖到某件装备上可替换');return;}
     h.equips.push(it);
     const ratio=h.hp/h.maxHp;calc(h);h.hp=Math.round(h.maxHp*ratio);
-    fx.push({type:'ring',x:h.col+.5,y:h.row+.5,rr:.6,t:.4,max:.4,color:qOf(it).c});
+    fx.push({type:'ring',x:h.x,y:h.row+.5,rr:.6,t:.4,max:.4,color:qOf(it).c});
   }
   inv.splice(idx,1);
   renderInv();
@@ -1798,6 +1764,12 @@ cv.addEventListener('pointerdown',ev=>{
   // 先判宝箱（精英试炼掉落，点击开启）
   for(const ch of chests){
     if(!ch.dead&&Math.hypot(ch.x-fx0,ch.y-fy0)<.5){openChest(ch);return;}
+  }
+  // 英雄会推进到战斗区，点身上也能选中（不只是点老家格子）
+  for(const h of heroes){
+    if(Math.abs(h.x-fx0)<.5&&Math.abs(h.row+.5-fy0)<.5){
+      sel={col:h.col,row:h.row};invSel=null;advPick=false;closeShop();renderInfo();return;
+    }
   }
   const c=Math.floor(fx0),r=Math.floor(fy0);
   if(c<0||c>=COLS||r<0||r>=ROWS)return;
