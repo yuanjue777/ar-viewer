@@ -257,7 +257,7 @@ const SKB={
   '火球术':    {cat:'int',q:'qgreen', short:'火球',cd:7, mana:25,desc:'主动(25蓝)：单体魔法伤害（智力×3×等级+40），弹道线'},
   '冰风暴':    {cat:'int',q:'qgreen', short:'冰风',cd:10,mana:35,desc:'主动(35蓝)：暴风雪，固定区域每0.9秒对圈内全体造成(15+智×0.8×等级)魔法伤+减速，共(3+等级)波'},
   'CD光环':    {cat:'int',q:'qblue',  short:'CD环',cd:0, desc:'被动：主动技能冷却-4%×等级（与装备CD缩减叠加，总上限50%）'},
-  '闪电链':    {cat:'int',q:'qblue',  short:'闪电',cd:4, mana:45,desc:'主动(45蓝)：CD短耗蓝高，闪电跳(2+等级)个目标，各(30+智×1.2×等级)魔法伤害'},
+  '闪电链':    {cat:'int',q:'qblue',  short:'闪电',cd:4, mana:16,desc:'主动(16蓝)：短CD低耗蓝，闪电跳(2+等级)个目标，各(12+智×0.45×等级)魔法伤害'},
   '魂吸':      {cat:'int',q:'qpurple',short:'魂吸',cd:0, desc:'被动：每有敌方单位死亡+0.5智力，上限10+5×(等级-1)'},
 };
 const QC={qgreen:'#5ad48a',qblue:'#4fa8ff',qpurple:'#b070ff'};
@@ -272,9 +272,10 @@ function pickBook(pool){
 }
 const CATS={str:{label:'力量',color:'#ff5d5d'},agi:{label:'敏捷',color:'#57d474'},int:{label:'智力',color:'#4f8dff'}};
 const PACK_COST=200, ROLL_COST=100, PACK_N=4;
-/* 出售返还：技能书30金，装备按品质 */
-const SELL_BOOK=30, SELL_EQ={common:20,fine:40,rare:80,epic:160};
-function sellValue(it){return it.t==='book'?SELL_BOOK:(SELL_EQ[eqDef(it).q]||20);}
+/* 出售：只有装备能卖，技能书不能卖；返还压低到roll成本的40~60% */
+const SELL_EQ={common:8,fine:18,rare:40,epic:80};
+function canSell(it){return it.t==='eq';}
+function sellValue(it){return canSell(it)?(SELL_EQ[eqDef(it).q]||8):0;}
 
 /* ================= 装备池（用户自定义，持续扩充）================= */
 const QUALS={
@@ -845,7 +846,7 @@ function castSkill(h,name,lv,hx,hy){
   if(name==='闪电链'){
     let cur=frontInRange(h,hx,hy);
     if(!cur)return false;
-    const n=2+lv,dmg=30+h.int*1.2*lv,hit=new Set();
+    const n=2+lv,dmg=12+h.int*.45*lv,hit=new Set();
     let px=hx,py=hy;
     for(let i=0;i<n&&cur;i++){
       fx.push({type:'line',x1:px,y1:py,x2:cur.x,y2:cur.y+.5,t:.3,max:.3,color:'#9fd0ff'});
@@ -1006,6 +1007,12 @@ function updateHUD(){
   uiWave.textContent=wave+'/'+TOTAL_WAVES+(running&&started&&!over&&wave<TOTAL_WAVES?' · '+Math.ceil(waveT)+'s':'');
   document.getElementById('mineLvT').textContent='Lv'+mineLv+' +'+mineLv+'/s';
   document.getElementById('millLvT').textContent='Lv'+millLv+' +'+millLv+'/s';
+  // 英雄面板的HP/MP实时刷新（不重建DOM，避免打断点击）
+  const hv=document.getElementById('hpVal'),mv=document.getElementById('mpVal'),h=selHero();
+  if(h&&hv&&mv){
+    hv.textContent=Math.ceil(h.hp)+'/'+h.maxHp;
+    mv.textContent=Math.floor(h.mp)+'/'+h.maxMp;
+  }
 }
 function selHero(){return sel?heroAt(sel.col,sel.row):null;}
 
@@ -1057,8 +1064,8 @@ function renderInfo(){
     html=`<div class="hcard">
       <div><b style="color:${b.color}">${dispName(h)}</b> <span class="dim">Lv${h.lv} · ${xpTxt}</span></div>
       <div class="hgrid">
-        <span>HP <b>${Math.ceil(h.hp)}/${h.maxHp}</b></span>
-        <span>MP <b>${Math.floor(h.mp)}/${h.maxMp}</b> +${h.mpRegen.toFixed(1)}/s</span>
+        <span>HP <b id="hpVal">${Math.ceil(h.hp)}/${h.maxHp}</b></span>
+        <span>MP <b id="mpVal">${Math.floor(h.mp)}/${h.maxMp}</b> +${h.mpRegen.toFixed(1)}/s</span>
         <span>攻击 <b>${h.atk}</b></span>
         <span>攻速 <b>${h.ias}</b> ${h.interval.toFixed(2)}s</span>
         <span>护甲 <b>${h.armor}</b> ${Math.round(armorRed(h.armor)*100)}%</span>
@@ -1177,10 +1184,13 @@ function refreshAfford(){
   });
 }
 document.getElementById('sellAll').addEventListener('click',()=>{
-  if(!inv.length)return;
-  const total=inv.reduce((s,it)=>s+sellValue(it),0);
-  gold+=total;inv=[];invSel=null;
-  showToast(`出售全部，获得 <b style="color:var(--gold)">${total}金</b>`);
+  const sellable=inv.filter(canSell);
+  if(!sellable.length)return;
+  const total=sellable.reduce((s,it)=>s+sellValue(it),0);
+  gold+=total;
+  inv=inv.filter(it=>!canSell(it));   // 技能书保留在背包
+  invSel=null;
+  showToast(`出售 ${sellable.length} 件装备，获得 <b style="color:var(--gold)">${total}金</b>`);
   updateHUD();renderInv();renderInfo();
 });
 tiles.skill.addEventListener('click',()=>setShop('skill'));
@@ -1210,8 +1220,9 @@ function renderInv(){
   invEl.innerHTML='';
   const sb=document.getElementById('sellAll');
   const total=inv.reduce((s,it)=>s+sellValue(it),0);
-  sb.disabled=!inv.length;
-  sb.innerHTML=inv.length?`一键出售<br><span style="color:var(--gold);font-size:9px">+${total}金</span>`:'一键<br>出售';
+  const nEq=inv.filter(canSell).length;
+  sb.disabled=!nEq;
+  sb.innerHTML=nEq?`出售装备<br><span style="color:var(--gold);font-size:9px">${nEq}件 +${total}金</span>`:'出售<br>装备';
   inv.forEach((it,i)=>{
     const el=document.createElement('div');
     el.className='book';
