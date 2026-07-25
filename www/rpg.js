@@ -171,7 +171,7 @@ window.addEventListener('resize',()=>setTimeout(resize,60));
 function makeHero(cls,row,col){
   const h={cls,row,col,lv:1,xp:0,tier:0,branch:-1,specLv:1,autoLearn:false,
     soulInt:0,deathAgi:0,equips:[],
-    skills:{},cds:{},cd:0,flash:0,alive:true};
+    skills:{},cds:{},cd:0,flash:0,anim:0,alive:true};
   calc(h);h.hp=h.maxHp;
   return h;
 }
@@ -436,6 +436,7 @@ function update(dt){
   for(const h of heroes){
     if(!h.alive)continue;
     if(h.flash>0)h.flash-=dt;
+    if(h.anim>0)h.anim-=dt;
     const hx=h.col+.5,hy=h.row+.5;
     const bb=h.skills['狂战士之血'];
     if(bb){
@@ -467,6 +468,8 @@ function update(dt){
             o.hp=Math.min(o.maxHp,o.hp+heal);
             dnum(o.col+.5,o.row+.5,heal,'#7effc0');
             fx.push({type:'ring',x:o.col+.5,y:o.row+.5,rr:.55,t:.35,max:.35,color:'#7effc0'});
+            for(let i=0;i<3;i++)fx.push({type:'heal',x:o.col+.5+(i-1)*.22,y:o.row+.45,
+              t:.6+i*.08,max:.6+i*.08,color:'#7effc0'});
           }
         }
       }
@@ -509,7 +512,7 @@ function update(dt){
         fx.push({type:'ring',x:s.tx,y:s.ty,rr:s.splash,t:.22,max:.22,color:s.color});
         for(const m of mobs){if(!m.dead&&Math.hypot(m.x-s.tx,(m.y+.5)-s.ty)<=s.splash+m.r)shotHit(s,m);}
       }else if(s.target&&!s.target.dead)shotHit(s,s.target);
-    }else{s.x+=dx/l*SPD*dt;s.y+=dy/l*SPD*dt;}
+    }else{s.a=Math.atan2(dy,dx);s.x+=dx/l*SPD*dt;s.y+=dy/l*SPD*dt;}
   }
   mobs=mobs.filter(m=>!m.dead);
   shots=shots.filter(s=>!s.dead);
@@ -554,6 +557,7 @@ function effInterval(h){
 }
 function attack(h,hx,hy,m,mul,color){
   mul=mul||1;
+  h.anim=ANIM_T;
   let dmg=effAtk(h)*mul,c=color;
   // 致命一击：(15+5lv)%几率 (140+10lv)%伤害
   const cr=h.skills['致命一击'];
@@ -564,12 +568,14 @@ function attack(h,hx,hy,m,mul,color){
     physDamage(m,dmg,c);
     if(poison)magDamage(m,poison,'#7ce87c');
     if(cleave)cleaveAround(m,dmg,cleave);
-    fx.push({type:'ring',x:m.x,y:m.y+.5,rr:.35,t:.15,max:.15,color:color||CLASSES[h.cls].color});
+    fx.push({type:'slash',x:m.x-.1,y:m.y+.5,rr:.42,a:Math.atan2((m.y+.5)-hy,m.x-hx),
+             t:.22,max:.22,color:c||CLASSES[h.cls].color});
     if(h.splash>0)for(const o of mobs){
       if(o!==m&&!o.dead&&Math.hypot(o.x-m.x,o.y-m.y)<=h.splash+o.r)physDamage(o,dmg*.6);
     }
   }else{
-    shots.push({x:hx,y:hy,target:m,tx:m.x,ty:m.y+.5,
+    shots.push({x:hx,y:hy,target:m,tx:m.x,ty:m.y+.5,a:Math.atan2((m.y+.5)-hy,m.x-hx),
+      kind:h.cls==='mage'?'orb':'arrow',
       dmg,cleave,splash:h.splash,poison,color:c||CLASSES[h.cls].color});
   }
 }
@@ -629,7 +635,7 @@ function castSkill(h,name,lv,hx,hy){
   if(name==='火球术'){
     const t=frontInRange(h,hx,hy);
     if(!t)return false;
-    fx.push({type:'line',x1:hx,y1:hy,x2:t.x,y2:t.y+.5,t:.35,max:.35,color:'#ffb04f'});
+    fx.push({type:'bolt',x1:hx,y1:hy,x2:t.x,y2:t.y+.5,t:.4,max:.4,color:'#ffb04f'});
     fx.push({type:'ring',x:t.x,y:t.y+.5,rr:.6,t:.3,max:.3,color:'#ffb04f'});
     magDamage(t,40+h.int*3*lv,'#ffb04f');
     return true;
@@ -653,7 +659,8 @@ function castSkill(h,name,lv,hx,hy){
     const n=2+lv,dmg=12+h.int*.45*lv,hit=new Set();
     let px=hx,py=hy;
     for(let i=0;i<n&&cur;i++){
-      fx.push({type:'line',x1:px,y1:py,x2:cur.x,y2:cur.y+.5,t:.3,max:.3,color:'#9fd0ff'});
+      fx.push({type:'zap',x1:px,y1:py,x2:cur.x,y2:cur.y+.5,seed:Math.random()*99,
+               t:.3,max:.3,color:'#9fd0ff'});
       magDamage(cur,dmg,'#9fd0ff');
       hit.add(cur);px=cur.x;py=cur.y+.5;
       let nxt=null,bd=2.5;   // 2.5格内弹跳
@@ -689,6 +696,181 @@ function rgba(hex,a){
   const n=parseInt(hex.slice(1),16);
   return `rgba(${n>>16},${n>>8&255},${n&255},${a})`;
 }
+/* 明暗调色：f>1变亮 f<1变暗；w=向白色混合比例(受击闪白) */
+function shade(hex,f,w){
+  const n=parseInt(hex.slice(1),16);
+  let r=n>>16,g=n>>8&255,b=n&255;
+  r*=f;g*=f;b*=f;
+  if(w){r+=(255-r)*w;g+=(255-g)*w;b+=(255-b)*w;}
+  return `rgb(${Math.min(255,r|0)},${Math.min(255,g|0)},${Math.min(255,b|0)})`;
+}
+const ANIM_T=.22;   // 攻击动作时长
+let gt=0;           // 全局时间（用于呼吸/脉动）
+function rrect(x,y,w,h,r){
+  ctx.beginPath();
+  ctx.moveTo(x+r,y);ctx.lineTo(x+w-r,y);ctx.quadraticCurveTo(x+w,y,x+w,y+r);
+  ctx.lineTo(x+w,y+h-r);ctx.quadraticCurveTo(x+w,y+h,x+w-r,y+h);
+  ctx.lineTo(x+r,y+h);ctx.quadraticCurveTo(x,y+h,x,y+h-r);
+  ctx.lineTo(x,y+r);ctx.quadraticCurveTo(x,y,x+r,y);
+  ctx.closePath();
+}
+function poly(pts){
+  ctx.beginPath();ctx.moveTo(pts[0][0],pts[0][1]);
+  for(let i=1;i<pts.length;i++)ctx.lineTo(pts[i][0],pts[i][1]);
+  ctx.closePath();
+}
+/* ===== 英雄模型（矢量绘制，朝右）===== */
+function drawHero(h,x,y){
+  const b=CLASSES[h.cls], dead=!h.alive, w=h.flash>0?.75:0;
+  const base=dead?'#39424f':shade(b.color,1,w);
+  const dark=dead?'#252c37':shade(b.color,.6,w);
+  const lite=dead?'#4a5462':shade(b.color,1.4,w);
+  const gold='#f0c46a', metal=h.flash>0?'#fff':'#dbe6f3';
+  const p=h.anim>0?h.anim/ANIM_T:0;          // 1→0 攻击进度
+  const bob=dead?0:Math.sin(gt*2.2+h.row*1.7)*.012;
+  ctx.save();ctx.translate(x,y+bob+.05);ctx.scale(.9,.9);
+  ctx.globalAlpha=dead?.5:1;
+  ctx.lineJoin='round';ctx.lineCap='round';
+  // 影子
+  ctx.fillStyle='rgba(0,0,0,.35)';
+  ctx.beginPath();ctx.ellipse(0,.3,.24,.07,0,0,7);ctx.fill();
+  // 转职：脚下金环
+  if(h.tier){
+    ctx.strokeStyle=gold;ctx.globalAlpha=(dead?.3:.55)+.2*Math.sin(gt*3);
+    ctx.lineWidth=.035;
+    ctx.beginPath();ctx.ellipse(0,.3,.3,.1,0,0,7);ctx.stroke();
+    ctx.globalAlpha=dead?.5:1;
+  }
+  if(h.cls==='warrior'){
+    // 盾（左手）
+    ctx.fillStyle=dark;ctx.strokeStyle=metal;ctx.lineWidth=.03;
+    poly([[-.34,-.14],[-.16,-.2],[-.16,.14],[-.25,.24],[-.34,.14]]);
+    ctx.fill();ctx.stroke();
+    ctx.fillStyle=lite;ctx.fillRect(-.28,-.1,.06,.2);
+    // 腿
+    ctx.fillStyle=dark;ctx.fillRect(-.11,.14,.09,.16);ctx.fillRect(.03,.14,.09,.16);
+    // 躯干甲
+    ctx.fillStyle=base;rrect(-.15,-.1,.3,.27,.05);ctx.fill();
+    ctx.strokeStyle=dark;ctx.lineWidth=.025;ctx.stroke();
+    ctx.fillStyle=h.tier?gold:lite;ctx.fillRect(-.15,-.1,.3,.05);   // 胸甲带
+    // 头盔
+    ctx.fillStyle=lite;rrect(-.11,-.32,.22,.22,.06);ctx.fill();
+    ctx.fillStyle='#10151d';ctx.fillRect(-.02,-.25,.12,.05);        // 面甲缝
+    ctx.fillStyle=h.tier?gold:dark;ctx.fillRect(-.12,-.35,.24,.05); // 盔顶
+    // 剑（右手，随攻击挥砍）
+    ctx.save();
+    ctx.translate(.14,.0);
+    ctx.rotate(-1.5+ (1-p)*.35 + p*p*2.2);
+    ctx.fillStyle=gold;ctx.fillRect(-.03,-.02,.06,.1);              // 护手
+    ctx.fillStyle=metal;
+    poly([[-.035,-.02],[.035,-.02],[.02,-.4],[0,-.46],[-.02,-.4]]);
+    ctx.fill();
+    ctx.strokeStyle='rgba(255,255,255,.7)';ctx.lineWidth=.015;
+    ctx.beginPath();ctx.moveTo(0,-.05);ctx.lineTo(0,-.4);ctx.stroke();
+    ctx.restore();
+  }else if(h.cls==='archer'){
+    const pull=p*.12;   // 拉弓
+    // 箭袋（背后）
+    ctx.fillStyle=dark;rrect(-.3,-.16,.11,.26,.04);ctx.fill();
+    ctx.strokeStyle=metal;ctx.lineWidth=.02;
+    for(let i=0;i<3;i++){ctx.beginPath();ctx.moveTo(-.27+i*.05,-.16);ctx.lineTo(-.29+i*.05,-.29);ctx.stroke();}
+    // 腿
+    ctx.fillStyle=dark;ctx.fillRect(-.1,.14,.08,.16);ctx.fillRect(.03,.14,.08,.16);
+    // 斗篷+躯干
+    ctx.fillStyle=base;
+    poly([[-.16,-.06],[.14,-.06],[.11,.18],[-.13,.18]]);ctx.fill();
+    ctx.fillStyle=dark;
+    poly([[-.19,-.09],[-.02,-.09],[-.07,.2],[-.22,.16]]);ctx.fill();   // 披风
+    // 兜帽
+    ctx.fillStyle=h.tier?gold:lite;
+    poly([[-.13,-.08],[0,-.34],[.13,-.08]]);ctx.fill();
+    ctx.fillStyle='#101a14';ctx.fillRect(-.02,-.19,.11,.05);           // 阴影中的脸
+    // 弓
+    ctx.save();ctx.translate(.2-pull*.4,0);
+    ctx.strokeStyle=h.tier?gold:'#c8a06a';ctx.lineWidth=.045;
+    ctx.beginPath();ctx.arc(0,0,.26,-1.15,1.15);ctx.stroke();
+    ctx.strokeStyle='rgba(255,255,255,.8)';ctx.lineWidth=.018;
+    const sx=Math.cos(1.15)*.26, sy=Math.sin(1.15)*.26;
+    ctx.beginPath();ctx.moveTo(sx,-sy);ctx.lineTo(-.02-pull,0);ctx.lineTo(sx,sy);ctx.stroke();
+    if(p>0){   // 搭上的箭
+      ctx.strokeStyle=metal;ctx.lineWidth=.022;
+      ctx.beginPath();ctx.moveTo(-.04-pull,0);ctx.lineTo(.22,0);ctx.stroke();
+    }
+    ctx.restore();
+  }else{
+    // 法师
+    const glow=.55+.45*Math.sin(gt*3.4)+(p>0?.6:0);
+    // 长袍
+    ctx.fillStyle=base;
+    poly([[-.13,-.08],[.13,-.08],[.2,.28],[-.2,.28]]);ctx.fill();
+    ctx.strokeStyle=dark;ctx.lineWidth=.025;ctx.stroke();
+    ctx.fillStyle=h.tier?gold:lite;ctx.fillRect(-.14,-.08,.28,.04);   // 领口
+    // 头
+    ctx.fillStyle='#e8d5b5';ctx.beginPath();ctx.arc(0,-.17,.085,0,7);ctx.fill();
+    // 尖帽
+    ctx.fillStyle=lite;
+    poly([[-.16,-.22],[0,-.44],[.16,-.22]]);ctx.fill();
+    ctx.fillStyle=h.tier?gold:dark;ctx.fillRect(-.18,-.24,.36,.045);
+    // 法杖 + 宝珠
+    ctx.strokeStyle='#8a6a45';ctx.lineWidth=.035;
+    ctx.beginPath();ctx.moveTo(.21,.26);ctx.lineTo(.24,-.26);ctx.stroke();
+    ctx.globalAlpha=(dead?.4:1)*Math.min(1,.35+glow*.5);
+    ctx.fillStyle=rgba('#bcdcff',.35);
+    ctx.beginPath();ctx.arc(.245,-.3,.11+.02*glow,0,7);ctx.fill();
+    ctx.globalAlpha=dead?.5:1;
+    ctx.fillStyle=h.flash>0?'#fff':'#bcdcff';
+    ctx.beginPath();ctx.arc(.245,-.3,.055,0,7);ctx.fill();
+  }
+  ctx.globalAlpha=1;
+  ctx.restore();
+}
+/* ===== 熊灵模型 ===== */
+function drawBear(br,x,y){
+  ctx.save();ctx.translate(x,y);
+  ctx.fillStyle='rgba(0,0,0,.35)';
+  ctx.beginPath();ctx.ellipse(0,.26,.22,.06,0,0,7);ctx.fill();
+  const fur='#c9a068',dark='#8e6f45';
+  ctx.fillStyle=dark;ctx.fillRect(-.16,.1,.1,.15);ctx.fillRect(.06,.1,.1,.15);
+  ctx.fillStyle=fur;rrect(-.2,-.14,.4,.3,.11);ctx.fill();      // 身体
+  ctx.fillStyle=dark;                                          // 耳朵
+  ctx.beginPath();ctx.arc(.07,-.28,.055,0,7);ctx.fill();
+  ctx.beginPath();ctx.arc(.24,-.26,.055,0,7);ctx.fill();
+  ctx.fillStyle=fur;rrect(.03,-.28,.24,.22,.09);ctx.fill();    // 头
+  ctx.fillStyle='#5c4426';rrect(.19,-.19,.11,.09,.04);ctx.fill(); // 口鼻
+  ctx.fillStyle='#1a1208';
+  ctx.beginPath();ctx.arc(.11,-.19,.022,0,7);ctx.fill();
+  ctx.beginPath();ctx.arc(.21,-.19,.022,0,7);ctx.fill();
+  ctx.strokeStyle='#f2f2f2';ctx.lineWidth=.02;                 // 爪子
+  for(let i=0;i<3;i++){ctx.beginPath();ctx.moveTo(.16+i*.03,.06);ctx.lineTo(.2+i*.03,.14);ctx.stroke();}
+  ctx.restore();
+}
+/* ===== 弹道模型 ===== */
+function drawShot(s){
+  ctx.save();ctx.translate(s.x,s.y);ctx.rotate(s.a||0);
+  if(s.kind==='orb'){
+    // 奥术弹：光晕 + 拖尾
+    const g=.7+.3*Math.sin(gt*18);
+    ctx.globalAlpha=.28;ctx.fillStyle=s.color;
+    ctx.beginPath();ctx.moveTo(-.34,0);ctx.lineTo(0,-.075);ctx.lineTo(0,.075);ctx.closePath();ctx.fill();
+    ctx.globalAlpha=.3*g;
+    ctx.beginPath();ctx.arc(0,0,.17,0,7);ctx.fill();
+    ctx.globalAlpha=1;
+    ctx.fillStyle=s.color;ctx.beginPath();ctx.arc(0,0,.085,0,7);ctx.fill();
+    ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(-.015,-.015,.035,0,7);ctx.fill();
+  }else{
+    // 箭矢：杆 + 箭头 + 尾羽
+    ctx.globalAlpha=.3;ctx.strokeStyle=s.color;ctx.lineWidth=.05;
+    ctx.beginPath();ctx.moveTo(-.42,0);ctx.lineTo(-.12,0);ctx.stroke();
+    ctx.globalAlpha=1;
+    ctx.strokeStyle='#d8c9a8';ctx.lineWidth=.035;ctx.lineCap='round';
+    ctx.beginPath();ctx.moveTo(-.2,0);ctx.lineTo(.1,0);ctx.stroke();
+    ctx.fillStyle=s.color;
+    poly([[.2,0],[.05,-.075],[.08,0],[.05,.075]]);ctx.fill();
+    ctx.strokeStyle=s.color;ctx.lineWidth=.028;
+    ctx.beginPath();ctx.moveTo(-.2,0);ctx.lineTo(-.28,-.075);ctx.moveTo(-.2,0);ctx.lineTo(-.28,.075);ctx.stroke();
+  }
+  ctx.restore();
+}
 function draw(){
   ctx.setTransform(dpr*cell,0,0,dpr*cell,0,0);
   ctx.clearRect(0,0,COLS,ROWS);
@@ -713,12 +895,8 @@ function draw(){
   ctx.textAlign='center';
   // 英雄
   for(const h of heroes){
-    const b=CLASSES[h.cls],x=h.col+.5,y=h.row+.5;
-    ctx.fillStyle=h.alive?(h.flash>0?'#ffffff':b.color):'#333c4c';
-    ctx.globalAlpha=h.alive?1:.45;
-    ctx.fillRect(x-.32,y-.32,.64,.64);
-    ctx.globalAlpha=1;
-    if(h.tier){ctx.strokeStyle='#f0c46a';ctx.lineWidth=.05;ctx.strokeRect(x-.34,y-.34,.68,.68);}
+    const x=h.col+.5,y=h.row+.5;
+    drawHero(h,x,y);
     if(h.alive){
       // 血条（等级框在左端）
       ctx.fillStyle='rgba(0,0,0,.6)';ctx.fillRect(x-.24,y-.53,.58,.08);
@@ -739,8 +917,7 @@ function draw(){
   // 熊灵
   for(const br of bears){
     const y=br.row+.5;
-    ctx.fillStyle='#c9a068';
-    ctx.fillRect(br.x-.26,y-.26,.52,.52);
+    drawBear(br,br.x,y);
     ctx.fillStyle='rgba(0,0,0,.6)';ctx.fillRect(br.x-.28,y-.42,.56,.08);
     ctx.fillStyle='#6ee7a0';ctx.fillRect(br.x-.28,y-.42,.56*Math.max(br.hp/br.maxHp,0),.08);
   }
@@ -753,10 +930,7 @@ function draw(){
     ctx.fillStyle='rgba(0,0,0,.6)';ctx.fillRect(m.x-m.r,y-m.r-.15,m.r*2,.08);
     ctx.fillStyle='#6ee7a0';ctx.fillRect(m.x-m.r,y-m.r-.15,m.r*2*Math.max(m.hp/m.maxHp,0),.08);
   }
-  for(const s of shots){
-    ctx.fillStyle=s.color;
-    ctx.beginPath();ctx.arc(s.x,s.y,.09,0,7);ctx.fill();
-  }
+  for(const s of shots)drawShot(s);
   for(const f of fx){
     const k=1-f.t/f.max;
     if(f.type==='line'){
@@ -771,10 +945,65 @@ function draw(){
     }else if(f.type==='fall'){
       // 冰雹从上方坠落：k=0在高处，k=1落地
       const fy=f.y-1.5*(1-k);
-      ctx.strokeStyle=f.color;ctx.globalAlpha=.35+.5*k;ctx.lineWidth=.07;
-      ctx.beginPath();ctx.moveTo(f.x,fy-.22);ctx.lineTo(f.x,fy);ctx.stroke();
-      ctx.beginPath();ctx.arc(f.x,fy,.07,0,7);
-      ctx.fillStyle=f.color;ctx.fill();
+      ctx.globalAlpha=.35+.5*k;
+      ctx.strokeStyle='rgba(255,255,255,.55)';ctx.lineWidth=.03;
+      ctx.beginPath();ctx.moveTo(f.x,fy-.34);ctx.lineTo(f.x,fy-.14);ctx.stroke();
+      ctx.fillStyle=f.color;                       // 冰棱（菱形）
+      poly([[f.x,fy+.09],[f.x-.055,fy-.05],[f.x,fy-.16],[f.x+.055,fy-.05]]);ctx.fill();
+      ctx.fillStyle='rgba(255,255,255,.75)';
+      poly([[f.x,fy+.02],[f.x-.02,fy-.05],[f.x,fy-.13]]);ctx.fill();
+      ctx.globalAlpha=1;
+    }else if(f.type==='bolt'){
+      // 火球：带拖尾的飞行弹 + 落点爆闪
+      const fp=Math.min(1,k/.62), bx=f.x1+(f.x2-f.x1)*fp, by=f.y1+(f.y2-f.y1)*fp;
+      const ang=Math.atan2(f.y2-f.y1,f.x2-f.x1);
+      if(fp<1){
+        ctx.save();ctx.translate(bx,by);ctx.rotate(ang);
+        ctx.globalAlpha=.35;ctx.fillStyle=f.color;
+        poly([[-.5,0],[0,-.1],[0,.1]]);ctx.fill();
+        ctx.globalAlpha=.45;
+        ctx.beginPath();ctx.arc(0,0,.19,0,7);ctx.fill();
+        ctx.globalAlpha=1;
+        ctx.beginPath();ctx.arc(0,0,.1,0,7);ctx.fill();
+        ctx.fillStyle='#fff4c0';ctx.beginPath();ctx.arc(0,0,.045,0,7);ctx.fill();
+        ctx.restore();
+      }else{
+        const e=(k-.62)/.38;
+        ctx.globalAlpha=(1-e)*.8;ctx.fillStyle=f.color;
+        ctx.beginPath();ctx.arc(f.x2,f.y2,.15+e*.5,0,7);ctx.fill();
+      }
+      ctx.globalAlpha=1;
+    }else if(f.type==='zap'){
+      // 闪电链：折线电弧
+      const N=6,dx=(f.x2-f.x1)/N,dy=(f.y2-f.y1)/N;
+      const nx=-(f.y2-f.y1),ny=(f.x2-f.x1),nl=Math.hypot(nx,ny)||1;
+      ctx.globalAlpha=(1-k)*(.7+.3*Math.random());
+      for(let pass=0;pass<2;pass++){
+        ctx.strokeStyle=pass?'#ffffff':f.color;
+        ctx.lineWidth=pass?.03:.085;
+        ctx.beginPath();ctx.moveTo(f.x1,f.y1);
+        for(let i=1;i<N;i++){
+          const o=Math.sin(f.seed+i*2.3+pass)*.16*(1-Math.abs(i/N-.5)*1.2);
+          ctx.lineTo(f.x1+dx*i+nx/nl*o,f.y1+dy*i+ny/nl*o);
+        }
+        ctx.lineTo(f.x2,f.y2);ctx.stroke();
+      }
+      ctx.globalAlpha=1;
+    }else if(f.type==='slash'){
+      // 战士挥砍：弧形刀光
+      ctx.save();ctx.translate(f.x,f.y);ctx.rotate(f.a);
+      ctx.globalAlpha=1-k;
+      ctx.strokeStyle=f.color;ctx.lineWidth=.11*(1-k)+.03;
+      ctx.beginPath();ctx.arc(0,0,f.rr*(.7+.5*k),-1.05,1.05);ctx.stroke();
+      ctx.strokeStyle='rgba(255,255,255,.85)';ctx.lineWidth=.03;
+      ctx.beginPath();ctx.arc(0,0,f.rr*(.7+.5*k),-.85,.85);ctx.stroke();
+      ctx.restore();ctx.globalAlpha=1;
+    }else if(f.type==='heal'){
+      // 治疗：上浮的十字
+      const hy=f.y-.55*k;
+      ctx.globalAlpha=(1-k)*.9;ctx.fillStyle=f.color;
+      ctx.fillRect(f.x-.035,hy-.11,.07,.22);
+      ctx.fillRect(f.x-.11,hy-.035,.22,.07);
       ctx.globalAlpha=1;
     }else if(f.type==='spark'){
       const d=.25+k*1.1;
@@ -1226,6 +1455,7 @@ document.getElementById('startBtn').addEventListener('click',begin);
 let last=performance.now();
 function loop(now){
   const dt=Math.min((now-last)/1000,.05);last=now;
+  gt+=dt;
   if(running&&!over)update(dt*speed);
   draw();
   requestAnimationFrame(loop);

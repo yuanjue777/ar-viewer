@@ -41,7 +41,8 @@
   - 220–320 = `reset` `waveComp`(每波构成) `startWave` `spawnMob` `damage` `onKill` `physDamage/magDamage` `gainXp` `levelFx`
   - **322–532 = `update(dt)` 主循环**：怪物AI、英雄选敌与攻击、召唤熊、冰雹波次(hails)、特效与收入结算都在里面
   - 532–690 = `cleaveAround` `berserkRatio` `effAtk` `effInterval`(攻速公式) `attack` `shotHit` `hitUnit` `frontInRange`(射程判定) **`castSkill`(所有主动技能实现)** `endGame` `begin`
-  - 692–820 = `draw()` 渲染 + `showToast` + `updateHUD`(每0.25s刷新HP/MP)
+  - 690–870 = **矢量模型层**：`shade/rrect/poly` 工具 + `ANIM_T`(攻击动作时长)/`gt`(全局时间) + `drawHero`(三职业模型) + `drawBear` + `drawShot`(箭矢/奥术弹)
+  - 870–1000 = `draw()` 渲染(含 fx 分支：line/aoe/fall/spark/**bolt火球/zap闪电/slash挥砍/heal治疗**) + `showToast` + `updateHUD`(每0.25s刷新HP/MP)
   - 823–1120 = **DOM/UI**：`renderInfo`(信息区+英雄面板) `setShop/closeShop/shopHTML/refreshAfford` `buyPack` `autoLearnPass` `buyEquip` `renderInv`(背包) `applyItem`(学技能/穿装备)
   - 1118–1453 = 拖拽(drag)、双击(lastTap)、canvas 点击、主循环 `loop`
 - **发布 Artifact**（用户在手机上就是看这个链接测试）：`python3 www/_build_artifact.py <输出路径>` 把三个文件内联成单文件（去掉 doctype/html/head/body），再用 Artifact 工具发布，**文件路径保持不变**才能保住同一个 URL：https://claude.ai/code/artifact/463665a7-a08f-4cd2-b42d-0b95f1d6d779
@@ -56,6 +57,8 @@
 - **怪物属性**（MOBS）：普通 40血/1.1速/8攻，快速 26/1.9/6，坦克 150/0.7/14（6甲15%抗，扣2命），Boss 700/0.55/30（10甲30%抗，扣3命）。
 - **怪物AI**：出生点在行附近随机散开（不固定格子中心），沿自己路线向左走；仇恨半径 3.2；**攻击距离按种类**（atkR：快速0.42/普通0.62/坦克0.85/Boss1.05，**都<战士射程1.15**保证近战能还手）；仇恨内只以 0.7格/秒**轻微纵向贴靠**，一进攻击范围就停下开打（不会跑到英雄格子上）；**不排队**，各走各的，只在几乎重叠时纵向轻推 0.5格/秒。
 - 英雄选敌用 y 距离筛同线（战士±0.7格/游侠±1.6格）。有伤害飘字、AOE范围圈/单体弹道线特效。
+- **单位外观**：英雄不再是方块，改 canvas 矢量模型（法师=尖帽长袍+发光宝珠法杖；游侠=兜帽披风+弓+背后箭袋；战士=头盔胸甲+盾+挥砍的剑），带呼吸浮动、受击闪白、转职脚下金环、攻击动作(`h.anim`)。熊灵也有模型。**怪物仍是方块**（用户没要求，可随时加）。
+- **弹道/技能样式**：游侠=箭矢(杆+箭头+尾羽，含拖影)，法师=奥术弹(光晕+锥形拖尾)，战士=弧形刀光(slash)；火球=飞行火弹+落点爆闪(bolt)，闪电链=锯齿电弧(zap)，冰风暴=菱形冰棱坠落，治愈祷言=上浮绿十字(heal)。
 
 ## 方块战线·技能与装备系统（用户会持续加新技能/装备，技能实现在 rpg.js 的 `SKB` 表，装备在 `EQUIPS` 表）
 - 规则：技能书从商店买（指定系200金4本，全池roll 125），进背包后**拖到英雄上学习**，同名书升级（**上限Lv10**），每英雄4技能位。拖到已占用的技能栏/装备栏=覆盖(会提示)；双击装备栏=脱下退回背包。背包最右"出售装备"只卖装备(**技能书不可出售**)，价白8/绿18/蓝40/紫80——各档roll回本率58%/48%/40%。蓝=稀有、绿=普通、紫=史诗。被动直接生效，主动自动释放（各自CD/蓝耗）。系数吃英雄力/敏/智属性。特效约定：**AOE显示范围圈，指定单体显示弹道线**。**买新技能书会清掉上次没用完的旧书**（不累积）。
