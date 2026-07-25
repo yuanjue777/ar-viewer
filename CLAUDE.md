@@ -29,26 +29,75 @@
 - **iPhone 路线（用户最终选用）**：PWA + AR Quick Look（ARKit），效果好，免 Google/ARCore/Mac。`server/viewer.html` 已配 PWA（可加到主屏）。
 - **网页小游戏**（零依赖，先网页迭代后打包）：`www/td.html` 塔防（单文件，竖屏，已完成没再动）；`www/rpg.html`+`rpg.css`+`rpg.js` 方块战线（横屏，主力项目，详见下面几节）。
 
-## 方块战线·代码架构（⚠️ 改代码前先看这节）
+## 方块战线·代码架构（⚠️ 改代码前先看这节，别遍历代码）
 - **文件已拆分**（为省 token，别再合回单文件）：
-  - `www/rpg.html`（约50行）= 骨架 + DOM 结构（header/canvas/信息区/商店条/背包条）
-  - `www/rpg.css`（约174行）= 全部样式，`:root` 里是配色变量
-  - `www/rpg.js`（约1830行）= 全部逻辑，**几乎所有改动都在这里**
-- **改动方式**：**不要整文件 Read**。先 `grep -n "关键词" www/rpg.js` 定位，再用 Edit 局部替换。数值/表格都在文件前 150 行，改数值只需要读那一段。
-- **rpg.js 结构地图**（按顺序）：
-  - 1–160 行 = **全部配置表**：`CLASSES`(职业基础) / `ADV`+`SPECS`(转职支线与专精) / `HERO_COSTS` / `xpNeed` / `armorRed` / `SKB`(技能池) / `QC`+`QN`+`CATS`(品质色/属性色) / `PACK_COST,ROLL_COST,PACK_N` / `SELL_EQ`+`canSell` / `QUALS` / `EQUIPS`(装备池,含精英池 `pool:'elite'`) / `EQ_TIERS`(三档roll) / `MOBS`(怪物属性含 atkR) / `mineCost,millCost` / `WAVE_EVERY` / `AGGRO_R,VEER_SPD,BEAR_MAX_X`
-  - 160–200 = `TRIALS`(四大试炼表) + 全局状态变量 + `resize`(内含 buildBG)
-  - 196–240 = `makeHero` + **`calc(h)`（英雄属性总结算，改属性/装备/专精加成都动这里）**
-  - 243–320 = `reset` `waveComp` `startWave` `spawnMob(type,opt)` **`trialReady/startTrial`(试炼)**
-  - 321–400 = `dnum` `damage`(含试炼奖励结算) **`dropChest/openChest`(宝箱)** `onKill` `physDamage/magDamage` `gainXp` `levelFx`
-  - **405–645 = `update(dt)` 主循环**：怪物AI、英雄选敌与攻击、召唤熊、冰雹(hails)、**火焰风暴(storms)**、试炼CD、特效与收入结算
-  - 646–812 = `cleaveAround` `berserkRatio` `effAtk` `effInterval` `attack` `shotHit` `hitUnit` `frontInRange` **`castSkill`(所有主动技能实现)** `endGame` `begin`
-  - 814–1195 = **矢量模型层**：`shade/rrect/poly` + `ANIM_T`/`gt` + `drawHero`(843) `drawMob`(968) `drawChest`(1057) **`buildBG`(1078,离屏背景)** `drawShot`(1170)
-  - 1196–1390 = `draw()` 渲染(fx 分支：line/aoe/fall/spark/bolt火球/zap闪电/slash挥砍/heal治疗/**flame火焰风暴**) + `showToast` + `updateHUD`(每0.25s刷新HP/MP+试炼CD)
-  - 1389–1700 = **DOM/UI**：`renderInfo` `setShop/closeShop/shopHTML/refreshAfford` `buyPack` `autoLearnPass` `buyEquip` **`renderTrials`(1593)** `renderInv` `applyItem`
-  - 1700–1833 = 拖拽(drag)、双击、canvas 点击(含点宝箱)、主循环 `loop`
-- **发布 Artifact**（用户在手机上就是看这个链接测试）：`python3 www/_build_artifact.py <输出路径>` 把三个文件内联成单文件（去掉 doctype/html/head/body），再用 Artifact 工具发布，**文件路径保持不变**才能保住同一个 URL：https://claude.ai/code/artifact/463665a7-a08f-4cd2-b42d-0b95f1d6d779
-- 改完 js 后可 `node --check www/rpg.js` 快速验语法。
+  - `www/rpg.html`（57行）= DOM 骨架：header / canvas / `#dock`商店条(含4个 `.tile.trial`) / `#info`信息区 / `#inv`背包 / `#overlay`开始页
+  - `www/rpg.css`（174行）= 全部样式，`:root` 里是配色变量
+  - `www/rpg.js`（约1810行）= 全部逻辑，**几乎所有改动都在这里**
+- **改动方式**：**永远不要整文件 Read `rpg.js`**。先查下面的"改什么→去哪里"表，用 `grep -n "锚点" www/rpg.js` 定位（行号会漂移，锚点不会），再 Edit 局部替换。改完 `node --check www/rpg.js`。
+
+### 改什么 → 去哪里（锚点 grep 关键词 / 大致行号）
+| 想改的东西 | 去哪里（grep 锚点） | 行号约 |
+|---|---|---|
+| 职业基础属性/射程/成长 | `const CLASSES=` | 7 |
+| 转职支线、专精效果文案 | `const ADV=` / `const SPECS=` | 16 / 30 |
+| 转职等级与花费 | `const ADV_LV=` | 41 |
+| 英雄定价 | `const HERO_COSTS=` | 43 |
+| **加/改技能（技能表）** | `const SKB=` | 50 |
+| 品质颜色/属性系颜色 | `const QC=` / `const CATS=` | 66 / 76 |
+| 技能书价格、每包本数 | `const PACK_COST=` | 77 |
+| 装备出售价 | `const SELL_EQ=` | 79 |
+| **加/改装备（含精英池 `pool:'elite'`）** | `const EQUIPS=` | 90 |
+| 装备roll三档权重/价格 | `const EQ_TIERS=` | 111 |
+| 装备属性显示文案 | `function eqDesc` | 125 |
+| **怪物属性/攻击距离/颜色** | `const MOBS=` | 144 |
+| 金矿/伐木场费用与上限 | `mineCost` / `INCOME_MAX` | 151 |
+| 每波间隔、仇恨半径、熊活动上限、**英雄推进速度** | `const WAVE_EVERY` / `AGGRO_R` / `BEAR_MAX_X` / `HERO_SPD` | 154–160 |
+| **四大试炼（CD/开放波数/奖励文案）** | `const TRIALS=` | 165 |
+| 画布尺寸/背景重建 | `function resize` | 186 |
+| 英雄初始字段 | `function makeHero` | 198 |
+| **英雄总属性结算（装备/专精/技能加成）** | `function calc(h)` | 205 |
+| 开局初始金币/木头/命 | `function reset` | 245 |
+| **每波怪的构成** | `function waveComp` | 255 |
+| **整波一起刷怪的队形** | `function startWave` | 270 |
+| 怪物生成（含试炼/宝箱标记） | `function spawnMob` | 279 |
+| **试炼开启逻辑与难度** | `function startTrial` | 300 |
+| 击杀结算/试炼奖励 | `function damage` | 331 |
+| **宝箱掉落与开箱奖励** | `dropChest` / `openChest` | 350 / 354 |
+| 经验与升级 | `function gainXp` | 387 |
+| **主循环** | `function update(dt)` | 411 |
+| ├ 怪物AI/寻敌/推进 | 注释 `/* 怪物：沿自己的路线` | 425 |
+| ├ 熊灵行为 | 注释 `/* 熊灵 */` | 471 |
+| ├ 冰风暴波次 | 注释 `/* 暴风雪冰雹` | 492 |
+| ├ 火焰风暴DoT | 注释 `/* 火焰风暴：延迟` | 520 |
+| ├ 试炼CD计时 | 注释 `/* 试炼CD` | 544 |
+| └ **英雄：回蓝/放技能/推进/选敌/攻击** | 注释 `/* 英雄 */` | 548 |
+| 溅射/血怒/攻速公式 | `cleaveAround` / `berserkRatio` / `effInterval` | 653–669 |
+| 普攻结算（暴击/毒/溅射/弹道） | `function attack` | 676 |
+| 英雄挨打/反伤/格挡 | `function hitUnit` | 707 |
+| **所有主动技能的实现** | `function castSkill` | 741 |
+| 颜色工具/圆角矩形/多边形 | `shade` / `rrect` / `poly` | 827–844 |
+| **英雄模型（三职业外观）** | `function drawHero` | 850 |
+| 熊灵模型 | `function drawBear` | 955 |
+| **怪物模型（四种）** | `function drawMob` | 975 |
+| 宝箱模型 | `function drawChest` | 1064 |
+| **背景（只画左侧村庄）** | `function buildBG` | 1085 |
+| 弹道模型（箭矢/奥术弹） | `function drawShot` | 1136 |
+| **渲染主函数 + 所有 fx 特效分支** | `function draw()` | 1162 |
+| 顶栏数值 + 面板HP/MP/间隔实时刷新 | `function updateHUD` | 1339 |
+| **信息区/英雄面板（属性网格、技能栏、装备栏）** | `function renderInfo` | 1358 |
+| 商店内容（技能/装备/金矿/伐木场） | `shopHTML` | 1505 |
+| 试炼图标CD扫圈刷新 | `function renderTrials` | 1563 |
+| 买技能书 / 自动学习 / 买装备 | `buyPack` / `autoLearnPass` / `buyEquip` | 1581+ |
+| 背包渲染 / 学技能穿装备 | `renderInv` / `applyItem` | 1620+ |
+| 拖拽、双击脱装备 | `let drag=null` | 1681 |
+| **canvas 点击（选英雄/点宝箱）** | `cv.addEventListener('pointerdown'` | 1764 |
+| 启动/倍速按钮 | `launchBtn` / `speedBtn` | 1785 |
+
+- **发布 Artifact**（用户在手机上就是看这个链接测试）：`python3 www/_build_artifact.py <输出路径>` 把三个文件内联成单文件，再用 Artifact 工具发布，**传 url 参数**才能保住同一个 URL：https://claude.ai/code/artifact/463665a7-a08f-4cd2-b42d-0b95f1d6d779
+- **本地验证手段**（省事又省token）：容器里有 Chromium + 全局 playwright，可跑无头浏览器截图看效果：
+  `NODE_PATH=/opt/node22/lib/node_modules node 脚本.js`，executablePath 用 `/opt/pw-browsers/chromium-1194/chrome-linux/chrome`。
+  测试时可把内联出来的 test.html 临时改数值（如 gold=9999、给英雄预置技能）再截图。
 
 ## 方块战线·玩法现状
 - 横屏。左侧 3×3 出兵格**按列定职业**：蓝法师/绿游侠/红战士；中间 **3×13** 横向战线（战斗区加长过4格，COLS=16），怪从右来；最多 3 英雄（定价 50/100/200）。
@@ -76,7 +125,7 @@
   - 蓝：雷鸣弓 攻击间隔-0.1且+20攻速；穷鬼盾 固定格挡普攻伤害20（先格挡后吃护甲）；法力指环 回蓝+8/s。
   - 紫：魔龙枪 +20敏捷+2格射程。
   - 装备加的力/敏同样吃派生（力加血、敏加甲加攻速）；CD缩减上限50%。
-- **英雄面板**（点英雄时信息区）：左=名字/等级/经验+属性网格（HP/MP/攻/攻速/甲/抗/力敏智/CD/格挡），中=**自动学习开关**+4技能栏（空栏虚线），右=2×3装备栏；点栏位看说明。
+- **英雄面板**（点英雄时信息区）：左=名字/等级/经验+属性网格（HP/MP/攻击/攻速/**当前攻击间隔+每秒攻击次数**/甲/抗/力敏智/CD/格挡；间隔跟HP/MP一样每0.25s原地刷新，因为血怒会动态改攻速），中=**自动学习开关**+4技能栏（空栏虚线），右=2×3装备栏；点栏位看说明。
 - **技能配色约定**：技能栏/背包书的**边框颜色=品质**（绿/蓝/紫），**文字颜色=属性系**（力红/敏绿/智蓝）。
 - **自动学习**（技能栏左侧按钮，魔兽启用型技能式金色脉动发光）：开启后该英雄会自动吃掉商店刷出的**已学同名技能书**来升级（满Lv10不吃）；开启瞬间也会结算一次背包里的存书。多个英雄同时开启则按购买顺序分配。
 - 品质=绿/蓝/紫，roll权重 绿3/蓝2/紫1。**法力系统**：maxMP=10+智×3，回蓝=1+智×0.04/s(+装备)，主动技能耗蓝；英雄面板HP/MP由 updateHUD 每0.25s原地刷新(#hpVal/#mpVal)，不重建DOM；**主动技能释放距离=英雄射程**（狙击潜质同步加长）。血条下有蓝条，经验条紫色(魔兽风)。点技能/装备栏=查看详情（不是长按）。

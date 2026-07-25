@@ -1348,6 +1348,9 @@ function updateHUD(){
   if(h&&hv&&mv){
     hv.textContent=Math.ceil(h.hp)+'/'+h.maxHp;
     mv.textContent=Math.floor(h.mp)+'/'+h.maxMp;
+    // 攻击间隔会随血怒(狂战士)动态变化，跟HP/MP一样原地刷新
+    const iv=document.getElementById('itvVal');
+    if(iv)iv.textContent=effInterval(h).toFixed(2)+'s';
   }
 }
 function selHero(){return sel?heroAt(sel.col,sel.row):null;}
@@ -1404,7 +1407,8 @@ function renderInfo(){
         <span>HP <b id="hpVal">${Math.ceil(h.hp)}/${h.maxHp}</b></span>
         <span>MP <b id="mpVal">${Math.floor(h.mp)}/${h.maxMp}</b> +${h.mpRegen.toFixed(1)}/s</span>
         <span>攻击 <b>${h.atk}</b></span>
-        <span>攻速 <b>${h.ias}</b> ${h.interval.toFixed(2)}s</span>
+        <span>攻速 <b>${h.ias}</b></span>
+        <span>间隔 <b id="itvVal">${effInterval(h).toFixed(2)}s</b> <span class="dim">${(1/effInterval(h)).toFixed(2)}次/s</span></span>
         <span>护甲 <b>${h.armor}</b> ${Math.round(armorRed(h.armor)*100)}%</span>
         <span style="color:#ff9d9d">力 <b>${h.str}</b></span>
         <span style="color:#8ce8a8">敏 <b>${h.agi}</b></span>
