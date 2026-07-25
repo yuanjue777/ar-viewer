@@ -339,7 +339,9 @@ const MOBS={
 const INCOME_MAX=10;
 function mineCost(lv){return 45+30*(lv-1);}
 function millCost(lv){return 35+25*(lv-1);}
-const WAVE_EVERY=30;
+const WAVE_EVERY=35;
+/* 怪物AI：仇恨范围>攻击范围，仇恨内只做轻微纵向贴靠 */
+const AGGRO_R=3.2, MOB_ATK_R=.62, VEER_SPD=.7;
 
 /* ================= 状态 ================= */
 let gold,wood,lives,wave,queue,spawnT,incomeT,waveT,cleared,hudAcc;
@@ -405,19 +407,6 @@ function calc(h){
 }
 function heroAt(c,r){return heroes.find(h=>h.col===c&&h.row===r);}
 function bearIn(row){return bears.find(b=>b.row===row&&!b.dead);}
-function frontUnit(row){
-  const br=bearIn(row);
-  if(br)return br;
-  let best=null;
-  for(const h of heroes)if(h.alive&&h.row===row&&(!best||h.col>best.col))best=h;
-  return best;
-}
-function rowDefended(row){return !!frontUnit(row);}
-function nearestDefendedRow(row){
-  let best=-1,bd=99;
-  for(let r=0;r<ROWS;r++)if(rowDefended(r)&&Math.abs(r-row)<bd){bd=Math.abs(r-row);best=r;}
-  return best;
-}
 function dispName(h){return h.tier?advOf(h).name:CLASSES[h.cls].name;}
 
 /* ================= 流程 ================= */
@@ -431,7 +420,9 @@ function reset(){
 }
 function waveComp(w){
   // 数量封顶30只（约27秒出完，不与下一波堆叠），后期靠强度而非数量
-  const list=[];const n=Math.min(30,4+w*2);
+  // 最后一波：大量小怪 + 多个Boss 的总攻
+  const fin=w>=TOTAL_WAVES;
+  const list=[];const n=fin?45:Math.min(30,4+w*2);
   for(let i=0;i<n;i++){
     let t='normal';
     if(w>=3&&i%3===2)t='fast';
@@ -439,6 +430,7 @@ function waveComp(w){
     list.push(t);
   }
   if(w%5===0)list.push('boss');
+  if(fin)list.push('boss','boss');
   return list;
 }
 function startWave(){
@@ -452,8 +444,10 @@ function spawnMob(type){
   const b=MOBS[type];
   let mul=(1+0.12*(wave-1))*Math.pow(1.045,wave-1);
   if(wave>15)mul*=Math.pow(1.06,wave-15);
+  // 不再固定在格子正中：在所选行附近随机散开
   const row=Math.floor(Math.random()*ROWS);
-  mobs.push({type,row,y:row,x:COLS+.5,
+  const y=Math.max(0,Math.min(ROWS-1,row+(Math.random()*.7-.35)));
+  mobs.push({type,row,y,x:COLS+.5+Math.random()*.4,
     hp:b.hp*mul,maxHp:b.hp*mul,spd:b.spd,atk:b.atk*mul,r:b.r,
     reward:b.reward,xp:b.xp,lives:b.lives,armor:b.armor,mres:b.mres,
     color:b.color,cd:0,fight:false,slowT:0,slowF:0});
@@ -538,46 +532,49 @@ function update(dt){
   }
   hudAcc+=dt;
   if(hudAcc>=.25){hudAcc=0;updateHUD();}
-  const STOP=HCOLS+.35;
-  /* 仇恨：本行无守军就转去最近有守军的行 */
+  /* 怪物：沿自己的路线向左推进，仇恨范围内会稍微靠向目标，进入攻击范围就停下开打 */
   for(const m of mobs){
-    if(m.x<=STOP+2&&!rowDefended(m.row)){
-      const r=nearestDefendedRow(m.row);
-      if(r>=0)m.row=r;
+    if(m.slowT>0)m.slowT-=dt;
+    const spd=m.spd*(m.slowT>0?1-m.slowF:1);
+    m.fight=false;
+    // 找仇恨范围内最近的我方单位（英雄或熊灵）
+    let tgt=null,td=1e9;
+    for(const h of heroes){
+      if(!h.alive)continue;
+      const d=Math.hypot((h.col+.5)-m.x,h.row-m.y);
+      if(d<td){td=d;tgt=h;}
     }
-    if(m.y!==m.row){
-      const d=m.row-m.y,step=2*dt;
-      m.y=Math.abs(d)<=step?m.row:m.y+Math.sign(d)*step;
+    for(const br of bears){
+      if(br.dead)continue;
+      const d=Math.hypot(br.x-m.x,br.row-m.y);
+      if(d<td){td=d;tgt=br;}
     }
-  }
-  for(let r=0;r<ROWS;r++){
-    const lane=mobs.filter(m=>m.row===r).sort((a,b)=>a.x-b.x);
-    for(let i=0;i<lane.length;i++){
-      const m=lane[i],ahead=lane[i-1];
-      const blocked=ahead&&(m.x-ahead.x)<.62;
-      const spd=m.spd*(m.slowT>0?1-m.slowF:1);
-      if(m.slowT>0)m.slowT-=dt;
-      m.fight=false;
-      const br=bearIn(r);
-      if(br&&m.x>br.x&&m.x-br.x<=.68){
-        m.cd-=dt;
-        if(m.cd<=0){m.cd=1;hitUnit(br,m);}
-        continue;
-      }
-      if(m.x<=STOP&&rowDefended(r)){m.fight=true;}
-      else if(!blocked){
-        m.x-=spd*dt;
-        if(m.x< -0.5){m.dead=true;lives-=m.lives;if(lives<=0){lives=0;endGame(false);}updateHUD();}
-      }
-      if((m.fight||(blocked&&m.x<=STOP+1.1))&&rowDefended(r)){
-        m.cd-=dt;
-        if(m.cd<=0){
-          m.cd=1;
-          const u=frontUnit(r);
-          if(u)hitUnit(u,m);
-        }
+    const reach=MOB_ATK_R+m.r;
+    if(tgt&&td<=reach){          // 进入攻击范围：站定输出，不再贴靠
+      m.fight=true;
+      m.cd-=dt;
+      if(m.cd<=0){m.cd=1;hitUnit(tgt,m);}
+      continue;
+    }
+    // 前方有同伴挡路就等一等，避免叠在一起
+    let blocked=false;
+    for(const o of mobs){
+      if(o===m||o.dead)continue;
+      if(o.x<m.x&&m.x-o.x<.6&&Math.abs(o.y-m.y)<.5){blocked=true;break;}
+    }
+    if(!blocked){
+      m.x-=spd*dt;
+      if(m.x< -0.5){m.dead=true;lives-=m.lives;if(lives<=0){lives=0;endGame(false);}updateHUD();}
+    }
+    // 仇恨范围内：纵向稍微靠一点（不会跑到英雄格子上）
+    if(tgt&&td<=AGGRO_R){
+      const dy=tgt.row-m.y;
+      if(Math.abs(dy)>.02){
+        const step=Math.min(Math.abs(dy),VEER_SPD*dt)*Math.sign(dy);
+        m.y=Math.max(0,Math.min(ROWS-1,m.y+step));
       }
     }
+    m.row=Math.max(0,Math.min(ROWS-1,Math.round(m.y)));   // 派生所在行
   }
   /* 熊灵 */
   for(const br of bears){
@@ -671,8 +668,8 @@ function update(dt){
     let best=null;
     for(const m of mobs){
       if(m.dead)continue;
-      if(h.cls==='archer'&&Math.abs(m.row-h.row)>1)continue;
-      if(h.cls==='warrior'&&m.row!==h.row)continue;
+      if(h.cls==='archer'&&Math.abs(m.y-h.row)>1.6)continue;
+      if(h.cls==='warrior'&&Math.abs(m.y-h.row)>.7)continue;
       const d=Math.hypot(m.x-hx,(m.y+.5)-hy);
       if(d<=h.range+m.r&&(!best||m.x<best.x))best=m;
     }
@@ -685,8 +682,8 @@ function update(dt){
         if(extra>0){
           const others=mobs.filter(m=>{
             if(m.dead||m===best)return false;
-            if(h.cls==='archer'&&Math.abs(m.row-h.row)>1)return false;
-            if(h.cls==='warrior'&&m.row!==h.row)return false;
+            if(h.cls==='archer'&&Math.abs(m.y-h.row)>1.6)return false;
+            if(h.cls==='warrior'&&Math.abs(m.y-h.row)>.7)return false;
             return Math.hypot(m.x-hx,(m.y+.5)-hy)<=h.range+m.r;
           }).sort((a,b)=>a.x-b.x).slice(0,extra);
           for(const o of others)attack(h,hx,hy,o,.7,'#7fe8ff');
