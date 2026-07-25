@@ -52,11 +52,16 @@ const SKB={
   '荆棘光环':  {cat:'str',q:'qgreen', short:'荆棘',cd:0, desc:'被动：反弹15%×等级伤害，附加0.4×力量×等级（魔法伤害）'},
   '攻击溅射':  {cat:'str',q:'qpurple',short:'溅射',cd:0, desc:'被动：普攻对目标1.5格内溅射(25+5×等级)%伤害，多重射击的额外攻击同样触发'},
   '大地震颤':  {cat:'str',q:'qpurple',short:'震颤',cd:14,mana:25,desc:'主动(25蓝)：震裂身前3×4.5格矩形地面，每0.5秒造成一次伤害，持续(3+0.5×等级)秒，每秒(10+力量×0.4×等级)魔法伤害，区域内敌人移速与攻速-30%'},
+  '忍受':      {cat:'str',q:'qblue',  short:'忍受',cd:18,mana:20,desc:'主动(20蓝)：进入忍受状态，持续(3+等级)秒，期间受到的伤害减少(20+3×等级)%（与其它减伤相乘），附近有敌人时自动开启'},
   '多重射击':  {cat:'agi',q:'qblue',  short:'多重',cd:0, desc:'被动：普攻额外射击 等级×0.5 个敌人（70%伤害）'},
   '沁毒射击':  {cat:'agi',q:'qgreen', short:'沁毒',cd:0, desc:'被动：普攻附带毒伤=敏捷×(0.35+0.15×等级)（魔法伤害）'},
+  '剑雨':      {cat:'agi',q:'qgreen', short:'剑雨',cd:8, mana:25,desc:'主动(25蓝)：天降剑雨，对半径2格内所有敌人造成(20+敏捷×0.5×等级)魔法伤害'},
   '狙击潜质':  {cat:'agi',q:'qpurple',short:'狙击',cd:0, desc:'被动：射程+0.3格×等级（同时加长主动技能释放距离）'},
   '致命一击':  {cat:'agi',q:'qpurple',short:'致命',cd:0, desc:'被动：(15+5×等级)%几率暴击，造成(140+10×等级)%伤害，金色飘字'},
   '召唤熊德':  {cat:'int',q:'qblue',  short:'熊德',cd:22,mana:50,desc:'主动(50蓝)：召近战熊灵冲锋接敌，属性随智力成长'},
+  '火元素':    {cat:'int',q:'qgreen', short:'火元素',cd:16,mana:30,desc:'主动(30蓝)：召唤1只火元素，远程(2.6格)喷火，每1.2秒造成(7+智×0.5×等级)魔法伤害，HP=70+智×3×等级，持续(10+1.5×等级)秒'},
+  '水元素':    {cat:'int',q:'qblue',  short:'水元素',cd:20,mana:40,desc:'主动(40蓝)：召唤2只水元素近战肉盾，各每1.1秒造成(6+智×0.42×等级)物理伤害，各HP=90+智×4×等级，持续(12+2×等级)秒'},
+  '地狱火':    {cat:'int',q:'qpurple',short:'地狱火',cd:30,mana:60,desc:'主动(60蓝)：召唤1只地狱火，每1.4秒造成(16+智×1.1×等级)物理伤害并对1.2格内溅射50%，HP=220+智×9×等级，持续(15+2×等级)秒'},
   '火球术':    {cat:'int',q:'qgreen', short:'火球',cd:7, mana:25,desc:'主动(25蓝)：单体魔法伤害（智力×3×等级+40），弹道线'},
   '冰风暴':    {cat:'int',q:'qpurple',short:'冰风',cd:10,mana:35,desc:'主动(35蓝)：暴风雪，固定区域每0.9秒对圈内全体造成(15+智×0.8×等级)魔法伤+减速，共(3+等级)波'},
   'CD光环':    {cat:'int',q:'qblue',  short:'CD环',cd:0, desc:'被动：主动技能冷却-4%×等级（与装备CD缩减叠加，总上限50%）'},
@@ -157,6 +162,14 @@ const WAVE_EVERY=35;
 const AGGRO_R=3.2, VEER_SPD=.7;
 /* 召唤物活动上限：守在左侧第4格附近，不追出去 */
 const BEAR_MAX_X=4.15;
+/* ===== 召唤物（bears 数组统一管理，kind 决定属性/外观）=====
+   hp/atk = 基础 + 智力×系数×技能等级；rng=攻击距离 ivl=攻击间隔 splash=溅射半径 */
+const MINIONS={
+  bear:    {name:'熊灵',  n:1,r:.28,spd:1.8,rng:.8, ivl:1,  hpB:120,hpI:6,  atkB:8, atkI:.7, dur:l=>12+2*l,   mag:false,splash:0,  color:'#c9a068'},
+  fire:    {name:'火元素',n:1,r:.26,spd:1.5,rng:2.6,ivl:1.2,hpB:70, hpI:3,  atkB:7, atkI:.5, dur:l=>10+1.5*l, mag:true, splash:0,  color:'#ff7a2f'},
+  water:   {name:'水元素',n:2,r:.26,spd:1.7,rng:.85,ivl:1.1,hpB:90, hpI:4,  atkB:6, atkI:.42,dur:l=>12+2*l,   mag:false,splash:0,  color:'#4fc3ff'},
+  infernal:{name:'地狱火',n:1,r:.38,spd:1.4,rng:1,  ivl:1.4,hpB:220,hpI:9,  atkB:16,atkI:1.1,dur:l=>15+2*l,   mag:false,splash:1.2,color:'#ff4d3d'},
+};
 /* 开波后英雄从左往右推进的速度（格/秒），清场后按1.8倍走回本阵 */
 const HERO_SPD=.55;
 
@@ -199,7 +212,7 @@ window.addEventListener('resize',()=>setTimeout(resize,60));
 function makeHero(cls,row,col){
   const h={cls,row,col,x:col+.5,lv:1,xp:0,tier:0,branch:-1,specLv:1,autoLearn:false,
     soulInt:0,deathAgi:0,equips:[],
-    skills:{},cds:{},cd:0,flash:0,anim:0,alive:true};
+    skills:{},cds:{},cd:0,flash:0,anim:0,endT:0,endF:0,alive:true};
   calc(h);h.hp=h.maxHp;
   return h;
 }
@@ -240,7 +253,6 @@ function calc(h){
   if(h.hp!==undefined)h.hp=Math.min(h.hp,h.maxHp);
 }
 function heroAt(c,r){return heroes.find(h=>h.col===c&&h.row===r);}
-function bearIn(row){return bears.find(b=>b.row===row&&!b.dead);}
 function dispName(h){return h.tier?advOf(h).name:CLASSES[h.cls].name;}
 
 /* ================= 流程 ================= */
@@ -482,15 +494,21 @@ function update(dt){
       if(m.dead||m.row!==br.row)continue;
       if(!best||m.x<best.x)best=m;
     }
+    const md=MINIONS[br.kind]||MINIONS.bear, by=br.row+.5+(br.oy||0);
     if(best){
       const gap=best.x-br.x;
-      if(gap>.8){br.x=Math.min(br.x+1.8*dt,br.maxX||BEAR_MAX_X);}   // 只在召唤者前方活动，不追远
+      if(gap>(br.rng||.8)){br.x=Math.min(br.x+(br.spd||1.8)*dt,br.maxX||BEAR_MAX_X);}   // 只在召唤者前方活动，不追远
       else if(br.cd<=0){
-        br.cd=1;
-        physDamage(best,br.atk,'#c9a068');
-        fx.push({type:'ring',x:best.x,y:best.y+.5,rr:.3,t:.15,max:.15,color:'#c9a068'});
+        br.cd=br.ivl||1;
+        if(br.mag)magDamage(best,br.atk,md.color);else physDamage(best,br.atk,md.color);
+        if(br.splash)for(const o of mobs){
+          if(o!==best&&!o.dead&&Math.hypot(o.x-best.x,o.y-best.y)<=br.splash+o.r)physDamage(o,br.atk*.5,md.color);
+        }
+        if((br.rng||.8)>1.2)   // 远程：喷射弹道
+          fx.push({type:'bolt',x1:br.x+.2,y1:by,x2:best.x,y2:best.y+.5,t:.25,max:.25,color:md.color});
+        fx.push({type:'ring',x:best.x,y:best.y+.5,rr:br.splash||.3,t:.15,max:.15,color:md.color});
       }
-    }else if(br.x>br.home){br.x=Math.max(br.home,br.x-1.8*dt);}
+    }else if(br.x>br.home){br.x=Math.max(br.home,br.x-(br.spd||1.8)*dt);}
   }
   bears=bears.filter(b=>!b.dead);
   /* 暴风雪冰雹：到点落下，小片AOE伤害+减速 */
@@ -578,6 +596,7 @@ function update(dt){
     if(!h.alive)continue;
     if(h.flash>0)h.flash-=dt;
     if(h.anim>0)h.anim-=dt;
+    if(h.endT>0)h.endT-=dt;   // 忍受 buff 计时
     const hx=h.x,hy=h.row+.5;
     const bb=h.skills['狂战士之血'];
     if(bb){
@@ -735,7 +754,7 @@ function shotHit(s,m){
 function hitUnit(u,m){
   if(u.isBear){
     u.hp-=m.atk;
-    dnum(u.x,u.row+.5,m.atk,'#ff8080');
+    dnum(u.x,u.row+.5+(u.oy||0),m.atk,'#ff8080');
     return;
   }
   const h=u;
@@ -746,6 +765,7 @@ function hitUnit(u,m){
     const miss=1-h.hp/h.maxHp;
     dmg*=1-Math.min(.7,miss*(.25+.08*bb));
   }
+  if(h.endT>0)dmg*=1-h.endF;   // 忍受：额外减伤（与其它减伤相乘）
   h.hp-=dmg;h.flash=.12;
   dnum(h.x,h.row+.5,dmg,'#ff8080');
   const th=h.skills['荆棘光环'];
@@ -755,6 +775,28 @@ function hitUnit(u,m){
     fx.push({type:'ring',x:h.x,y:h.row+.5,rr:.7,t:.35,max:.35,color:'#fff'});
     renderInfo();
   }
+}
+/* ===== 召唤类技能：技能名 → 召唤物种类 ===== */
+const SUMMONS={'召唤熊德':'bear','火元素':'fire','水元素':'water','地狱火':'infernal'};
+function summon(h,kind,lv){
+  const d=MINIONS[kind];
+  if(!mobs.length)return false;
+  if(bears.some(b=>!b.dead&&b.owner===h&&b.kind===kind))return false;   // 同种召唤物还活着就不重复召
+  // 德鲁伊·自然之力：召唤物属性+20%×专精等级
+  const sm=(h.tier&&advOf(h).key==='druid')?1+.2*h.specLv:1;
+  const hp=(d.hpB+h.int*d.hpI*lv)*sm, atk=(d.atkB+h.int*d.atkI*lv)*sm;
+  // 同排已有其它召唤物时错开站位，避免模型重叠
+  const cnt=bears.filter(b=>!b.dead&&b.row===h.row).length;
+  const base=(cnt%3)*.16;
+  for(let i=0;i<d.n;i++){
+    const oy=(d.n>1?(i-(d.n-1)/2)*.34:0)+(cnt?.14*(cnt%2?1:-1):0);   // 纵向错开显示
+    const x=h.x+.5+base+i*.35;
+    bears.push({isBear:true,kind,owner:h,row:h.row,oy,x,home:x,maxX:h.x+2.6,
+      hp,maxHp:hp,atk,rng:d.rng,ivl:d.ivl,spd:d.spd,splash:d.splash,mag:d.mag,r:d.r,
+      t:d.dur(lv),cd:0,dead:false});
+    fx.push({type:'ring',x,y:h.row+.5+oy,rr:.8,t:.4,max:.4,color:d.color});
+  }
+  return true;
 }
 /* 主动技能释放距离与英雄射程同步：只选射程内最靠前的目标 */
 function frontInRange(h,hx,hy){
@@ -767,17 +809,7 @@ function frontInRange(h,hx,hy){
   return t;
 }
 function castSkill(h,name,lv,hx,hy){
-  if(name==='召唤熊德'){
-    if(bearIn(h.row)||!mobs.length)return false;
-    // 德鲁伊·自然之力：召唤物属性+20%×专精等级
-    const sm=(h.tier&&advOf(h).key==='druid')?1+.2*h.specLv:1;
-    const bhp=(120+h.int*6*lv)*sm;
-    bears.push({isBear:true,row:h.row,x:h.x+.5,home:h.x+.5,maxX:h.x+2.6,
-      hp:bhp,maxHp:bhp,atk:(8+h.int*.7*lv)*sm,
-      t:12+2*lv,cd:0,dead:false});
-    fx.push({type:'ring',x:h.x+.5,y:h.row+.5,rr:.8,t:.4,max:.4,color:'#c9a068'});
-    return true;
-  }
+  if(SUMMONS[name])return summon(h,SUMMONS[name],lv);
   if(name==='火球术'){
     const t=frontInRange(h,hx,hy);
     if(!t)return false;
@@ -825,6 +857,34 @@ function castSkill(h,name,lv,hx,hy){
     quakes.push({x0,x1,y0,y1,t:dur,tick:0,fxT:0,dps,slow:.3});
     for(let i=0;i<14;i++)fx.push({type:'rock',x:x0+Math.random()*LEN,y:y0+Math.random()*H,
       sz:.9+Math.random()*.9,vx:(Math.random()-.5)*.8,t:.55,max:.55,color:'#c98b4b'});
+    return true;
+  }
+  if(name==='忍受'){
+    // 附近有敌人才开（射程+1.5格内），避免空放
+    let near=false;
+    for(const m of mobs){
+      if(m.dead)continue;
+      if(Math.hypot(m.x-hx,(m.y+.5)-hy)<=h.range+1.5){near=true;break;}
+    }
+    if(!near)return false;
+    h.endT=3+lv;h.endF=(20+3*lv)/100;
+    fx.push({type:'ring',x:hx,y:hy,rr:.75,t:.4,max:.4,color:'#ffd24f'});
+    return true;
+  }
+  if(name==='剑雨'){
+    const t=frontInRange(h,hx,hy);
+    if(!t)return false;
+    const R=2, dmg=20+h.agi*.5*lv, cx=t.x, cy=t.y+.5;
+    fx.push({type:'aoe',x:cx,y:cy,rr:R,t:.45,max:.45,color:'#cfe6ff'});
+    for(let i=0;i<12;i++){
+      const a=Math.random()*6.283,d=Math.sqrt(Math.random())*R;
+      fx.push({type:'sword',x:cx+Math.cos(a)*d,y:cy+Math.sin(a)*d,
+        t:.45+Math.random()*.2,max:.65,color:'#dceaff'});
+    }
+    for(const m of mobs){
+      if(m.dead)continue;
+      if(Math.hypot(m.x-cx,(m.y+.5)-cy)<=R+m.r)magDamage(m,dmg,'#cfe6ff');
+    }
     return true;
   }
   if(name==='闪电链'){
@@ -1016,6 +1076,66 @@ function drawBear(br,x,y){
   ctx.beginPath();ctx.arc(.21,-.19,.022,0,7);ctx.fill();
   ctx.strokeStyle='#f2f2f2';ctx.lineWidth=.02;                 // 爪子
   for(let i=0;i<3;i++){ctx.beginPath();ctx.moveTo(.16+i*.03,.06);ctx.lineTo(.2+i*.03,.14);ctx.stroke();}
+  ctx.restore();
+}
+/* ===== 元素召唤物模型（火/水/地狱火，朝右）===== */
+function drawElemental(br,x,y){
+  const k=br.kind, s=(br.r||.26)/.26, ph=gt*7+x*3;
+  ctx.save();ctx.translate(x,y);ctx.scale(s,s);ctx.lineJoin='round';
+  ctx.fillStyle='rgba(0,0,0,.3)';
+  ctx.beginPath();ctx.ellipse(0,.27,.2,.055,0,0,7);ctx.fill();
+  if(k==='fire'){
+    const fl=1+Math.sin(ph)*.12;
+    ctx.globalAlpha=.28;ctx.fillStyle='#ff7a2f';
+    ctx.beginPath();ctx.arc(0,-.02,.32*fl,0,7);ctx.fill();ctx.globalAlpha=1;
+    ctx.fillStyle='#ff7a2f';   // 火焰躯体（水滴形）
+    poly([[0,-.34*fl],[.17,-.02],[.11,.2],[0,.26],[-.11,.2],[-.17,-.02]]);ctx.fill();
+    ctx.fillStyle='#ffd24f';
+    poly([[0,-.2*fl],[.09,-.01],[.05,.15],[-.05,.15],[-.09,-.01]]);ctx.fill();
+    ctx.fillStyle='#fff6d0';   // 眼睛
+    ctx.beginPath();ctx.arc(.045,-.05,.028,0,7);ctx.fill();
+    ctx.beginPath();ctx.arc(-.045,-.05,.028,0,7);ctx.fill();
+    for(let i=0;i<2;i++){      // 上窜的小火苗
+      const fy=-.34-((gt*1.6+i*.5)%1)*.22;
+      ctx.globalAlpha=.6;ctx.fillStyle='#ffb04f';
+      poly([[.05*(i?1:-1),fy],[.05*(i?1:-1)+.035,fy+.07],[.05*(i?1:-1)-.035,fy+.07]]);ctx.fill();
+      ctx.globalAlpha=1;
+    }
+  }else if(k==='water'){
+    const wv=Math.sin(ph)*.03;
+    ctx.globalAlpha=.25;ctx.fillStyle='#4fc3ff';
+    ctx.beginPath();ctx.arc(0,0,.3,0,7);ctx.fill();ctx.globalAlpha=1;
+    ctx.fillStyle='#2f8fd0';   // 水体
+    poly([[0,-.3],[.19,-.05+wv],[.15,.18],[0,.26],[-.15,.18],[-.19,-.05-wv]]);ctx.fill();
+    ctx.globalAlpha=.75;ctx.fillStyle='#7fd8ff';
+    poly([[0,-.22],[.12,-.03+wv],[.09,.13],[-.09,.13],[-.12,-.03-wv]]);ctx.fill();ctx.globalAlpha=1;
+    ctx.strokeStyle='rgba(220,250,255,.7)';ctx.lineWidth=.025;   // 波纹
+    ctx.beginPath();ctx.moveTo(-.13,.04+wv);ctx.quadraticCurveTo(0,.1+wv,.13,.04-wv);ctx.stroke();
+    ctx.fillStyle='#0b2a3d';
+    ctx.beginPath();ctx.arc(.05,-.09,.03,0,7);ctx.fill();
+    ctx.beginPath();ctx.arc(-.05,-.09,.03,0,7);ctx.fill();
+  }else{   // infernal：熔岩巨像
+    const gl=.6+.4*Math.sin(ph*.7);
+    ctx.globalAlpha=.22*gl;ctx.fillStyle='#ff4d3d';
+    ctx.beginPath();ctx.arc(0,0,.4,0,7);ctx.fill();ctx.globalAlpha=1;
+    ctx.fillStyle='#3a2420';   // 岩石躯干
+    poly([[-.2,.24],[-.22,-.06],[-.13,-.2],[.13,-.2],[.22,-.06],[.2,.24]]);ctx.fill();
+    ctx.fillStyle='#2a1a17';   // 双臂
+    rrect(-.3,-.12,.1,.26,.04);ctx.fill();rrect(.2,-.12,.1,.26,.04);ctx.fill();
+    ctx.fillStyle='#4a2e28';   // 头
+    rrect(-.12,-.36,.24,.19,.06);ctx.fill();
+    ctx.fillStyle='#2a1a17';   // 犄角
+    poly([[-.12,-.36],[-.2,-.5],[-.05,-.38]]);ctx.fill();
+    poly([[.12,-.36],[.2,-.5],[.05,-.38]]);ctx.fill();
+    ctx.strokeStyle='#ff6a2f';ctx.lineWidth=.032;ctx.globalAlpha=gl;   // 熔岩裂纹
+    ctx.beginPath();
+    ctx.moveTo(-.14,-.14);ctx.lineTo(-.04,-.02);ctx.lineTo(-.1,.12);
+    ctx.moveTo(.14,-.12);ctx.lineTo(.05,.02);ctx.lineTo(.12,.18);
+    ctx.stroke();ctx.globalAlpha=1;
+    ctx.fillStyle='#ffd24f';   // 发光的眼
+    ctx.beginPath();ctx.arc(.06,-.27,.032,0,7);ctx.fill();
+    ctx.beginPath();ctx.arc(-.06,-.27,.032,0,7);ctx.fill();
+  }
   ctx.restore();
 }
 /* ===== 怪物模型（朝左推进，形状按种类，配色保持原有辨识度）===== */
@@ -1263,6 +1383,14 @@ function draw(){
   for(const h of heroes){
     const x=h.x,y=h.row+.5;
     drawHero(h,x,y);
+    if(h.alive&&h.endT>0){   // 忍受：金色护盾罩
+      const p=.75+.25*Math.sin(gt*9);
+      ctx.globalAlpha=.5*p;ctx.strokeStyle='#ffd24f';ctx.lineWidth=.05;
+      ctx.beginPath();ctx.arc(x,y-.04,.44,0,7);ctx.stroke();
+      ctx.globalAlpha=.12*p;ctx.fillStyle='#ffd24f';
+      ctx.beginPath();ctx.arc(x,y-.04,.44,0,7);ctx.fill();
+      ctx.globalAlpha=1;
+    }
     if(h.alive){
       // 血条（等级框在左端）
       ctx.fillStyle='rgba(0,0,0,.6)';ctx.fillRect(x-.24,y-.53,.58,.08);
@@ -1280,12 +1408,13 @@ function draw(){
       ctx.fillStyle='#b070ff';ctx.fillRect(x-.34,y+.37,.68*(h.lv>=MAX_HERO_LV?1:Math.min(h.xp/xpNeed(h.lv),1)),.06);
     }
   }
-  // 熊灵
+  // 召唤物
   for(const br of bears){
-    const y=br.row+.5;
-    drawBear(br,br.x,y);
-    ctx.fillStyle='rgba(0,0,0,.6)';ctx.fillRect(br.x-.28,y-.42,.56,.08);
-    ctx.fillStyle='#6ee7a0';ctx.fillRect(br.x-.28,y-.42,.56*Math.max(br.hp/br.maxHp,0),.08);
+    const y=br.row+.5+(br.oy||0);
+    if(br.kind&&br.kind!=='bear')drawElemental(br,br.x,y);else drawBear(br,br.x,y);
+    const bw=br.kind==='infernal'?.76:.56;
+    ctx.fillStyle='rgba(0,0,0,.6)';ctx.fillRect(br.x-bw/2,y-.42,bw,.08);
+    ctx.fillStyle='#6ee7a0';ctx.fillRect(br.x-bw/2,y-.42,bw*Math.max(br.hp/br.maxHp,0),.08);
   }
   // 怪物
   for(const m of mobs){
@@ -1368,6 +1497,15 @@ function draw(){
       const fy=f.y-.45*k, sz=f.sz*(1-k*.55);
       ctx.globalAlpha=(1-k)*.9;ctx.fillStyle=f.color;
       poly([[f.x,fy-.3*sz],[f.x+.12*sz,fy],[f.x,fy+.14*sz],[f.x-.12*sz,fy]]);ctx.fill();
+      ctx.globalAlpha=1;
+    }else if(f.type==='sword'){
+      // 剑雨：剑从上方插下
+      const sy=f.y-1.4*(1-k)*(1-k);
+      ctx.globalAlpha=k<.85?1:(1-k)/.15;
+      ctx.strokeStyle=f.color;ctx.lineWidth=.035;
+      ctx.beginPath();ctx.moveTo(f.x,sy-.3);ctx.lineTo(f.x,sy+.1);ctx.stroke();   // 剑身
+      ctx.lineWidth=.028;
+      ctx.beginPath();ctx.moveTo(f.x-.07,sy-.24);ctx.lineTo(f.x+.07,sy-.24);ctx.stroke(); // 护手
       ctx.globalAlpha=1;
     }else if(f.type==='rock'){
       // 大地震颤：崩起又落下的碎石
