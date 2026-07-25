@@ -279,8 +279,8 @@ function waveComp(w){
     for(let i=0;i<w/10;i++)list.push({t:'boss',mul:BOSS_WAVE_MUL,rs:1.25});
     return list;
   }
-  // 前5波是新手期：数量少、只有普通/快速，坦克第6波才登场
-  const n=fin?45:(w<=5?2+Math.floor(w*1.5):Math.min(30,4+w*2));
+  // 前5波是新手期：数量不减（金币照拿），靠 spawnMob 里的强度折扣压低数值
+  const n=fin?45:Math.min(30,4+w*2);
   // 坦克逐步登场：w5每6只掺1、w6每5只掺1、w7起每4只掺1（原来w4就满配）
   const tankEvery=w>=7?4:(w>=6?5:(w>=5?6:0));
   for(let i=0;i<n;i++){
@@ -312,11 +312,11 @@ function startWave(){
 }
 function spawnMob(type,opt){
   opt=opt||{};
-  // 强度爬升：前5波额外打折(新手期)，前15波平缓，15波后额外+6%/波加速收尾
-  // w1≈0.7 w5≈1.7 w10≈2.9 w15≈4.7 w20≈10 w25≈20
+  // 强度爬升：前7波额外打折(新手期，数量不减只压数值)，前15波平缓，15波后额外+6%/波加速收尾
+  // 折后 w1≈0.4 w5≈1.16 w8起回原曲线 w10≈2.9 w15≈4.7 w20≈10 w25≈20
   const b=MOBS[type];
   let mul=(1+0.12*(wave-1))*Math.pow(1.045,wave-1);
-  if(wave<=5)mul*=[.7,.75,.82,.88,.94][wave-1];   // 新手期折扣，第6波起衔接原曲线
+  if(wave<=7)mul*=[.4,.48,.52,.6,.66,.8,.9][wave-1];   // 新手期折扣，第8波起衔接原曲线
   if(wave>15)mul*=Math.pow(1.06,wave-15);
   // 不再固定在格子正中：在所选行附近随机散开
   const row=Math.floor(Math.random()*ROWS);
