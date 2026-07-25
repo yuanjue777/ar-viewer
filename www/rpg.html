@@ -189,7 +189,7 @@
     <span><i style="background:var(--archer)"></i>游侠·主敏捷</span>
     <span><i style="background:var(--warrior)"></i>战士·主力量</span>
   </div>
-  <p>共 20 波，强度逐波爬升。进场先<b>布阵</b>：买英雄、逛商店，准备好后点<b>右上角 ▶ 启动</b>才开始进攻。智力给蓝量回蓝，主动技能耗蓝；技能书/装备 roll 进背包拖给英雄；点技能栏/装备栏可看详情。</p>
+  <p>共 25 波，15 波后强度加速爬升。进场先<b>布阵</b>：买英雄、逛商店，准备好后点<b>右上角 ▶ 启动</b>才开始进攻。智力给蓝量回蓝，主动技能耗蓝；技能书/装备 roll 进背包拖给英雄；点技能栏/装备栏可看详情。</p>
   <button class="lg" id="startBtn">开 始</button>
 </div>
 
@@ -198,7 +198,7 @@
 <script>
 'use strict';
 /* ================= 职业（魔兽式属性）================= */
-const ROWS=3, HCOLS=3, BCOLS=9, COLS=HCOLS+BCOLS, TOTAL_WAVES=20, HERO_COST=50, MAX_HEROES=3;
+const ROWS=3, HCOLS=3, BCOLS=9, COLS=HCOLS+BCOLS, TOTAL_WAVES=25, HERO_COST=50, MAX_HEROES=3;
 const MAX_SLOTS=4, MAX_SKILL_LV=5, MAX_EQUIP=6, MAX_HERO_LV=15;   // 装备栏2×3
 const COL_CLASS=['mage','archer','warrior'];
 /* bat=基础攻击间隔s wep=武器基础攻击 main=主属性(加攻) grow=每级属性成长 */
@@ -234,8 +234,8 @@ const SPECS={
   druid:    {n:'自然之力',d:lv=>`召唤物属性+${20*lv}%`},
 };
 function advOf(h){return h.tier?ADV[h.cls][h.branch]:null;}
-function specCost(lv){return {g:100*lv,w:60*lv};}   // 专精升级费用（当前级→下一级）
-const SPEC_MAX=5;
+function specCost(lv){return {g:60+40*(lv-1),w:40+25*(lv-1)};}   // 专精升级费用（当前级→下一级）
+const SPEC_MAX=10;
 const ADV_LV=5, ADV_GOLD=150, ADV_WOOD=250;
 /* 英雄递增定价：第1个50、第2个100、第3个200 */
 const HERO_COSTS=[50,100,200];
@@ -255,7 +255,7 @@ const SKB={
   '致命一击':  {cat:'agi',q:'qpurple',short:'致命',cd:0, desc:'被动：(15+5×等级)%几率暴击，造成(140+10×等级)%伤害，金色飘字'},
   '召唤熊德':  {cat:'int',q:'qblue',  short:'熊德',cd:22,mana:50,desc:'主动(50蓝)：召近战熊灵冲锋接敌，属性随智力成长'},
   '火球术':    {cat:'int',q:'qgreen', short:'火球',cd:7, mana:25,desc:'主动(25蓝)：单体魔法伤害（智力×3×等级+40），弹道线'},
-  '冰风暴':    {cat:'int',q:'qgreen', short:'冰风',cd:10,mana:35,desc:'主动(35蓝)：暴风雪，目标区域每0.9秒降下1发冰雹共(3+等级)发，每发(20+智×等级)魔法伤+减速，可重复命中'},
+  '冰风暴':    {cat:'int',q:'qgreen', short:'冰风',cd:10,mana:35,desc:'主动(35蓝)：暴风雪，固定区域每0.9秒对圈内全体造成(15+智×0.8×等级)魔法伤+减速，共(3+等级)波'},
   'CD光环':    {cat:'int',q:'qblue',  short:'CD环',cd:0, desc:'被动：主动技能冷却-4%×等级（与装备CD缩减叠加，总上限50%）'},
   '闪电链':    {cat:'int',q:'qblue',  short:'闪电',cd:4, mana:45,desc:'主动(45蓝)：CD短耗蓝高，闪电跳(2+等级)个目标，各(30+智×1.2×等级)魔法伤害'},
   '魂吸':      {cat:'int',q:'qpurple',short:'魂吸',cd:0, desc:'被动：每有敌方单位死亡+0.5智力，上限10+5×(等级-1)'},
@@ -429,7 +429,8 @@ function reset(){
   closeShop();updateHUD();renderInfo();renderInv();
 }
 function waveComp(w){
-  const list=[];const n=4+w*2;
+  // 数量封顶30只（约27秒出完，不与下一波堆叠），后期靠强度而非数量
+  const list=[];const n=Math.min(30,4+w*2);
   for(let i=0;i<n;i++){
     let t='normal';
     if(w>=3&&i%3===2)t='fast';
@@ -445,8 +446,11 @@ function startWave(){
   updateHUD();renderInfo();
 }
 function spawnMob(type){
-  // 20波强度平缓爬升：线性+小指数（w1=1, w5≈1.6, w10≈2.9, w15≈4.7, w20≈7）
-  const b=MOBS[type],mul=(1+0.12*(wave-1))*Math.pow(1.045,wave-1);
+  // 强度爬升：前15波平缓，15波后额外+6%/波加速收尾
+  // w1=1 w5≈1.6 w10≈2.9 w15≈4.7 w20≈10 w25≈20
+  const b=MOBS[type];
+  let mul=(1+0.12*(wave-1))*Math.pow(1.045,wave-1);
+  if(wave>15)mul*=Math.pow(1.06,wave-15);
   const row=Math.floor(Math.random()*ROWS);
   mobs.push({type,row,y:row,x:COLS+.5,
     hp:b.hp*mul,maxHp:b.hp*mul,spd:b.spd,atk:b.atk*mul,r:b.r,
@@ -599,19 +603,24 @@ function update(dt){
   for(const hl of hails){
     hl.delay-=dt;
     if(hl.delay>0){
-      // 落地前0.5秒才显示下落的冰雹
+      // 落地前0.5秒在区域内撒下一片下落的冰棱
       if(!hl.cued&&hl.delay<=.5){
         hl.cued=true;
-        fx.push({type:'fall',x:hl.x,y:hl.y,t:hl.delay,max:.5,color:'#bfeaff'});
+        const n=5+Math.round(hl.R*2);
+        for(let i=0;i<n;i++){
+          const a=Math.random()*7, rad=Math.sqrt(Math.random())*hl.R;
+          fx.push({type:'fall',x:hl.cx+Math.cos(a)*rad,y:hl.cy+Math.sin(a)*rad,
+            t:hl.delay,max:.5+Math.random()*.3,color:'#bfeaff'});
+        }
       }
       continue;
     }
     hl.done=true;
-    fx.push({type:'ring',x:hl.x,y:hl.y,rr:hl.ir,t:.24,max:.24,color:'#bfeaff'});
-    fx.push({type:'aoe',x:hl.x,y:hl.y,rr:hl.ir*.8,t:.16,max:.16,color:'#dff4ff'});
+    fx.push({type:'ring',x:hl.cx,y:hl.cy,rr:hl.R,t:.3,max:.3,color:'#bfeaff'});
+    fx.push({type:'aoe',x:hl.cx,y:hl.cy,rr:hl.R,t:.18,max:.18,color:'#dff4ff'});
     for(const m of mobs){
       if(m.dead)continue;
-      if(Math.hypot(m.x-hl.x,(m.y+.5)-hl.y)<=hl.ir+m.r){
+      if(Math.hypot(m.x-hl.cx,(m.y+.5)-hl.cy)<=hl.R+m.r){
         magDamage(m,hl.dmg,'#7fd8ff');
         m.slowT=2;m.slowF=hl.slow;
       }
@@ -823,14 +832,13 @@ function castSkill(h,name,lv,hx,hy){
   if(name==='冰风暴'){
     const t=frontInRange(h,hx,hy);
     if(!t)return false;
-    // 暴风雪：目标区域每 0.9 秒降下一发冰雹，共 3+等级 发，整片显示范围圈
-    const R=1.6+.1*lv, strikes=3+lv, gap=.9, cx=t.x, cy=t.y+.5;
-    const dur=.3+strikes*gap;
+    // 暴风雪：固定区域，每0.9秒对区域内所有敌人结算一次，共 3+等级 波
+    const R=1.6+.1*lv, waves=3+lv, gap=.9, cx=t.x, cy=t.y+.5;
+    const dur=.3+waves*gap;
     fx.push({type:'aoe',x:cx,y:cy,rr:R,t:dur,max:dur,color:'#7fd8ff'});
-    for(let i=0;i<strikes;i++){
-      const ang=Math.random()*7, rad=Math.sqrt(Math.random())*R;
-      hails.push({x:cx+Math.cos(ang)*rad,y:cy+Math.sin(ang)*rad,
-        delay:.3+i*gap,ir:.7,dmg:20+h.int*1*lv,slow:Math.min(.75,.4+.05*lv)});
+    for(let i=0;i<waves;i++){
+      hails.push({cx,cy,R,delay:.3+i*gap,
+        dmg:15+h.int*.8*lv,slow:Math.min(.75,.4+.05*lv)});
     }
     return true;
   }
