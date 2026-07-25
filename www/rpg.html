@@ -557,15 +557,17 @@ function update(dt){
       if(m.cd<=0){m.cd=1;hitUnit(tgt,m);}
       continue;
     }
-    // 前方有同伴挡路就等一等，避免叠在一起
-    let blocked=false;
+    // 各走各的，不排队等同伴
+    m.x-=spd*dt;
+    if(m.x< -0.5){m.dead=true;lives-=m.lives;if(lives<=0){lives=0;endGame(false);}updateHUD();}
+    // 几乎重叠时纵向轻推开，避免糊成一团（不影响前进）
     for(const o of mobs){
       if(o===m||o.dead)continue;
-      if(o.x<m.x&&m.x-o.x<.6&&Math.abs(o.y-m.y)<.5){blocked=true;break;}
-    }
-    if(!blocked){
-      m.x-=spd*dt;
-      if(m.x< -0.5){m.dead=true;lives-=m.lives;if(lives<=0){lives=0;endGame(false);}updateHUD();}
+      if(Math.abs(o.x-m.x)<.38&&Math.abs(o.y-m.y)<.34){
+        const dir=(m.y-o.y)||(Math.random()-.5);
+        m.y=Math.max(0,Math.min(ROWS-1,m.y+Math.sign(dir)*.5*dt));
+        break;
+      }
     }
     // 仇恨范围内：纵向稍微靠一点（不会跑到英雄格子上）
     if(tgt&&td<=AGGRO_R){
