@@ -51,6 +51,7 @@ const SKB={
   '狂战士之血':{cat:'str',q:'qblue',  short:'狂血',cd:0, desc:'被动：血越低回血越快、受伤越少（血量50%时约每秒回2%×等级）'},
   '荆棘光环':  {cat:'str',q:'qgreen', short:'荆棘',cd:0, desc:'被动：反弹15%×等级伤害，附加0.4×力量×等级（魔法伤害）'},
   '攻击溅射':  {cat:'str',q:'qpurple',short:'溅射',cd:0, desc:'被动：普攻对目标1.5格内溅射(25+5×等级)%伤害，多重射击的额外攻击同样触发'},
+  '大地震颤':  {cat:'str',q:'qpurple',short:'震颤',cd:14,mana:25,desc:'主动(25蓝)：震裂身前3×4.5格矩形地面，每0.5秒造成一次伤害，持续(3+0.5×等级)秒，每秒(10+力量×0.4×等级)魔法伤害，区域内敌人移速与攻速-30%'},
   '多重射击':  {cat:'agi',q:'qblue',  short:'多重',cd:0, desc:'被动：普攻额外射击 等级×0.5 个敌人（70%伤害）'},
   '沁毒射击':  {cat:'agi',q:'qgreen', short:'沁毒',cd:0, desc:'被动：普攻附带毒伤=敏捷×(0.35+0.15×等级)（魔法伤害）'},
   '狙击潜质':  {cat:'agi',q:'qpurple',short:'狙击',cd:0, desc:'被动：射程+0.3格×等级（同时加长主动技能释放距离）'},
@@ -177,7 +178,7 @@ const TRIAL_KEYS=['gold','wood','xp','elite'];
 /* ================= 状态 ================= */
 let gold,wood,lives,wave,queue,spawnT,incomeT,waveT,cleared,hudAcc;
 let mineLv,millLv;
-let heroes,mobs,shots,fx,nums,bears,inv,hails,storms,chests,trialCd;
+let heroes,mobs,shots,fx,nums,bears,inv,hails,storms,quakes,chests,trialCd;
 let sel=null,invSel=null,speed=1,running=false,started=false,over=false,openShop=null,advPick=false;
 
 /* ================= 画布 ================= */
@@ -247,7 +248,7 @@ function reset(){
   gold=200;wood=0;lives=10;wave=0;queue=[];spawnT=0;incomeT=0;
   waveT=WAVE_EVERY;cleared=true;hudAcc=0;
   mineLv=1;millLv=1;
-  heroes=[];mobs=[];shots=[];fx=[];nums=[];bears=[];inv=[];hails=[];storms=[];chests=[];
+  heroes=[];mobs=[];shots=[];fx=[];nums=[];bears=[];inv=[];hails=[];storms=[];quakes=[];chests=[];
   trialCd={};for(const k of TRIAL_KEYS)trialCd[k]=0;
   renderTrials();
   sel=null;invSel=null;over=false;openShop=null;advPick=false;
@@ -292,7 +293,7 @@ function spawnMob(type,opt){
     hp:b.hp*mul,maxHp:b.hp*mul,spd:b.spd,atk:b.atk*mul,r:b.r*(opt.rs||1),atkR:b.atkR,
     reward:b.reward,xp:b.xp,lives:b.lives,armor:b.armor,mres:b.mres,
     trial:opt.trial||null,bonus:opt.bonus||0,chest:opt.chest||0,
-    color:b.color,cd:0,fight:false,slowT:0,slowF:0});
+    color:b.color,cd:0,fight:false,slowT:0,slowF:0,frost:0,asT:0,asF:0});
 }
 /* 四大试炼：点图标开打，怪即刻入场；奖励在击杀时结算（见 damage） */
 function trialReady(k){
@@ -426,6 +427,8 @@ function update(dt){
   /* 怪物：沿自己的路线向左推进，仇恨范围内会稍微靠向目标，进入攻击范围就停下开打 */
   for(const m of mobs){
     if(m.slowT>0)m.slowT-=dt;
+    if(m.frost>0)m.frost-=dt;        // 冰霜覆层显示时长
+    if(m.asT>0)m.asT-=dt;            // 攻速减益（大地震颤）
     const spd=m.spd*(m.slowT>0?1-m.slowF:1);
     m.fight=false;
     // 找仇恨范围内最近的我方单位（英雄或熊灵）
@@ -443,7 +446,7 @@ function update(dt){
     const reach=m.atkR+m.r;   // 攻击距离按怪物种类
     if(tgt&&td<=reach){          // 进入攻击范围：站定输出，不再贴靠
       m.fight=true;
-      m.cd-=dt;
+      m.cd-=dt*(m.asT>0?1-m.asF:1);
       if(m.cd<=0){m.cd=1;hitUnit(tgt,m);}
       continue;
     }
@@ -513,7 +516,7 @@ function update(dt){
       if(m.dead)continue;
       if(Math.hypot(m.x-hl.cx,(m.y+.5)-hl.cy)<=hl.R+m.r){
         magDamage(m,hl.dmg,'#7fd8ff');
-        m.slowT=2;m.slowF=hl.slow;
+        m.slowT=2;m.slowF=hl.slow;m.frost=2;
       }
     }
   }
@@ -542,6 +545,30 @@ function update(dt){
     if(s.t<=0)s.done=true;
   }
   storms=storms.filter(s=>!s.done);
+  /* 大地震颤：身前矩形地裂，持续DoT + 区域内移速/攻速减益（每0.5s结算伤害） */
+  for(const q of quakes){
+    q.t-=dt;q.tick-=dt;q.fxT-=dt;
+    if(q.fxT<=0){   // 碎石飞溅
+      q.fxT=.05;
+      fx.push({type:'rock',x:q.x0+Math.random()*(q.x1-q.x0),y:q.y0+Math.random()*(q.y1-q.y0),
+        sz:.6+Math.random()*.8,vx:(Math.random()-.5)*.6,t:.5,max:.5,
+        color:Math.random()<.35?'#c98b4b':'#7d5a3a'});
+    }
+    const tick=q.tick<=0;
+    if(tick)q.tick=.5;
+    for(const m of mobs){
+      if(m.dead)continue;
+      if(m.x<q.x0-m.r||m.x>q.x1+m.r)continue;
+      const my=m.y+.5;
+      if(my<q.y0||my>q.y1)continue;
+      if(tick)magDamage(m,q.dps*.5,'#e0a05a');
+      // 站在裂地里就一直吃减益，离开后很快恢复
+      m.slowT=Math.max(m.slowT,.3);m.slowF=Math.max(m.slowF,q.slow);
+      m.asT=Math.max(m.asT,.3); m.asF=Math.max(m.asF,q.slow);
+    }
+    if(q.t<=0)q.done=true;
+  }
+  quakes=quakes.filter(q=>!q.done);
   /* 试炼CD + 宝箱计时（宝箱不会消失，只做浮动动画） */
   for(const k of TRIAL_KEYS)if(trialCd[k]>0)trialCd[k]=Math.max(0,trialCd[k]-dt);
   for(const ch of chests)ch.t+=dt;
@@ -779,6 +806,25 @@ function castSkill(h,name,lv,hx,hy){
     const R=1.5,dur=2+.5*lv,dps=12+h.int*.55*lv;
     storms.push({cx:t.x,cy:t.y+.5,R,delay:1,t:dur,tick:0,fxT:0,dps});
     fx.push({type:'aoe',x:t.x,y:t.y+.5,rr:R,t:1,max:1,color:'#ff7a2f'});   // 1秒预警圈
+    return true;
+  }
+  if(name==='大地震颤'){
+    // 身前 3(高)×4.5(长) 矩形，纵向以英雄为中心并推回场内
+    const LEN=4.5,H=3;
+    const x0=hx,x1=hx+LEN;
+    let y0=hy-H/2;
+    y0=Math.max(0,Math.min(ROWS-H,y0));
+    const y1=y0+H;
+    let any=false;
+    for(const m of mobs){
+      if(m.dead)continue;
+      if(m.x>=x0-m.r&&m.x<=x1+m.r&&m.y+.5>=y0&&m.y+.5<=y1){any=true;break;}
+    }
+    if(!any)return false;
+    const dur=3+.5*lv, dps=10+h.str*.4*lv;
+    quakes.push({x0,x1,y0,y1,t:dur,tick:0,fxT:0,dps,slow:.3});
+    for(let i=0;i<14;i++)fx.push({type:'rock',x:x0+Math.random()*LEN,y:y0+Math.random()*H,
+      sz:.9+Math.random()*.9,vx:(Math.random()-.5)*.8,t:.55,max:.55,color:'#c98b4b'});
     return true;
   }
   if(name==='闪电链'){
@@ -1052,8 +1098,8 @@ function drawMob(m,x,y){
     ctx.strokeStyle='#12060f';ctx.lineWidth=.07;ctx.lineCap='round';
     ctx.beginPath();ctx.moveTo(-.55,-.12);ctx.lineTo(-.15,-.16);ctx.stroke();
   }
-  // 减速：冰霜覆层
-  if(m.slowT>0){
+  // 减速：冰霜覆层（只有冰系减速才结霜）
+  if(m.frost>0){
     ctx.globalAlpha=.3+.12*Math.sin(gt*8);
     ctx.fillStyle='#bfeaff';
     ctx.beginPath();ctx.arc(0,0,1.05,0,7);ctx.fill();
@@ -1190,6 +1236,28 @@ function draw(){
     ctx.beginPath();ctx.arc(s.cx,s.cy,s.R,0,7);ctx.stroke();
     ctx.globalAlpha=1;
   }
+  // 大地震颤：龟裂的矩形地面
+  for(const q of quakes){
+    const w=q.x1-q.x0,hh=q.y1-q.y0;
+    const fl=.7+.3*Math.sin(gt*17+q.x0);
+    ctx.globalAlpha=.16*fl;ctx.fillStyle='#a86b32';
+    ctx.fillRect(q.x0,q.y0,w,hh);
+    ctx.globalAlpha=.55*fl;ctx.strokeStyle='#e0a05a';ctx.lineWidth=.05;
+    ctx.strokeRect(q.x0,q.y0,w,hh);
+    // 裂缝（位置由区域坐标决定，保持稳定）
+    ctx.globalAlpha=.5*fl;ctx.strokeStyle='#5a3b22';ctx.lineWidth=.045;
+    ctx.beginPath();
+    for(let i=0;i<7;i++){
+      const s=Math.abs(Math.sin((q.x0+i*3.7)*12.9898))%1;
+      const cy=q.y0+((i+.5)/7)*hh;
+      ctx.moveTo(q.x0+.1,cy+(s-.5)*.3);
+      for(let j=1;j<=5;j++){
+        const t2=Math.abs(Math.sin((i*9.1+j*4.3)*78.233))%1;
+        ctx.lineTo(q.x0+.1+(w-.2)*j/5,cy+(t2-.5)*.42);
+      }
+    }
+    ctx.stroke();ctx.globalAlpha=1;
+  }
   ctx.textAlign='center';
   // 英雄
   for(const h of heroes){
@@ -1300,6 +1368,13 @@ function draw(){
       const fy=f.y-.45*k, sz=f.sz*(1-k*.55);
       ctx.globalAlpha=(1-k)*.9;ctx.fillStyle=f.color;
       poly([[f.x,fy-.3*sz],[f.x+.12*sz,fy],[f.x,fy+.14*sz],[f.x-.12*sz,fy]]);ctx.fill();
+      ctx.globalAlpha=1;
+    }else if(f.type==='rock'){
+      // 大地震颤：崩起又落下的碎石
+      const ry=f.y-(.5-Math.abs(k-.5)*2*.5)*.45, sz=f.sz*(1-k*.4);
+      ctx.globalAlpha=1-k*k;ctx.fillStyle=f.color;
+      poly([[f.x+f.vx*k*.5-.07*sz,ry+.06*sz],[f.x+f.vx*k*.5-.02*sz,ry-.08*sz],
+            [f.x+f.vx*k*.5+.08*sz,ry-.03*sz],[f.x+f.vx*k*.5+.04*sz,ry+.07*sz]]);ctx.fill();
       ctx.globalAlpha=1;
     }else if(f.type==='heal'){
       // 治疗：上浮的十字
