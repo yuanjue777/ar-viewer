@@ -279,17 +279,20 @@ function waveComp(w){
     for(let i=0;i<w/10;i++)list.push({t:'boss',mul:BOSS_WAVE_MUL,rs:1.25});
     return list;
   }
-  const n=fin?45:Math.min(30,4+w*2);
+  // 前5波是新手期：数量少、只有普通/快速，坦克第6波才登场
+  const n=fin?45:(w<=5?2+Math.floor(w*1.5):Math.min(30,4+w*2));
+  // 坦克逐步登场：w5每6只掺1、w6每5只掺1、w7起每4只掺1（原来w4就满配）
+  const tankEvery=w>=7?4:(w>=6?5:(w>=5?6:0));
   for(let i=0;i<n;i++){
     let t='normal';
-    if(w>=3&&i%3===2)t='fast';
-    if(w>=4&&i%4===3)t='tank';
+    if(w>=4&&i%3===2)t='fast';
+    if(tankEvery&&i%tankEvery===tankEvery-1)t='tank';
     list.push({t});
   }
-  if(isEliteWave(w)){  // 精英波：小怪之外额外来一批精英
-    const en=1+Math.floor(w/5);
+  if(isEliteWave(w)){  // 精英波：小怪之外额外来一批精英（第5波只来1只、倍率也低）
+    const en=w<10?1:1+Math.floor(w/5);
     for(let i=0;i<en;i++)
-      list.push({t:w>=15?'boss':'tank',elite:1,mul:1.6+.05*w,rs:ELITE_RS});
+      list.push({t:w>=15?'boss':'tank',elite:1,mul:w<10?1.25:1.6+.05*w,rs:ELITE_RS});
   }
   if(fin)list.push({t:'boss'},{t:'boss'},{t:'boss'});
   return list;
@@ -309,10 +312,11 @@ function startWave(){
 }
 function spawnMob(type,opt){
   opt=opt||{};
-  // 强度爬升：前15波平缓，15波后额外+6%/波加速收尾
-  // w1=1 w5≈1.6 w10≈2.9 w15≈4.7 w20≈10 w25≈20
+  // 强度爬升：前5波额外打折(新手期)，前15波平缓，15波后额外+6%/波加速收尾
+  // w1≈0.7 w5≈1.7 w10≈2.9 w15≈4.7 w20≈10 w25≈20
   const b=MOBS[type];
   let mul=(1+0.12*(wave-1))*Math.pow(1.045,wave-1);
+  if(wave<=5)mul*=[.7,.75,.82,.88,.94][wave-1];   // 新手期折扣，第6波起衔接原曲线
   if(wave>15)mul*=Math.pow(1.06,wave-15);
   // 不再固定在格子正中：在所选行附近随机散开
   const row=Math.floor(Math.random()*ROWS);
