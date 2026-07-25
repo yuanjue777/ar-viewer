@@ -97,6 +97,24 @@
     touch-action:none;-webkit-user-select:none;user-select:none}
   .slot.f{border-style:solid;font-weight:600;background:rgba(255,255,255,.04)}
   .slot.f i{font-style:normal;font-size:7.5px;opacity:.85}
+  /* 自动学习开关（魔兽式"启用型技能"发光） */
+  .autoBtn{
+    flex-shrink:0;align-self:center;width:30px;height:64px;padding:2px;
+    border:1px solid var(--line);border-radius:6px;background:#16223a;
+    color:var(--ink-dim);font-size:10px;line-height:1.15;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;
+  }
+  .autoBtn.on{
+    border-color:#f0c46a;color:#f7dfa0;background:rgba(240,196,106,.12);
+    animation:autoGlow 1.4s ease-in-out infinite;
+  }
+  @keyframes autoGlow{
+    0%,100%{box-shadow:0 0 4px rgba(240,196,106,.45),inset 0 0 5px rgba(240,196,106,.18)}
+    50%    {box-shadow:0 0 11px rgba(240,196,106,.9),inset 0 0 9px rgba(240,196,106,.38)}
+  }
+  @media (prefers-reduced-motion:reduce){
+    .autoBtn.on{animation:none;box-shadow:0 0 8px rgba(240,196,106,.7)}
+  }
   .btn{
     border:1px solid var(--line);border-radius:6px;background:#16223a;color:var(--ink);
     padding:6px 9px;text-align:center;font-size:12px;line-height:1.3;flex-shrink:0;
@@ -365,7 +383,7 @@ window.addEventListener('resize',()=>setTimeout(resize,60));
 
 /* ================= 英雄 ================= */
 function makeHero(cls,row,col){
-  const h={cls,row,col,lv:1,xp:0,tier:0,branch:-1,specLv:1,
+  const h={cls,row,col,lv:1,xp:0,tier:0,branch:-1,specLv:1,autoLearn:false,
     soulInt:0,deathAgi:0,equips:[],
     skills:{},cds:{},cd:0,flash:0,alive:true};
   calc(h);h.hp=h.maxHp;
@@ -1051,7 +1069,8 @@ function renderInfo(){
     const names=Object.keys(h.skills),sk=[];
     for(let i=0;i<MAX_SLOTS;i++){
       const n=names[i];
-      sk.push(n?`<div class="slot f" data-skslot="${i}" data-lps="${n}" style="border-color:${CATS[SKB[n].cat].color};color:${CATS[SKB[n].cat].color}">${SKB[n].short}<i>Lv${h.skills[n]}</i></div>`
+      // 边框颜色=属性系（力红/敏绿/智蓝），文字颜色=技能品质（绿/蓝/紫）
+      sk.push(n?`<div class="slot f" data-skslot="${i}" data-lps="${n}" style="border-color:${CATS[SKB[n].cat].color};color:${QC[SKB[n].q]}">${SKB[n].short}<i>Lv${h.skills[n]}</i></div>`
               :`<div class="slot" data-skslot="${i}">空</div>`);
     }
     // 2×3装备栏
@@ -1074,6 +1093,7 @@ function renderInfo(){
         <span style="color:#8db8ff">智 <b>${h.int}</b></span>
         <span>抗 <b>${Math.round(h.mres*100)}%</b>${h.cdr?' CD-'+Math.round(h.cdr*100)+'%':''}${h.block?' 挡'+h.block:''}</span>
       </div>${h.tier?`<div style="margin-top:2px;color:${b.color};font-size:9.5px">专精 <b>${SPECS[advOf(h).key].n}</b> Lv${h.specLv} — <span style="color:var(--ink-dim)">${SPECS[advOf(h).key].d(h.specLv)}</span></div>`:''}</div>
+      <button class="autoBtn${h.autoLearn?' on':''}" data-auto="1">自动<br>学习</button>
       <div class="slotgrid sk">${sk.join('')}</div>
       <div class="slotgrid eq">${eq.join('')}</div>`;
     if(!h.tier){
@@ -1110,6 +1130,16 @@ function renderInfo(){
       heroes.push(makeHero(COL_CLASS[sel.col],sel.row,sel.col));
       updateHUD();renderInfo();
     }
+  };
+  const au=info.querySelector('[data-auto]');
+  if(au)au.onclick=()=>{
+    const hh=selHero();if(!hh)return;
+    hh.autoLearn=!hh.autoLearn;
+    if(hh.autoLearn){
+      showToast('已启用自动学习：商店刷出的同名技能书会自动升级');
+      autoLearnPass();renderInv();
+    }
+    renderInfo();
   };
   const ao=document.getElementById('advOpen');
   if(ao)ao.onclick=()=>{advPick=true;renderInfo();};
@@ -1207,7 +1237,25 @@ function buyPack(cat){
   const pool=cat==='roll'?Object.keys(SKB):Object.keys(SKB).filter(n=>SKB[n].cat===cat);
   for(let i=0;i<PACK_N;i++)inv.push({t:'book',name:pickBook(pool)});
   if(invSel!=null&&(!inv[invSel]||inv[invSel].t!=='book'))invSel=null;
+  autoLearnPass();
   updateHUD();renderInfo();renderInv();
+}
+/* 自动学习：开启的英雄会自动吃掉自己已学同名技能书来升级 */
+function autoLearnPass(){
+  if(!heroes.some(h=>h.autoLearn))return;
+  const got=[];
+  for(let i=inv.length-1;i>=0;i--){
+    const it=inv[i];
+    if(it.t!=='book')continue;
+    const h=heroes.find(o=>o.autoLearn&&o.skills[it.name]&&o.skills[it.name]<MAX_SKILL_LV);
+    if(!h)continue;
+    h.skills[it.name]++;calc(h);
+    fx.push({type:'ring',x:h.col+.5,y:h.row+.5,rr:.6,t:.4,max:.4,color:CATS[SKB[it.name].cat].color});
+    got.push(`${it.name}→Lv${h.skills[it.name]}`);
+    inv.splice(i,1);
+    if(invSel===i)invSel=null;
+  }
+  if(got.length)showToast('自动学习：'+got.join('、'));
 }
 function buyEquip(tier){
   const cost=EQ_TIERS[tier].cost;
@@ -1229,8 +1277,8 @@ function renderInv(){
     el.dataset.idx=i;
     if(it.t==='book'){
       const d=SKB[it.name];
-      el.style.borderColor=QC[d.q];
-      el.style.color=CATS[d.cat].color;
+      el.style.borderColor=CATS[d.cat].color;   // 边框=属性系
+      el.style.color=QC[d.q];                   // 文字=品质
       el.innerHTML=`${d.short}<small>技能书</small>`;
     }else{
       const d=eqDef(it),q=qOf(it);
