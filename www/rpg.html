@@ -217,11 +217,11 @@
 'use strict';
 /* ================= 职业（魔兽式属性）================= */
 const ROWS=3, HCOLS=3, BCOLS=9, COLS=HCOLS+BCOLS, TOTAL_WAVES=25, HERO_COST=50, MAX_HEROES=3;
-const MAX_SLOTS=4, MAX_SKILL_LV=5, MAX_EQUIP=6, MAX_HERO_LV=15;   // 装备栏2×3
+const MAX_SLOTS=4, MAX_SKILL_LV=10, MAX_EQUIP=6, MAX_HERO_LV=15;   // 装备栏2×3
 const COL_CLASS=['mage','archer','warrior'];
 /* bat=基础攻击间隔s wep=武器基础攻击 main=主属性(加攻) grow=每级属性成长 */
 const CLASSES={
-  mage:  {name:'法师',color:'#4f8dff',hpB:60,wep:6, bat:1.9,baseArmor:1,range:9,  splash:1.1,main:'int',
+  mage:  {name:'法师',color:'#4f8dff',hpB:60,wep:6, bat:1.9,baseArmor:1,range:6.5,splash:1.1,main:'int',
           attr:{str:8, agi:12,int:24},grow:{str:1.1,agi:1.4,int:3.2},desc:'远程溅射·主智力'},
   archer:{name:'游侠',color:'#57d474',hpB:70,wep:8, bat:1.3,baseArmor:2,range:6,  splash:0,  main:'agi',
           attr:{str:10,agi:22,int:12},grow:{str:1.4,agi:2.9,int:1.5},desc:'中程速射·主敏捷'},
@@ -273,7 +273,7 @@ const SKB={
   '致命一击':  {cat:'agi',q:'qpurple',short:'致命',cd:0, desc:'被动：(15+5×等级)%几率暴击，造成(140+10×等级)%伤害，金色飘字'},
   '召唤熊德':  {cat:'int',q:'qblue',  short:'熊德',cd:22,mana:50,desc:'主动(50蓝)：召近战熊灵冲锋接敌，属性随智力成长'},
   '火球术':    {cat:'int',q:'qgreen', short:'火球',cd:7, mana:25,desc:'主动(25蓝)：单体魔法伤害（智力×3×等级+40），弹道线'},
-  '冰风暴':    {cat:'int',q:'qgreen', short:'冰风',cd:10,mana:35,desc:'主动(35蓝)：暴风雪，固定区域每0.9秒对圈内全体造成(15+智×0.8×等级)魔法伤+减速，共(3+等级)波'},
+  '冰风暴':    {cat:'int',q:'qpurple',short:'冰风',cd:10,mana:35,desc:'主动(35蓝)：暴风雪，固定区域每0.9秒对圈内全体造成(15+智×0.8×等级)魔法伤+减速，共(3+等级)波'},
   'CD光环':    {cat:'int',q:'qblue',  short:'CD环',cd:0, desc:'被动：主动技能冷却-4%×等级（与装备CD缩减叠加，总上限50%）'},
   '闪电链':    {cat:'int',q:'qblue',  short:'闪电',cd:4, mana:16,desc:'主动(16蓝)：短CD低耗蓝，闪电跳(2+等级)个目标，各(12+智×0.45×等级)魔法伤害'},
   '魂吸':      {cat:'int',q:'qpurple',short:'魂吸',cd:0, desc:'被动：每有敌方单位死亡+0.5智力，上限10+5×(等级-1)'},
@@ -289,7 +289,7 @@ function pickBook(pool){
   return pool[pool.length-1];
 }
 const CATS={str:{label:'力量',color:'#ff5d5d'},agi:{label:'敏捷',color:'#57d474'},int:{label:'智力',color:'#4f8dff'}};
-const PACK_COST=200, ROLL_COST=100, PACK_N=4;
+const PACK_COST=200, ROLL_COST=125, PACK_N=4;
 /* 出售：只有装备能卖，技能书不能卖；返还压低到roll成本的40~60% */
 const SELL_EQ={common:8,fine:18,rare:40,epic:80};
 function canSell(it){return it.t==='eq';}
@@ -361,6 +361,8 @@ function millCost(lv){return 35+25*(lv-1);}
 const WAVE_EVERY=35;
 /* 怪物AI：仇恨范围>攻击范围（攻击距离见 MOBS.atkR），仇恨内只做轻微纵向贴靠 */
 const AGGRO_R=3.2, VEER_SPD=.7;
+/* 召唤物活动上限：守在左侧第4格附近，不追出去 */
+const BEAR_MAX_X=4.15;
 
 /* ================= 状态 ================= */
 let gold,wood,lives,wave,queue,spawnT,incomeT,waveT,cleared,hudAcc;
@@ -609,7 +611,7 @@ function update(dt){
     }
     if(best){
       const gap=best.x-br.x;
-      if(gap>.8){br.x=Math.min(br.x+1.8*dt,COLS-.6);}
+      if(gap>.8){br.x=Math.min(br.x+1.8*dt,BEAR_MAX_X);}   // 只在战线前方活动，不追远
       else if(br.cd<=0){
         br.cd=1;
         physDamage(best,br.atk,'#c9a068');
@@ -1069,8 +1071,8 @@ function renderInfo(){
     const names=Object.keys(h.skills),sk=[];
     for(let i=0;i<MAX_SLOTS;i++){
       const n=names[i];
-      // 边框颜色=属性系（力红/敏绿/智蓝），文字颜色=技能品质（绿/蓝/紫）
-      sk.push(n?`<div class="slot f" data-skslot="${i}" data-lps="${n}" style="border-color:${CATS[SKB[n].cat].color};color:${QC[SKB[n].q]}">${SKB[n].short}<i>Lv${h.skills[n]}</i></div>`
+      // 边框颜色=技能品质（绿/蓝/紫），文字颜色=属性系（力红/敏绿/智蓝）
+      sk.push(n?`<div class="slot f" data-skslot="${i}" data-lps="${n}" style="border-color:${QC[SKB[n].q]};color:${CATS[SKB[n].cat].color}">${SKB[n].short}<i>Lv${h.skills[n]}</i></div>`
               :`<div class="slot" data-skslot="${i}">空</div>`);
     }
     // 2×3装备栏
@@ -1277,8 +1279,8 @@ function renderInv(){
     el.dataset.idx=i;
     if(it.t==='book'){
       const d=SKB[it.name];
-      el.style.borderColor=CATS[d.cat].color;   // 边框=属性系
-      el.style.color=QC[d.q];                   // 文字=品质
+      el.style.borderColor=QC[d.q];             // 边框=品质
+      el.style.color=CATS[d.cat].color;         // 文字=属性系
       el.innerHTML=`${d.short}<small>技能书</small>`;
     }else{
       const d=eqDef(it),q=qOf(it);
