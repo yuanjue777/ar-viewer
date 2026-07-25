@@ -33,7 +33,7 @@
 - **文件已拆分**（为省 token，别再合回单文件）：
   - `www/rpg.html`（57行）= DOM 骨架：header / canvas / `#dock`商店条(含4个 `.tile.trial`) / `#info`信息区 / `#inv`背包 / `#overlay`开始页
   - `www/rpg.css`（174行）= 全部样式，`:root` 里是配色变量
-  - `www/rpg.js`（约1810行）= 全部逻辑，**几乎所有改动都在这里**
+  - `www/rpg.js`（约2080行）= 全部逻辑，**几乎所有改动都在这里**
 - **改动方式**：**永远不要整文件 Read `rpg.js`**。先查下面的"改什么→去哪里"表，用 `grep -n "锚点" www/rpg.js` 定位（行号会漂移，锚点不会），再 Edit 局部替换。改完 `node --check www/rpg.js`。
 
 ### 改什么 → 去哪里（锚点 grep 关键词 / 大致行号）
@@ -45,9 +45,9 @@
 | 英雄定价 | `const HERO_COSTS=` | 43 |
 | **加/改技能（技能表）** | `const SKB=` | 50 |
 | 品质颜色/属性系颜色 | `const QC=` / `const CATS=` | 66 / 76 |
-| 技能书价格、每包本数 | `const PACK_COST=` | 77 |
+| 技能书roll价、按品质的学习费 | `const PACK_COST=` / `const BOOK_COST=` | 77 |
 | 装备出售价 | `const SELL_EQ=` | 79 |
-| **加/改装备（含精英池 `pool:'elite'`）** | `const EQUIPS=` | 90 |
+| **加/改装备（精英池 `pool:'elite'` / 金色池 `pool:'gold'`）** | `const EQUIPS=` / `GOLD_DROP` | 90 |
 | 装备roll三档权重/价格 | `const EQ_TIERS=` | 111 |
 | 装备属性显示文案 | `function eqDesc` | 125 |
 | **怪物属性/攻击距离/颜色** | `const MOBS=` | 144 |
@@ -74,7 +74,8 @@
 | └ **英雄：回蓝/放技能/推进/选敌/攻击** | 注释 `/* 英雄 */` | 548 |
 | 溅射/血怒/攻速公式 | `cleaveAround` / `berserkRatio` / `effInterval` | 653–669 |
 | 普攻结算（暴击/毒/溅射/弹道） | `function attack` | 676 |
-| 英雄挨打/反伤/格挡 | `function hitUnit` | 707 |
+| 英雄挨打/反伤/格挡/泰坦叠层 | `function hitUnit` | 707 |
+| 怪物有效护甲（含幽冥刃破甲） | `function mobArmor` / `physDamage` | 420 |
 | **所有主动技能的实现** | `function castSkill` | 741 |
 | 颜色工具/圆角矩形/多边形 | `shade` / `rrect` / `poly` | 827–844 |
 | **英雄模型（三职业外观）** | `function drawHero` | 850 |
