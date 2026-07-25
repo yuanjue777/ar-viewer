@@ -255,7 +255,7 @@ const SKB={
   '致命一击':  {cat:'agi',q:'qpurple',short:'致命',cd:0, desc:'被动：(15+5×等级)%几率暴击，造成(140+10×等级)%伤害，金色飘字'},
   '召唤熊德':  {cat:'int',q:'qblue',  short:'熊德',cd:22,mana:50,desc:'主动(50蓝)：召近战熊灵冲锋接敌，属性随智力成长'},
   '火球术':    {cat:'int',q:'qgreen', short:'火球',cd:7, mana:25,desc:'主动(25蓝)：单体魔法伤害（智力×3×等级+40），弹道线'},
-  '冰风暴':    {cat:'int',q:'qgreen', short:'冰风',cd:10,mana:35,desc:'主动(35蓝)：暴风雪，目标区域连续降下(6+2×等级)发冰雹，每发(12+智×0.5×等级)魔法伤+减速，可重复命中'},
+  '冰风暴':    {cat:'int',q:'qgreen', short:'冰风',cd:10,mana:35,desc:'主动(35蓝)：暴风雪，目标区域每0.9秒降下1发冰雹共(3+等级)发，每发(20+智×等级)魔法伤+减速，可重复命中'},
   'CD光环':    {cat:'int',q:'qblue',  short:'CD环',cd:0, desc:'被动：主动技能冷却-4%×等级（与装备CD缩减叠加，总上限50%）'},
   '闪电链':    {cat:'int',q:'qblue',  short:'闪电',cd:4, mana:45,desc:'主动(45蓝)：CD短耗蓝高，闪电跳(2+等级)个目标，各(30+智×1.2×等级)魔法伤害'},
   '魂吸':      {cat:'int',q:'qpurple',short:'魂吸',cd:0, desc:'被动：每有敌方单位死亡+0.5智力，上限10+5×(等级-1)'},
@@ -598,7 +598,14 @@ function update(dt){
   /* 暴风雪冰雹：到点落下，小片AOE伤害+减速 */
   for(const hl of hails){
     hl.delay-=dt;
-    if(hl.delay>0)continue;
+    if(hl.delay>0){
+      // 落地前0.5秒才显示下落的冰雹
+      if(!hl.cued&&hl.delay<=.5){
+        hl.cued=true;
+        fx.push({type:'fall',x:hl.x,y:hl.y,t:hl.delay,max:.5,color:'#bfeaff'});
+      }
+      continue;
+    }
     hl.done=true;
     fx.push({type:'ring',x:hl.x,y:hl.y,rr:hl.ir,t:.24,max:.24,color:'#bfeaff'});
     fx.push({type:'aoe',x:hl.x,y:hl.y,rr:hl.ir*.8,t:.16,max:.16,color:'#dff4ff'});
@@ -816,16 +823,14 @@ function castSkill(h,name,lv,hx,hy){
   if(name==='冰风暴'){
     const t=frontInRange(h,hx,hy);
     if(!t)return false;
-    // 暴风雪：在目标区域连续降下 6+2×等级 发冰雹，每发一小片AOE，整片显示范围圈
-    const R=1.6+.1*lv, strikes=6+2*lv, gap=.16, cx=t.x, cy=t.y+.5;
-    const dur=.2+strikes*gap;
+    // 暴风雪：目标区域每 0.9 秒降下一发冰雹，共 3+等级 发，整片显示范围圈
+    const R=1.6+.1*lv, strikes=3+lv, gap=.9, cx=t.x, cy=t.y+.5;
+    const dur=.3+strikes*gap;
     fx.push({type:'aoe',x:cx,y:cy,rr:R,t:dur,max:dur,color:'#7fd8ff'});
     for(let i=0;i<strikes;i++){
       const ang=Math.random()*7, rad=Math.sqrt(Math.random())*R;
-      const hx2=cx+Math.cos(ang)*rad, hy2=cy+Math.sin(ang)*rad;
-      const delay=.2+i*gap;
-      hails.push({x:hx2,y:hy2,delay,ir:.6,dmg:12+h.int*.5*lv,slow:Math.min(.75,.4+.05*lv)});
-      fx.push({type:'fall',x:hx2,y:hy2,t:delay,max:delay,color:'#bfeaff'});  // 冰雹下落
+      hails.push({x:cx+Math.cos(ang)*rad,y:cy+Math.sin(ang)*rad,
+        delay:.3+i*gap,ir:.7,dmg:20+h.int*1*lv,slow:Math.min(.75,.4+.05*lv)});
     }
     return true;
   }
