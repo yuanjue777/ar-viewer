@@ -164,8 +164,7 @@ function isBossWave(w){return w%10===0;}
 function isEliteWave(w){return w%10===5;}
 /* 怪物AI：仇恨范围>攻击范围（攻击距离见 MOBS.atkR），仇恨内只做轻微纵向贴靠 */
 const AGGRO_R=3.2, VEER_SPD=.7;
-/* 召唤物活动上限：守在左侧第4格附近，不追出去 */
-const BEAR_MAX_X=4.15;
+/* 召唤物不再有活动上限：召出来就一路向右压，波次结束随波消散 */
 /* ===== 召唤物（bears 数组统一管理，kind 决定属性/外观）=====
    hp/atk = 基础 + 智力×系数×技能等级；rng=攻击距离 ivl=攻击间隔 splash=溅射半径 */
 const MINIONS={
@@ -517,9 +516,10 @@ function update(dt){
       if(!best||m.x<best.x)best=m;
     }
     const md=MINIONS[br.kind]||MINIONS.bear, by=br.row+.5+(br.oy||0);
-    if(best){
+    if(!best){br.x=Math.min(br.x+(br.spd||1.8)*dt,COLS-.5);continue;}   // 本行没敌人：继续往前压
+    {
       const gap=best.x-br.x;
-      if(gap>(br.rng||.8)){br.x=Math.min(br.x+(br.spd||1.8)*dt,br.maxX||BEAR_MAX_X);}   // 只在召唤者前方活动，不追远
+      if(gap>(br.rng||.8)){br.x=Math.min(br.x+(br.spd||1.8)*dt,COLS-.5);}   // 一直向前推进，不再被召唤点限制
       else if(br.cd<=0){
         br.cd=br.ivl||1;
         if(br.mag)magDamage(best,br.atk,md.color);else physDamage(best,br.atk,md.color);
@@ -530,7 +530,7 @@ function update(dt){
           fx.push({type:'bolt',x1:br.x+.2,y1:by,x2:best.x,y2:best.y+.5,t:.25,max:.25,color:md.color});
         fx.push({type:'ring',x:best.x,y:best.y+.5,rr:br.splash||.3,t:.15,max:.15,color:md.color});
       }
-    }else if(br.x>br.home){br.x=Math.max(br.home,br.x-(br.spd||1.8)*dt);}
+    }
   }
   bears=bears.filter(b=>!b.dead);
   /* 暴风雪冰雹：到点落下，小片AOE伤害+减速 */
@@ -665,11 +665,15 @@ function update(dt){
       const d=Math.hypot(m.x-hx,(m.y+.5)-hy);
       if(d<=h.range+m.r&&(!best||m.x<best.x))best=m;
     }
-    // 开波后从左往右推进；没敌人时压上去，清场后走回本阵
+    // 开波后从左往右推进；没敌人时压上去，清场后瞬间传回本阵
     const home=h.col+.5;
     if(started&&!over&&mobs.length){
       if(!best)h.x=Math.min(h.x+HERO_SPD*dt,COLS-.7);
-    }else if(h.x>home)h.x=Math.max(home,h.x-HERO_SPD*1.8*dt);
+    }else if(h.x!==home){
+      fx.push({type:'ring',x:h.x,y:h.row+.5,rr:.5,t:.3,max:.3,color:'#8ab8d8'});
+      h.x=home;
+      fx.push({type:'ring',x:home,y:h.row+.5,rr:.5,t:.3,max:.3,color:'#8ab8d8'});
+    }
     if(best&&h.cd<=0){
       h.cd=effInterval(h);
       attack(h,hx,hy,best);
@@ -712,7 +716,12 @@ function update(dt){
   else if(!cleared&&wave>0){
     cleared=true;
     gold+=20+wave*6;
-    for(const h of heroes){h.alive=true;h.hp=h.maxHp;h.mp=h.maxMp;}
+    // 波次结束：召唤物全部消散，英雄直接传送回本阵格子
+    for(const br of bears)
+      fx.push({type:'ring',x:br.x,y:br.row+.5+(br.oy||0),rr:.6,t:.35,max:.35,
+        color:(MINIONS[br.kind]||MINIONS.bear).color});
+    bears=[];
+    for(const h of heroes){h.alive=true;h.hp=h.maxHp;h.mp=h.maxMp;h.x=h.col+.5;}
     updateHUD();
     if(wave>=TOTAL_WAVES){endGame(true);return;}
     renderInfo();
@@ -812,7 +821,7 @@ function summon(h,kind,lv){
   for(let i=0;i<d.n;i++){
     const oy=(d.n>1?(i-(d.n-1)/2)*.34:0)+[0,.16,-.16][(cnt+i)%3];   // 纵向错开显示
     const x=h.x+.5+base+i*.35;
-    bears.push({isBear:true,kind,owner:h,row:h.row,oy,x,home:x,maxX:h.x+2.6-((cnt+i)%3)*.24,
+    bears.push({isBear:true,kind,owner:h,row:h.row,oy,x,
       hp,maxHp:hp,atk,rng:d.rng,ivl:d.ivl,spd:d.spd,splash:d.splash,mag:d.mag,r:d.r,
       t:d.dur(lv),cd:0,dead:false});
     fx.push({type:'ring',x,y:h.row+.5+oy,rr:.8,t:.4,max:.4,color:d.color});
