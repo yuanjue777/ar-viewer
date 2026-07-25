@@ -30,7 +30,7 @@ const ADV={
 const SPECS={
   berserker:{n:'血怒',    d:lv=>`失血越多输出越高：攻击+失血比×${15+10*lv}%，攻速+失血比×${30+15*lv}点`},
   guard:    {n:'坚壁',    d:lv=>`护甲+${3*lv}`},
-  elf:      {n:'迅捷',    d:lv=>`攻击间隔额外-${(0.2+0.01*lv).toFixed(2)}s`},
+  elf:      {n:'迅捷',    d:lv=>`攻击间隔额外-${(0.1+0.01*lv).toFixed(2)}s`},
   death:    {n:'死神收割',d:lv=>`每有敌人死亡+0.5敏捷，上限${20+10*(lv-1)}`},
   priest:   {n:'治愈祷言',d:lv=>`主动(30蓝,CD8s)：回复全体英雄 30+智×${(0.6+0.4*lv).toFixed(1)} 生命`},
   druid:    {n:'自然之力',d:lv=>`召唤物属性+${20*lv}%`},
@@ -52,6 +52,7 @@ const SKB={
   '荆棘光环':  {cat:'str',q:'qgreen', short:'荆棘',cd:0, desc:'被动：反弹15%×等级伤害，附加0.4×力量×等级（魔法伤害）'},
   '攻击溅射':  {cat:'str',q:'qpurple',short:'溅射',cd:0, desc:'被动：普攻对目标1.5格内溅射(25+5×等级)%伤害，多重射击的额外攻击同样触发'},
   '大地震颤':  {cat:'str',q:'qpurple',short:'震颤',cd:14,mana:25,desc:'主动(25蓝)：震裂身前3×4.5格矩形地面，每0.5秒造成一次伤害，持续(3+0.5×等级)秒，每秒(10+力量×0.4×等级)魔法伤害，区域内敌人移速与攻速-30%'},
+  '主属光环':  {cat:'str',q:'qpurple',short:'主属',cd:0, desc:'被动光环：3格内的友方英雄（含自己）各获得 20×等级 点自身主属性（多个光环不叠加，取最高）'},
   '忍受':      {cat:'str',q:'qblue',  short:'忍受',cd:18,mana:20,desc:'主动(20蓝)：进入忍受状态，持续(3+等级)秒，期间受到的伤害减少(20+3×等级)%（与其它减伤相乘），附近有敌人时自动开启'},
   '多重射击':  {cat:'agi',q:'qblue',  short:'多重',cd:0, desc:'被动：普攻额外射击 等级×0.5 个敌人（70%伤害）'},
   '沁毒射击':  {cat:'agi',q:'qgreen', short:'沁毒',cd:0, desc:'被动：普攻附带毒伤=敏捷×(0.35+0.15×等级)（魔法伤害）'},
@@ -80,7 +81,10 @@ function pickBook(pool){
   return pool[pool.length-1];
 }
 const CATS={str:{label:'力量',color:'#ff5d5d'},agi:{label:'敏捷',color:'#57d474'},int:{label:'智力',color:'#4f8dff'}};
-const PACK_COST=200, ROLL_COST=125, PACK_N=4;
+const PACK_COST=100, ROLL_COST=40, PACK_N=4;
+/* 技能书学习费：roll只出书，真正学到英雄身上时按品质付金币 */
+const BOOK_COST={qgreen:40,qblue:80,qpurple:150};
+function bookCost(name){return BOOK_COST[SKB[name].q]||0;}
 /* 出售：只有装备能卖，技能书不能卖；返还压低到roll成本的40~60% */
 const SELL_EQ={common:8,fine:18,rare:40,epic:80};
 function canSell(it){return it.t==='eq';}
@@ -92,6 +96,7 @@ const QUALS={
   fine:  {n:'绿色',c:'#5ad48a',w:35},
   rare:  {n:'蓝色',c:'#4fa8ff',w:15},
   epic:  {n:'紫色',c:'#b070ff',w:0},   // 预留
+  legend:{n:'金色',c:'#f0a63c',w:0},   // 金色：只从宝箱掉，商店roll不出
 };
 const EQUIPS=[
   {id:'sword1',   n:'新手剑',  s:'新剑',q:'common',stats:{atk:10}},
@@ -111,7 +116,13 @@ const EQUIPS=[
   {id:'elitecrown', n:'秘法王冠',s:'王冠',q:'epic',pool:'elite',stats:{int:22,cdr:.1}},
   {id:'elitegirdle',n:'巨力腰带',s:'腰带',q:'rare',pool:'elite',stats:{str:18,hp:120}},
   {id:'elitetalis', n:'守护护符',s:'护符',q:'rare',pool:'elite',stats:{armor:8,mres:.15}},
+  {id:'gloomblade', n:'幽冥刃',  s:'幽冥',q:'epic',pool:'elite',stats:{atk:40,sunder:20}},
+  /* 金色池：宝箱里小概率掉，最强的一档 */
+  {id:'titan',    n:'泰坦的坚决',      s:'泰坦',q:'legend',pool:'gold',stats:{titan:1}},
+  {id:'cannon',   n:'射神炮',          s:'射神',q:'legend',pool:'gold',stats:{atk:100,crit:25}},
+  {id:'cenarius', n:'塞纳留斯的号角',  s:'号角',q:'legend',pool:'gold',stats:{int:80,summon:1}},
 ];
+const GOLD_DROP=.15;   // 宝箱里开出金色装备的概率
 const EQ_BY_ID=Object.fromEntries(EQUIPS.map(e=>[e.id,e]));
 /* 装备商店三档roll：每次固定4件，越贵越容易出高品质 */
 const EQ_TIERS={
@@ -143,6 +154,10 @@ function eqDesc(def){
   if(s.int)p.push('智力+'+s.int);
   if(s.mres)p.push('魔抗+'+Math.round(s.mres*100)+'%');
   if(s.hp)p.push('生命+'+s.hp);
+  if(s.crit)p.push('暴击率+'+s.crit+'%');
+  if(s.sunder)p.push('普攻削减敌人'+s.sunder+'护甲(唯一特效)');
+  if(s.summon)p.push('召唤物强度+'+Math.round(s.summon*100)+'%');
+  if(s.titan)p.push('每次受伤+2护甲/+0.5%魔抗/+5攻击/+2%体型，上限50层，每波开始重置');
   return p.join(' · ');
 }
 
@@ -215,7 +230,7 @@ window.addEventListener('resize',()=>setTimeout(resize,60));
 function makeHero(cls,row,col){
   const h={cls,row,col,x:col+.5,lv:1,xp:0,tier:0,branch:-1,specLv:1,autoLearn:false,
     soulInt:0,deathAgi:0,equips:[],
-    skills:{},cds:{},cd:0,flash:0,anim:0,endT:0,endF:0,alive:true};
+    skills:{},cds:{},cd:0,flash:0,anim:0,endT:0,endF:0,titanS:0,alive:true};
   calc(h);h.hp=h.maxHp;
   return h;
 }
@@ -224,29 +239,47 @@ function calc(h){
   const am=h.tier?1.35:1;
   const sp=h.specLv||0,key=a?a.key:'';
   let eqAtk=0,eqArmor=0,eqHp=0,eqAspd=0,eqStr=0,eqAgi=0,eqInt=0,eqMres=0,eqCdr=0,eqBat=0,eqBlock=0,eqMpre=0,eqRange=0;
+  let eqCrit=0,eqSunder=0,eqSummon=0,eqTitan=0;
   for(const e of h.equips){
     const s=eqDef(e).stats;
     eqAtk+=s.atk||0;eqArmor+=s.armor||0;eqHp+=s.hp||0;eqAspd+=s.aspd||0;
     eqStr+=s.str||0;eqAgi+=s.agi||0;eqInt+=s.int||0;eqMres+=s.mres||0;
     eqCdr+=s.cdr||0;eqBat+=s.bat||0;eqBlock+=s.block||0;eqMpre+=s.mpre||0;eqRange+=s.range||0;
+    eqCrit+=s.crit||0;eqSummon+=s.summon||0;eqTitan+=s.titan||0;
+    eqSunder=Math.max(eqSunder,s.sunder||0);   // 破甲是唯一特效，取最高不叠加
   }
   // 装备加的力/敏一样吃派生；魂吸智力/死神收割敏捷是击杀累积
-  h.str=Math.round((b.attr.str+b.grow.str*(h.lv-1))*am)+eqStr;
-  h.agi=Math.round((b.attr.agi+b.grow.agi*(h.lv-1))*am)+eqAgi+Math.round(h.deathAgi||0);
-  h.int=Math.round((b.attr.int+b.grow.int*(h.lv-1))*am)+eqInt+Math.round(h.soulInt||0);
-  h.atk=Math.round(b.wep*(a?a.atk:1)+h[b.main]+eqAtk);
+  // 主属光环：3格内友方英雄（含自己）提供 20×等级 点各自主属性，不叠加取最高
+  let aura=0;
+  for(const o of heroes){
+    const lv=o.skills&&o.skills['主属光环'];
+    if(!lv||!o.alive)continue;
+    if(o!==h&&Math.hypot((o.x||0)-(h.x||0),o.row-h.row)>3)continue;
+    aura=Math.max(aura,20*lv);
+  }
+  h.aura=aura;
+  const ts=h.titanS||0;   // 泰坦的坚决层数
+  h.str=Math.round((b.attr.str+b.grow.str*(h.lv-1))*am)+eqStr+(b.main==='str'?aura:0);
+  h.agi=Math.round((b.attr.agi+b.grow.agi*(h.lv-1))*am)+eqAgi+Math.round(h.deathAgi||0)+(b.main==='agi'?aura:0);
+  h.int=Math.round((b.attr.int+b.grow.int*(h.lv-1))*am)+eqInt+Math.round(h.soulInt||0)+(b.main==='int'?aura:0);
+  h.atk=Math.round(b.wep*(a?a.atk:1)+h[b.main]+eqAtk+ts*5);
   h.maxHp=Math.round((b.hpB+h.str*8)*(a?a.hp:1)+eqHp);
   // 护卫专精：坚壁加甲
-  h.armor=Math.round((b.baseArmor+h.agi/7+eqArmor+(key==='guard'?3*sp:0))*10)/10;
-  h.mres=Math.min(.75,.25+eqMres);
+  h.armor=Math.round((b.baseArmor+h.agi/7+eqArmor+ts*2+(key==='guard'?3*sp:0))*10)/10;
+  h.mres=Math.min(.75,.25+eqMres+ts*.005);
   // 魔兽/DotA公式：每秒攻击=(1+攻速/100)/BAT；1敏=1攻速；上限400⇒最多5/BAT次每秒
   // 精灵游侠专精：迅捷额外降BAT
-  const bat=Math.max(.35,b.bat*(a?a.bat:1)-eqBat-(key==='elf'?.2+.01*sp:0));
+  const bat=Math.max(.35,b.bat*(a?a.bat:1)-eqBat-(key==='elf'?.1+.01*sp:0));
   h.bat=Math.round(bat*100)/100;   // 基础攻击间隔(BAT)：只含职业/转职/装备/迅捷，不含攻速
   h.ias=Math.min(400,h.agi+eqAspd);
   h.interval=bat/(1+h.ias/100);
   h.cdr=Math.min(.5,eqCdr+.04*(h.skills['CD光环']||0));
   h.block=eqBlock;
+  h.critAdd=eqCrit/100;      // 射神炮等装备提供的额外暴击率
+  h.sunder=eqSunder;         // 幽冥刃：普攻削甲（唯一）
+  h.sumB=1+eqSummon;         // 塞纳留斯的号角：召唤物强度倍率
+  h.titan=eqTitan>0;         // 泰坦的坚决：受伤叠层
+  h.sizeMul=1+ts*.02;        // 体型随层数变大
   h.range=b.range+(a?a.range:0)+.3*(h.skills['狙击潜质']||0)+eqRange;
   h.splash=b.splash+(a?a.splash:0);
   h.maxMp=10+h.int*3;
@@ -275,7 +308,7 @@ function waveComp(w){
   const fin=w>=TOTAL_WAVES;
   const list=[];
   if(isBossWave(w)){   // Boss关：清一色Boss，不带小怪，数值额外×BOSS_WAVE_MUL
-    for(let i=0;i<w/10;i++)list.push({t:'boss',mul:BOSS_WAVE_MUL,rs:1.25});
+    list.push({t:'boss',mul:BOSS_WAVE_MUL,rs:1.25});   // 每个BOSS关只来1只
     return list;
   }
   // 前5波是新手期：数量不减（金币照拿），靠 spawnMob 里的强度折扣压低数值
@@ -300,6 +333,7 @@ function startWave(){
   if(wave>=TOTAL_WAVES)return;
   wave++;
   // 整波一起入场（不再一只只放）：排成纵深队形从右边压上来
+  for(const h of heroes){if(h.titanS){h.titanS=0;calc(h);}}   // 泰坦层数每波重置
   const list=waveComp(wave);
   for(let i=0;i<list.length;i++){
     const e=list[i];
@@ -326,7 +360,7 @@ function spawnMob(type,opt){
     reward:Math.round(b.reward*(opt.elite?2:1)),xp:Math.round(b.xp*(opt.elite?2:1)),
     lives:b.lives,armor:b.armor,mres:b.mres,elite:opt.elite||0,
     trial:opt.trial||null,bonus:opt.bonus||0,chest:opt.chest||0,
-    color:b.color,cd:0,fight:false,slowT:0,slowF:0,frost:0,asT:0,asF:0});
+    color:b.color,cd:0,fight:false,slowT:0,slowF:0,frost:0,asT:0,asF:0,sunderT:0,sunder:0});
 }
 /* 四大试炼：点图标开打，怪即刻入场；奖励在击杀时结算（见 damage） */
 function trialReady(k){
@@ -342,10 +376,11 @@ function startTrial(k){
   const w=Math.max(1,wave);
   if(k==='elite'){
     const n=1+Math.floor(w/5);
+    const nChest=Math.random()<.25?2:1;   // 整场试炼只掉1个箱子，25%概率掉2个
     for(let i=0;i<n;i++)
-      spawnMob(w>=15?'boss':'tank',{trial:k,mul:1.5+.06*w,rs:1.15,dx:i*.7,chest:1});
+      spawnMob(w>=15?'boss':'tank',{trial:k,mul:1.5+.06*w,rs:1.15,dx:i*.7,chest:i<nChest?1:0});
     for(let i=0;i<2+Math.floor(w/3);i++)
-      spawnMob('fast',{trial:k,mul:1.2+.04*w,dx:1.2+i*.4,chest:Math.random()<.35?1:0});
+      spawnMob('fast',{trial:k,mul:1.2+.04*w,dx:1.2+i*.4});
   }else{
     const n=4+Math.floor(w*.7);
     const bonus=k==='gold'?10+w*3:(k==='wood'?6+w*2:4+w*2);
@@ -387,7 +422,8 @@ function dropChest(x,y){
   fx.push({type:'ring',x,y,rr:.7,t:.5,max:.5,color:'#f0c46a'});
 }
 function openChest(ch){
-  const pool=EQUIPS.filter(e=>e.pool==='elite');
+  const gold15=Math.random()<GOLD_DROP;
+  const pool=EQUIPS.filter(e=>e.pool===(gold15?'gold':'elite'));
   const d=pool[Math.floor(Math.random()*pool.length)];
   inv.push({t:'eq',id:d.id});
   ch.dead=true;
@@ -417,7 +453,8 @@ function onKill(){
   if(dirty&&sel)renderInfo();
 }
 /* 物理伤害吃怪物护甲，魔法伤害吃怪物魔抗 */
-function physDamage(m,d,color){damage(m,d*(1-armorRed(m.armor)),color);}
+function mobArmor(m){return Math.max(0,m.armor-(m.sunderT>0?(m.sunder||0):0));}
+function physDamage(m,d,color){damage(m,d*(1-armorRed(mobArmor(m))),color);}
 function magDamage(m,d,color){damage(m,d*(1-m.mres),color);}
 function gainXp(x){
   let leveled=false;
@@ -456,12 +493,17 @@ function update(dt){
     }
   }
   hudAcc+=dt;
-  if(hudAcc>=.25){hudAcc=0;updateHUD();}
+  if(hudAcc>=.25){
+    hudAcc=0;updateHUD();
+    // 主属光环按距离生效，英雄会推进，所以定期重算一次属性
+    if(heroes.some(h=>h.skills['主属光环']))for(const h of heroes){const rt=h.hp/h.maxHp;calc(h);h.hp=h.maxHp*rt;}
+  }
   /* 怪物：沿自己的路线向左推进，仇恨范围内会稍微靠向目标，进入攻击范围就停下开打 */
   for(const m of mobs){
     if(m.slowT>0)m.slowT-=dt;
     if(m.frost>0)m.frost-=dt;        // 冰霜覆层显示时长
     if(m.asT>0)m.asT-=dt;            // 攻速减益（大地震颤）
+    if(m.sunderT>0)m.sunderT-=dt;    // 破甲计时（幽冥刃）
     const spd=m.spd*(m.slowT>0?1-m.slowF:1);
     m.fight=false;
     // 找仇恨范围内最近的我方单位（英雄或熊灵）
@@ -757,7 +799,9 @@ function attack(h,hx,hy,m,mul,color){
   let dmg=effAtk(h)*mul,c=color;
   // 致命一击：(15+5lv)%几率 (140+10lv)%伤害
   const cr=h.skills['致命一击'];
-  if(cr&&Math.random()<.15+.05*cr){dmg*=1.4+.1*cr;c='#ffd24f';}
+  const critC=(cr?.15+.05*cr:0)+(h.critAdd||0);   // 技能暴击率 + 装备暴击率
+  if(critC>0&&Math.random()<critC){dmg*=cr?1.4+.1*cr:1.5;c='#ffd24f';}
+  if(h.sunder){m.sunderT=6;m.sunder=Math.max(m.sunder||0,h.sunder);}   // 幽冥刃破甲
   const poison=h.skills['沁毒射击']?h.agi*(.35+.15*h.skills['沁毒射击']):0;
   const cleave=h.skills['攻击溅射']?(.25+.05*h.skills['攻击溅射']):0;
   if(h.cls==='warrior'){
@@ -799,6 +843,11 @@ function hitUnit(u,m){
   if(h.endT>0)dmg*=1-h.endF;   // 忍受：额外减伤（与其它减伤相乘）
   h.hp-=dmg;h.flash=.12;
   dnum(h.x,h.row+.5,dmg,'#ff8080');
+  if(h.titan&&(h.titanS||0)<50){   // 泰坦的坚决：每次受伤叠一层，本波内永久
+    h.titanS=(h.titanS||0)+1;
+    const rt=h.hp/h.maxHp;calc(h);h.hp=h.maxHp*rt;
+    if((h.titanS%10)===0)fx.push({type:'ring',x:h.x,y:h.row+.5,rr:.6,t:.35,max:.35,color:'#f0a63c'});
+  }
   const th=h.skills['荆棘光环'];
   if(th)magDamage(m,m.atk*.15*th+h.str*.4*th,'#9dff9d');
   if(h.hp<=0){
@@ -813,7 +862,7 @@ function summon(h,kind,lv){
   const d=MINIONS[kind];
   if(!mobs.length)return false;   // 同种召唤物可以叠着召（CD流人海战术）
   // 德鲁伊·自然之力：召唤物属性+20%×专精等级
-  const sm=(h.tier&&advOf(h).key==='druid')?1+.2*h.specLv:1;
+  const sm=((h.tier&&advOf(h).key==='druid')?1+.2*h.specLv:1)*(h.sumB||1);
   const hp=(d.hpB+h.int*d.hpI*lv)*sm, atk=(d.atkB+h.int*d.atkI*lv)*sm;
   // 同排已有其它召唤物时错开站位，避免模型重叠
   const cnt=bears.filter(b=>!b.dead&&b.row===h.row).length;
@@ -985,6 +1034,8 @@ function poly(pts){
 }
 /* ===== 英雄模型（矢量绘制，朝右）===== */
 function drawHero(h,x,y){
+  const sz=h.sizeMul||1;
+  if(sz!==1){ctx.save();ctx.translate(x,y);ctx.scale(sz,sz);ctx.translate(-x,-y);}
   const b=CLASSES[h.cls], dead=!h.alive, w=h.flash>0?.75:0;
   const base=dead?'#39424f':shade(b.color,1,w);
   const dark=dead?'#252c37':shade(b.color,.6,w);
@@ -1087,6 +1138,7 @@ function drawHero(h,x,y){
   }
   ctx.globalAlpha=1;
   ctx.restore();
+  if(sz!==1)ctx.restore();   // 泰坦体型缩放
 }
 /* ===== 熊灵模型 ===== */
 function drawBear(br,x,y){
@@ -1577,7 +1629,7 @@ function renderInfo(){
       const d=SKB[it.name];
       info.innerHTML=`<div class="card"><b style="color:${CATS[d.cat].color}">${it.name}</b>
         <span style="color:${QC[d.q]}">[${QN[d.q]}]</span>
-        <span>${CATS[d.cat].label}系技能书</span><br><span>${d.desc}</span><br><span>拖到英雄上学习，同名升级（上限Lv${MAX_SKILL_LV}）</span></div>`;
+        <span>${CATS[d.cat].label}系技能书</span><br><span>${d.desc}</span><br><span>拖到英雄上学习，<b style="color:var(--gold)">学习费 ${bookCost(it.name)}金</b>，同名升级（上限Lv${MAX_SKILL_LV}）</span></div>`;
     }else{
       const d=eqDef(it),q=qOf(it);
       info.innerHTML=`<div class="card"><b style="color:${q.c}">${d.n}</b> <span style="color:${q.c}">[${q.n}]</span><br>
@@ -1719,14 +1771,14 @@ function closeShop(){
 }
 function shopHTML(){
   if(openShop==='skill'){
-    return `<div class="card shopHead"><b>技能商店</b><br><span>每次${PACK_N}本进背包</span></div>`+
+    return `<div class="card shopHead"><b>技能商店</b><br><span>每次${PACK_N}本进背包<br>学习时按品质另付：绿${BOOK_COST.qgreen}/蓝${BOOK_COST.qblue}/紫${BOOK_COST.qpurple}金</span></div>`+
       Object.entries(CATS).map(([cat,c])=>
         `<button class="btn grow" data-pack="${cat}" data-cost="${PACK_COST}" data-lock="0" ${gold>=PACK_COST?'':'disabled'}>
           <b style="color:${c.color}">${c.label}</b> <span class="cost">${PACK_COST}金</span>
           <span class="sub">${Object.keys(SKB).filter(n=>SKB[n].cat===cat).join('/')}</span></button>`).join('')+
       `<button class="btn grow" data-pack="roll" data-cost="${ROLL_COST}" data-lock="0" ${gold>=ROLL_COST?'':'disabled'}>
         <b style="color:#f0c46a">ROLL</b> <span class="cost">${ROLL_COST}金</span>
-        <span class="sub">全池·半价（新书替换旧书）</span></button>`;
+        <span class="sub">全池·最便宜（新书替换旧书）</span></button>`;
   }
   if(openShop==='item'){
     return `<div class="card shopHead"><b>装备商店</b><br><span>每档roll4件<br>越贵越出高品质</span></div>`+
@@ -1813,6 +1865,9 @@ function autoLearnPass(){
     if(it.t!=='book')continue;
     const h=heroes.find(o=>o.autoLearn&&o.skills[it.name]&&o.skills[it.name]<MAX_SKILL_LV);
     if(!h)continue;
+    const bc=bookCost(it.name);
+    if(gold<bc)continue;             // 金币不够就先不吃这本
+    gold-=bc;
     h.skills[it.name]++;calc(h);
     fx.push({type:'ring',x:h.x,y:h.row+.5,rr:.6,t:.4,max:.4,color:CATS[SKB[it.name].cat].color});
     got.push(`${it.name}→Lv${h.skills[it.name]}`);
@@ -1843,7 +1898,7 @@ function renderInv(){
       const d=SKB[it.name];
       el.style.borderColor=QC[d.q];             // 边框=品质
       el.style.color=CATS[d.cat].color;         // 文字=属性系
-      el.innerHTML=`${d.short}<small>技能书</small>`;
+      el.innerHTML=`${d.short}<small style="color:var(--gold)">${bookCost(it.name)}金</small>`;
     }else{
       const d=eqDef(it),q=qOf(it);
       el.style.borderColor=q.c;
@@ -1868,6 +1923,9 @@ function applyItem(idx,h,slot){
       const cur=h.skills[it.name]||0;
       if(cur>=MAX_SKILL_LV){showToast(`${it.name} 已满级`);return;}
       if(!cur&&names.length>=MAX_SLOTS){showToast('技能位已满，拖到某个技能上可覆盖');return;}
+      const bc=bookCost(it.name);
+      if(gold<bc){showToast(`学习 <b>${it.name}</b> 需要 <b style="color:var(--gold)">${bc}金</b>`);return;}
+      gold-=bc;updateHUD();refreshAfford();
       h.skills[it.name]=cur+1;
     }
     calc(h);
