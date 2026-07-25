@@ -1295,46 +1295,8 @@ function buildBG(){
   g.setTransform(W/COLS,0,0,H/ROWS,0,0);   // 统一用格子坐标
   /* --- 战斗区：保持干净的纯色，不做背景画（做过异界场景，用户觉得违和已去掉）--- */
   g.fillStyle='#0d1420';g.fillRect(HCOLS,0,BCOLS,ROWS);
-  /* --- 左侧：出兵村庄 --- */
-  const vg=g.createLinearGradient(0,0,0,ROWS);
-  vg.addColorStop(0,'#101d31');vg.addColorStop(1,'#0a1420');
-  g.fillStyle=vg;g.fillRect(0,0,HCOLS,ROWS);
-  // 每行一栋小屋（坐在该行底线上，作为背景）
-  const hut=(x,base,w,h,roof)=>{
-    const y=base-h;
-    g.fillStyle='#2f2a24';g.fillRect(x,y,w,h);                        // 墙
-    g.strokeStyle='rgba(0,0,0,.5)';g.lineWidth=.02;g.strokeRect(x,y,w,h);
-    g.fillStyle=roof;                                                  // 屋顶
-    g.beginPath();g.moveTo(x-w*.16,y);g.lineTo(x+w/2,y-h*.72);g.lineTo(x+w*1.16,y);g.closePath();g.fill();
-    g.fillStyle='rgba(255,198,110,.9)';                                // 暖光窗
-    g.fillRect(x+w*.16,y+h*.28,w*.22,h*.26);
-    g.fillStyle='rgba(255,198,110,.14)';
-    g.fillRect(x+w*.02,y+h*.14,w*.5,h*.55);
-    g.fillStyle='#241c14';g.fillRect(x+w*.58,y+h*.42,w*.24,h*.58);     // 门
-  };
-  hut(.16,.98,.6,.46,'#7d4a33');
-  hut(1.6,1.96,.54,.42,'#5b5288');
-  hut(.5,2.96,.62,.48,'#7d4a33');
-  // 小树
-  const tree=(x,base,s2)=>{
-    g.fillStyle='#3b2c1e';g.fillRect(x-.03*s2,base-.22*s2,.06*s2,.22*s2);
-    g.fillStyle='#2f5a44';
-    g.beginPath();g.moveTo(x-.19*s2,base-.2*s2);g.lineTo(x,base-.62*s2);g.lineTo(x+.19*s2,base-.2*s2);g.closePath();g.fill();
-  };
-  tree(1.15,.98,1);tree(2.5,1.96,.85);tree(1.85,2.96,1);
-  // 村旗
-  g.strokeStyle='#5b4a35';g.lineWidth=.045;
-  g.beginPath();g.moveTo(2.62,.2);g.lineTo(2.62,1.0);g.stroke();
-  g.fillStyle='#c94d5e';
-  g.beginPath();g.moveTo(2.64,.22);g.lineTo(2.98,.36);g.lineTo(2.64,.52);g.closePath();g.fill();
-  // 地面草带 + 栅栏（村庄与战场分界）
-  g.fillStyle='rgba(52,86,64,.35)';
-  for(let r=0;r<ROWS;r++)g.fillRect(0,r+.9,HCOLS,.1);
-  g.strokeStyle='rgba(140,116,80,.5)';g.lineWidth=.05;
-  for(let i=0;i<12;i++){
-    const y=i*ROWS/12+.04;
-    g.beginPath();g.moveTo(HCOLS-.1,y);g.lineTo(HCOLS-.1,y+.17);g.stroke();
-  }
+  /* --- 左侧出兵区：同样保持纯色，不画村庄（用户要求去掉背景）--- */
+  g.fillStyle='#0d1420';g.fillRect(0,0,HCOLS,ROWS);
 }
 /* ===== 弹道模型 ===== */
 function drawShot(s){
