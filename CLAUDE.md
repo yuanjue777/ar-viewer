@@ -146,7 +146,7 @@
   - 致命一击（紫,被动）：(15+5lv)%几率暴击(140+10lv)%，金色飘字。
   - 魂吸（紫,智力,被动）：每有敌方单位死亡+0.5智力，上限10+5×(lv-1)。
 - **智力系**：
-  - **召唤物系统已统一**：`bears` 数组现在装所有召唤物，属性表 `const MINIONS=`（kind→n/r/spd/rng/ivl/hpB/hpI/atkB/atkI/dur/mag/splash/color），技能名映射表 `const SUMMONS=`，创建走 `function summon(h,kind,lv)`（同种召唤物还活着不重复召；同排已有召唤物会自动错开站位），外观走 `drawElemental`（bear 仍走 drawBear）。**加新召唤物只要在 MINIONS+SUMMONS+SKB 各加一行**（外观要新样式才动 drawElemental）。德鲁伊·自然之力对所有召唤物生效。
+  - **召唤物系统已统一**：`bears` 数组现在装所有召唤物，属性表 `const MINIONS=`（kind→n/r/spd/rng/ivl/hpB/hpI/atkB/atkI/dur/mag/splash/color），技能名映射表 `const SUMMONS=`，创建走 `function summon(h,kind,lv)`（**同种召唤物可以重复叠着召 → CD流人海战术**；同排已有召唤物时自动错开站位与前压上限，不会糊成一坨；场上没怪时不释放），外观走 `drawElemental`（bear 仍走 drawBear）。**加新召唤物只要在 MINIONS+SUMMONS+SKB 各加一行**（外观要新样式才动 drawElemental）。德鲁伊·自然之力对所有召唤物生效。
   - 召唤熊德（蓝,主动CD22s,50蓝）：近战熊灵，冲向本行最近怪贴脸砍（间距>rng就以 spd 冲锋，**活动上限x=4.15不追远**，没怪撤回），怪会被挡住并攻击它。HP=120+智×6lv，攻=8+智×0.7lv(物理)，间隔1s，持续12+2lv秒。
   - 火元素（绿,主动CD16s,30蓝）：1只，**远程2.6格**喷火，攻=7+智×0.5lv(**魔法**)，间隔1.2s，HP=70+智×3lv，持续10+1.5lv秒。
   - 水元素（蓝,主动CD20s,40蓝）：**2只**近战肉盾，各攻=6+智×0.42lv(物理)，间隔1.1s，各HP=90+智×4lv，持续12+2lv秒。

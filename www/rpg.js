@@ -780,18 +780,17 @@ function hitUnit(u,m){
 const SUMMONS={'召唤熊德':'bear','火元素':'fire','水元素':'water','地狱火':'infernal'};
 function summon(h,kind,lv){
   const d=MINIONS[kind];
-  if(!mobs.length)return false;
-  if(bears.some(b=>!b.dead&&b.owner===h&&b.kind===kind))return false;   // 同种召唤物还活着就不重复召
+  if(!mobs.length)return false;   // 同种召唤物可以叠着召（CD流人海战术）
   // 德鲁伊·自然之力：召唤物属性+20%×专精等级
   const sm=(h.tier&&advOf(h).key==='druid')?1+.2*h.specLv:1;
   const hp=(d.hpB+h.int*d.hpI*lv)*sm, atk=(d.atkB+h.int*d.atkI*lv)*sm;
   // 同排已有其它召唤物时错开站位，避免模型重叠
   const cnt=bears.filter(b=>!b.dead&&b.row===h.row).length;
-  const base=(cnt%3)*.16;
+  const base=(cnt%4)*.19;
   for(let i=0;i<d.n;i++){
-    const oy=(d.n>1?(i-(d.n-1)/2)*.34:0)+(cnt?.14*(cnt%2?1:-1):0);   // 纵向错开显示
+    const oy=(d.n>1?(i-(d.n-1)/2)*.34:0)+[0,.16,-.16][(cnt+i)%3];   // 纵向错开显示
     const x=h.x+.5+base+i*.35;
-    bears.push({isBear:true,kind,owner:h,row:h.row,oy,x,home:x,maxX:h.x+2.6,
+    bears.push({isBear:true,kind,owner:h,row:h.row,oy,x,home:x,maxX:h.x+2.6-((cnt+i)%3)*.24,
       hp,maxHp:hp,atk,rng:d.rng,ivl:d.ivl,spd:d.spd,splash:d.splash,mag:d.mag,r:d.r,
       t:d.dur(lv),cd:0,dead:false});
     fx.push({type:'ring',x,y:h.row+.5+oy,rr:.8,t:.4,max:.4,color:d.color});
