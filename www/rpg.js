@@ -844,6 +844,88 @@ function drawBear(br,x,y){
   for(let i=0;i<3;i++){ctx.beginPath();ctx.moveTo(.16+i*.03,.06);ctx.lineTo(.2+i*.03,.14);ctx.stroke();}
   ctx.restore();
 }
+/* ===== 怪物模型（朝左推进，形状按种类，配色保持原有辨识度）===== */
+function drawMob(m,x,y){
+  const c=m.color, dk=shade(c,.55), lt=shade(c,1.35);
+  const s=m.r, ph=gt*6+m.x*2.2;              // 走路相位
+  const bob=Math.sin(ph)*.07, leg=Math.sin(ph)*.35;
+  ctx.save();ctx.translate(x,y+bob*s);ctx.scale(s,s);
+  ctx.lineJoin='round';
+  ctx.fillStyle='rgba(0,0,0,.32)';
+  ctx.beginPath();ctx.ellipse(0,1.02,.78,.2,0,0,7);ctx.fill();
+  const eye=(ex,ey,er)=>{
+    ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(ex,ey,er,0,7);ctx.fill();
+    ctx.fillStyle='#12060f';ctx.beginPath();ctx.arc(ex-er*.35,ey,er*.5,0,7);ctx.fill();
+  };
+  if(m.type==='fast'){
+    // 疾行者：前倾瘦长，尖脑袋 + 速度线
+    ctx.strokeStyle=rgba(c,.35);ctx.lineWidth=.16;ctx.lineCap='round';
+    ctx.beginPath();ctx.moveTo(1.5,-.3);ctx.lineTo(.85,-.3);
+    ctx.moveTo(1.7,.15);ctx.lineTo(.95,.15);ctx.stroke();
+    ctx.fillStyle=dk;                          // 腿
+    ctx.fillRect(-.15,.5,.26,.5+leg*.3);ctx.fillRect(.3,.5,.26,.5-leg*.3);
+    ctx.fillStyle=c;
+    poly([[-.85,.1],[-.1,-.85],[.75,-.5],[.7,.6],[-.5,.7]]);ctx.fill();
+    ctx.fillStyle=lt;
+    poly([[-.95,-.35],[-.15,-.75],[-.1,-.15]]);ctx.fill();   // 尖脑袋朝左
+    eye(-.45,-.45,.16);
+  }else if(m.type==='tank'){
+    // 重甲：宽厚方体 + 背甲铆钉 + 头盔
+    ctx.fillStyle=dk;
+    ctx.fillRect(-.5,.55,.34,.45+leg*.2);ctx.fillRect(.2,.55,.34,.45-leg*.2);
+    ctx.fillStyle=c;rrect(-.85,-.6,1.7,1.25,.22);ctx.fill();
+    ctx.fillStyle=dk;rrect(.25,-.68,.62,1.4,.2);ctx.fill();  // 背甲
+    ctx.fillStyle=lt;
+    for(let i=0;i<3;i++){ctx.beginPath();ctx.arc(.56,-.4+i*.5,.09,0,7);ctx.fill();}
+    ctx.fillStyle=lt;rrect(-.9,-.95,.95,.5,.14);ctx.fill();  // 头盔
+    ctx.fillStyle='#12060f';ctx.fillRect(-.88,-.78,.5,.14);  // 面甲缝
+    ctx.fillStyle='#ffd7e6';ctx.fillRect(-.8,-.75,.12,.08);
+  }else if(m.type==='boss'){
+    // 首领：巨体 + 弯角 + 尖牙 + 发光双眼
+    ctx.globalAlpha=.18+.08*Math.sin(gt*3);
+    ctx.fillStyle=c;ctx.beginPath();ctx.arc(0,0,1.35,0,7);ctx.fill();
+    ctx.globalAlpha=1;
+    ctx.fillStyle=dk;
+    ctx.fillRect(-.55,.6,.4,.45+leg*.18);ctx.fillRect(.2,.6,.4,.45-leg*.18);
+    ctx.fillStyle=c;rrect(-.85,-.5,1.7,1.2,.26);ctx.fill();
+    ctx.fillStyle=lt;rrect(-.62,-.3,.5,.8,.12);ctx.fill();   // 胸甲
+    ctx.fillStyle=dk;                                         // 肩甲
+    ctx.beginPath();ctx.arc(-.7,-.35,.34,0,7);ctx.fill();
+    ctx.beginPath();ctx.arc(.7,-.35,.34,0,7);ctx.fill();
+    ctx.fillStyle=c;rrect(-.75,-1.1,1.3,.72,.2);ctx.fill();  // 头
+    ctx.strokeStyle=lt;ctx.lineWidth=.16;ctx.lineCap='round'; // 角
+    ctx.beginPath();ctx.moveTo(-.6,-1.05);ctx.quadraticCurveTo(-1,-1.5,-.5,-1.6);
+    ctx.moveTo(.35,-1.05);ctx.quadraticCurveTo(.75,-1.5,.25,-1.6);ctx.stroke();
+    ctx.fillStyle='#fff2a0';
+    ctx.beginPath();ctx.arc(-.42,-.78,.15,0,7);ctx.fill();
+    ctx.beginPath();ctx.arc(.05,-.78,.15,0,7);ctx.fill();
+    ctx.fillStyle='#fff';                                     // 尖牙
+    poly([[-.6,-.45],[-.45,-.45],[-.52,-.24]]);ctx.fill();
+    poly([[-.25,-.45],[-.1,-.45],[-.17,-.28]]);ctx.fill();
+  }else{
+    // 普通小怪：驼背小鬼，两只角 + 大眼
+    ctx.fillStyle=dk;
+    ctx.fillRect(-.4,.55,.3,.45+leg*.3);ctx.fillRect(.15,.55,.3,.45-leg*.3);
+    ctx.fillStyle=c;
+    ctx.beginPath();ctx.ellipse(.1,.2,.72,.65,-.15,0,7);ctx.fill();   // 驼背身体
+    ctx.fillStyle=lt;
+    ctx.beginPath();ctx.arc(-.35,-.42,.55,0,7);ctx.fill();            // 头
+    ctx.fillStyle=c;                                                  // 角
+    poly([[-.72,-.72],[-.92,-1.15],[-.45,-.85]]);ctx.fill();
+    poly([[-.05,-.72],[.16,-1.12],[-.3,-.88]]);ctx.fill();
+    eye(-.52,-.45,.17);eye(-.06,-.42,.14);
+    ctx.strokeStyle='#12060f';ctx.lineWidth=.07;ctx.lineCap='round';
+    ctx.beginPath();ctx.moveTo(-.55,-.12);ctx.lineTo(-.15,-.16);ctx.stroke();
+  }
+  // 减速：冰霜覆层
+  if(m.slowT>0){
+    ctx.globalAlpha=.3+.12*Math.sin(gt*8);
+    ctx.fillStyle='#bfeaff';
+    ctx.beginPath();ctx.arc(0,0,1.05,0,7);ctx.fill();
+    ctx.globalAlpha=1;
+  }
+  ctx.restore();
+}
 /* ===== 弹道模型 ===== */
 function drawShot(s){
   ctx.save();ctx.translate(s.x,s.y);ctx.rotate(s.a||0);
@@ -924,9 +1006,7 @@ function draw(){
   // 怪物
   for(const m of mobs){
     const y=m.y+.5;
-    ctx.fillStyle=m.color;
-    ctx.fillRect(m.x-m.r,y-m.r,m.r*2,m.r*2);
-    if(m.slowT>0){ctx.strokeStyle='#7fd8ff';ctx.lineWidth=.045;ctx.strokeRect(m.x-m.r,y-m.r,m.r*2,m.r*2);}
+    drawMob(m,m.x,y);
     ctx.fillStyle='rgba(0,0,0,.6)';ctx.fillRect(m.x-m.r,y-m.r-.15,m.r*2,.08);
     ctx.fillStyle='#6ee7a0';ctx.fillRect(m.x-m.r,y-m.r-.15,m.r*2*Math.max(m.hp/m.maxHp,0),.08);
   }
