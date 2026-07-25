@@ -331,17 +331,18 @@ function eqDesc(def){
 
 /* ================= 怪物（带护甲/魔抗）================= */
 const MOBS={
-  normal:{hp:40, spd:1.1,atk:8, reward:7, xp:5, r:.30,lives:1,armor:0,mres:0,  color:'#c95bff'},
-  fast:  {hp:26, spd:1.9,atk:6, reward:8, xp:6, r:.23,lives:1,armor:0,mres:0,  color:'#ff9d4d'},
-  tank:  {hp:150,spd:.7, atk:14,reward:14,xp:12,r:.38,lives:2,armor:6,mres:.15,color:'#8a6bff'},
-  boss:  {hp:700,spd:.55,atk:30,reward:70,xp:60,r:.47,lives:3,armor:10,mres:.3,color:'#ff3860'},
+  // atkR=攻击距离（都小于战士射程1.15，保证近战能还手）
+  normal:{hp:40, spd:1.1,atk:8, reward:7, xp:5, r:.30,lives:1,armor:0,mres:0,  atkR:.62,color:'#c95bff'},
+  fast:  {hp:26, spd:1.9,atk:6, reward:8, xp:6, r:.23,lives:1,armor:0,mres:0,  atkR:.42,color:'#ff9d4d'},
+  tank:  {hp:150,spd:.7, atk:14,reward:14,xp:12,r:.38,lives:2,armor:6,mres:.15,atkR:.85,color:'#8a6bff'},
+  boss:  {hp:700,spd:.55,atk:30,reward:70,xp:60,r:.47,lives:3,armor:10,mres:.3,atkR:1.05,color:'#ff3860'},
 };
 const INCOME_MAX=10;
 function mineCost(lv){return 45+30*(lv-1);}
 function millCost(lv){return 35+25*(lv-1);}
 const WAVE_EVERY=35;
-/* 怪物AI：仇恨范围>攻击范围，仇恨内只做轻微纵向贴靠 */
-const AGGRO_R=3.2, MOB_ATK_R=.62, VEER_SPD=.7;
+/* 怪物AI：仇恨范围>攻击范围（攻击距离见 MOBS.atkR），仇恨内只做轻微纵向贴靠 */
+const AGGRO_R=3.2, VEER_SPD=.7;
 
 /* ================= 状态 ================= */
 let gold,wood,lives,wave,queue,spawnT,incomeT,waveT,cleared,hudAcc;
@@ -448,7 +449,7 @@ function spawnMob(type){
   const row=Math.floor(Math.random()*ROWS);
   const y=Math.max(0,Math.min(ROWS-1,row+(Math.random()*.7-.35)));
   mobs.push({type,row,y,x:COLS+.5+Math.random()*.4,
-    hp:b.hp*mul,maxHp:b.hp*mul,spd:b.spd,atk:b.atk*mul,r:b.r,
+    hp:b.hp*mul,maxHp:b.hp*mul,spd:b.spd,atk:b.atk*mul,r:b.r,atkR:b.atkR,
     reward:b.reward,xp:b.xp,lives:b.lives,armor:b.armor,mres:b.mres,
     color:b.color,cd:0,fight:false,slowT:0,slowF:0});
 }
@@ -549,7 +550,7 @@ function update(dt){
       const d=Math.hypot(br.x-m.x,br.row-m.y);
       if(d<td){td=d;tgt=br;}
     }
-    const reach=MOB_ATK_R+m.r;
+    const reach=m.atkR+m.r;   // 攻击距离按怪物种类
     if(tgt&&td<=reach){          // 进入攻击范围：站定输出，不再贴靠
       m.fight=true;
       m.cd-=dt;
