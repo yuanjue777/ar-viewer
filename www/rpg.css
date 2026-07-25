@@ -62,6 +62,16 @@
   #tileItem .ic{background:linear-gradient(135deg,#c8d2dc,#b070ff)}
   #tileMine .ic{background:var(--gold)}
   #tileMill .ic{background:var(--wood)}
+  /* ---- 四大试炼（魔兽式旋转CD遮罩） ---- */
+  .tile.trial{overflow:hidden}
+  .tile.trial .ic{background:var(--tc,#f0c46a);border-radius:50%;
+    box-shadow:0 0 6px var(--tc,#f0c46a)}
+  .tile.trial.ready{border-color:var(--tc);background:#1c2b44}
+  .tile.trial.ready .ic{animation:trPulse 1.4s ease-in-out infinite}
+  @keyframes trPulse{50%{transform:scale(1.25);filter:brightness(1.5)}}
+  .tile.trial.locked{opacity:.42}
+  .tile .cdmask{position:absolute;inset:0;pointer-events:none;border-radius:8px;
+    background:conic-gradient(rgba(3,7,14,.78) var(--p,0deg),transparent 0)}
 
   /* ---- 信息区（常驻） ---- */
   #info{

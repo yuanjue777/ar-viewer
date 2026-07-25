@@ -38,7 +38,7 @@ const SPECS={
 function advOf(h){return h.tier?ADV[h.cls][h.branch]:null;}
 function specCost(lv){return {g:60+40*(lv-1),w:40+25*(lv-1)};}   // 专精升级费用（当前级→下一级）
 const SPEC_MAX=10;
-const ADV_LV=5, ADV_GOLD=150, ADV_WOOD=250;
+const ADV_LV=5, ADV_GOLD=400, ADV_WOOD=250;
 /* 英雄递增定价：第1个50、第2个100、第3个200 */
 const HERO_COSTS=[50,100,200];
 function heroCost(){return HERO_COSTS[Math.min(heroes.length,HERO_COSTS.length-1)];}
@@ -59,6 +59,7 @@ const SKB={
   '火球术':    {cat:'int',q:'qgreen', short:'火球',cd:7, mana:25,desc:'主动(25蓝)：单体魔法伤害（智力×3×等级+40），弹道线'},
   '冰风暴':    {cat:'int',q:'qpurple',short:'冰风',cd:10,mana:35,desc:'主动(35蓝)：暴风雪，固定区域每0.9秒对圈内全体造成(15+智×0.8×等级)魔法伤+减速，共(3+等级)波'},
   'CD光环':    {cat:'int',q:'qblue',  short:'CD环',cd:0, desc:'被动：主动技能冷却-4%×等级（与装备CD缩减叠加，总上限50%）'},
+  '火焰风暴':  {cat:'int',q:'qblue',  short:'火风',cd:12,mana:40,desc:'主动(40蓝)：延迟1秒后在半径1.5格区域燃起烈焰，每0.5秒灼烧一次，持续(2+0.5×等级)秒，每秒(12+智×0.55×等级)魔法伤害'},
   '闪电链':    {cat:'int',q:'qblue',  short:'闪电',cd:4, mana:16,desc:'主动(16蓝)：短CD低耗蓝，闪电跳(2+等级)个目标，各(12+智×0.45×等级)魔法伤害'},
   '魂吸':      {cat:'int',q:'qpurple',short:'魂吸',cd:0, desc:'被动：每有敌方单位死亡+0.5智力，上限10+5×(等级-1)'},
 };
@@ -98,6 +99,12 @@ const EQUIPS=[
   {id:'poorshield',n:'穷鬼盾', s:'穷盾',q:'rare',  stats:{block:20}},
   {id:'manaring',  n:'法力指环',s:'蓝戒',q:'rare', stats:{mpre:8}},
   {id:'dragonlance',n:'魔龙枪',s:'龙枪',q:'epic',  stats:{agi:20,range:2}},
+  /* 精英池：只从精英试炼的宝箱掉落，商店roll不出（boss池以后再加）*/
+  {id:'eliteblade', n:'精英战刃',s:'战刃',q:'epic',pool:'elite',stats:{atk:30,str:12}},
+  {id:'elitecloak', n:'幽影斗篷',s:'幽影',q:'epic',pool:'elite',stats:{agi:22,aspd:25}},
+  {id:'elitecrown', n:'秘法王冠',s:'王冠',q:'epic',pool:'elite',stats:{int:22,cdr:.1}},
+  {id:'elitegirdle',n:'巨力腰带',s:'腰带',q:'rare',pool:'elite',stats:{str:18,hp:120}},
+  {id:'elitetalis', n:'守护护符',s:'护符',q:'rare',pool:'elite',stats:{armor:8,mres:.15}},
 ];
 const EQ_BY_ID=Object.fromEntries(EQUIPS.map(e=>[e.id,e]));
 /* 装备商店三档roll：每次固定4件，越贵越容易出高品质 */
@@ -110,7 +117,7 @@ function rollEquip(tier){
   const w=EQ_TIERS[tier].w;
   let r=Math.random()*100,qk='common';
   for(const k of ['common','fine','rare','epic']){if(r<w[k]){qk=k;break;}r-=w[k];}
-  const pool=EQUIPS.filter(e=>e.q===qk);
+  const pool=EQUIPS.filter(e=>e.q===qk&&!e.pool);
   return {t:'eq',id:pool[Math.floor(Math.random()*pool.length)].id};
 }
 function eqDef(item){return EQ_BY_ID[item.id];}
@@ -127,6 +134,8 @@ function eqDesc(def){
   if(s.block)p.push('格挡普攻伤害'+s.block);
   if(s.mpre)p.push('回蓝+'+s.mpre+'/s');
   if(s.range)p.push('射程+'+s.range+'格');
+  if(s.int)p.push('智力+'+s.int);
+  if(s.mres)p.push('魔抗+'+Math.round(s.mres*100)+'%');
   if(s.hp)p.push('生命+'+s.hp);
   return p.join(' · ');
 }
@@ -148,10 +157,25 @@ const AGGRO_R=3.2, VEER_SPD=.7;
 /* 召唤物活动上限：守在左侧第4格附近，不追出去 */
 const BEAR_MAX_X=4.15;
 
+/* ================= 四大试炼 =================
+   点图标才开始；奖励挂在试炼怪身上（击杀即得）；CD 从左到右依次变长；
+   精英试炼第5波后开放，掉落宝箱（点开=精英池装备）。难度跟当前波数走。*/
+const TRIALS={
+  gold: {n:'金币试炼',s:'金币',cd:40, color:'#f0c46a',minWave:0,
+         desc:'召来一群贪财的敌人，击杀额外获得金币'},
+  wood: {n:'木头试炼',s:'木头',cd:60, color:'#7ec87e',minWave:0,
+         desc:'召来一群林间敌人，击杀额外获得木头'},
+  xp:   {n:'经验试炼',s:'经验',cd:85, color:'#b070ff',minWave:0,
+         desc:'召来一群历练目标，击杀额外获得经验'},
+  elite:{n:'精英试炼',s:'精英',cd:120,color:'#ff5d5d',minWave:5,
+         desc:'召来精英敌人，掉落宝箱（点击开启，出精英池装备）'},
+};
+const TRIAL_KEYS=['gold','wood','xp','elite'];
+
 /* ================= 状态 ================= */
 let gold,wood,lives,wave,queue,spawnT,incomeT,waveT,cleared,hudAcc;
 let mineLv,millLv;
-let heroes,mobs,shots,fx,nums,bears,inv,hails;
+let heroes,mobs,shots,fx,nums,bears,inv,hails,storms,chests,trialCd;
 let sel=null,invSel=null,speed=1,running=false,started=false,over=false,openShop=null,advPick=false;
 
 /* ================= 画布 ================= */
@@ -164,6 +188,7 @@ function resize(){
   dpr=Math.min(window.devicePixelRatio||1,2);
   cv.width=COLS*cell*dpr;cv.height=ROWS*cell*dpr;
   cv.style.width=COLS*cell+'px';cv.style.height=ROWS*cell+'px';
+  buildBG();
 }
 window.addEventListener('resize',()=>setTimeout(resize,60));
 
@@ -179,17 +204,17 @@ function calc(h){
   const b=CLASSES[h.cls],a=advOf(h);
   const am=h.tier?1.35:1;
   const sp=h.specLv||0,key=a?a.key:'';
-  let eqAtk=0,eqArmor=0,eqHp=0,eqAspd=0,eqStr=0,eqAgi=0,eqMres=0,eqCdr=0,eqBat=0,eqBlock=0,eqMpre=0,eqRange=0;
+  let eqAtk=0,eqArmor=0,eqHp=0,eqAspd=0,eqStr=0,eqAgi=0,eqInt=0,eqMres=0,eqCdr=0,eqBat=0,eqBlock=0,eqMpre=0,eqRange=0;
   for(const e of h.equips){
     const s=eqDef(e).stats;
     eqAtk+=s.atk||0;eqArmor+=s.armor||0;eqHp+=s.hp||0;eqAspd+=s.aspd||0;
-    eqStr+=s.str||0;eqAgi+=s.agi||0;eqMres+=s.mres||0;
+    eqStr+=s.str||0;eqAgi+=s.agi||0;eqInt+=s.int||0;eqMres+=s.mres||0;
     eqCdr+=s.cdr||0;eqBat+=s.bat||0;eqBlock+=s.block||0;eqMpre+=s.mpre||0;eqRange+=s.range||0;
   }
   // 装备加的力/敏一样吃派生；魂吸智力/死神收割敏捷是击杀累积
   h.str=Math.round((b.attr.str+b.grow.str*(h.lv-1))*am)+eqStr;
   h.agi=Math.round((b.attr.agi+b.grow.agi*(h.lv-1))*am)+eqAgi+Math.round(h.deathAgi||0);
-  h.int=Math.round((b.attr.int+b.grow.int*(h.lv-1))*am)+Math.round(h.soulInt||0);
+  h.int=Math.round((b.attr.int+b.grow.int*(h.lv-1))*am)+eqInt+Math.round(h.soulInt||0);
   h.atk=Math.round(b.wep*(a?a.atk:1)+h[b.main]+eqAtk);
   h.maxHp=Math.round((b.hpB+h.str*8)*(a?a.hp:1)+eqHp);
   // 护卫专精：坚壁加甲
@@ -219,7 +244,9 @@ function reset(){
   gold=200;wood=0;lives=10;wave=0;queue=[];spawnT=0;incomeT=0;
   waveT=WAVE_EVERY;cleared=true;hudAcc=0;
   mineLv=1;millLv=1;
-  heroes=[];mobs=[];shots=[];fx=[];nums=[];bears=[];inv=[];hails=[];
+  heroes=[];mobs=[];shots=[];fx=[];nums=[];bears=[];inv=[];hails=[];storms=[];chests=[];
+  trialCd={};for(const k of TRIAL_KEYS)trialCd[k]=0;
+  renderTrials();
   sel=null;invSel=null;over=false;openShop=null;advPick=false;
   closeShop();updateHUD();renderInfo();renderInv();
 }
@@ -243,7 +270,8 @@ function startWave(){
   wave++;queue.push(...waveComp(wave));
   updateHUD();renderInfo();
 }
-function spawnMob(type){
+function spawnMob(type,opt){
+  opt=opt||{};
   // 强度爬升：前15波平缓，15波后额外+6%/波加速收尾
   // w1=1 w5≈1.6 w10≈2.9 w15≈4.7 w20≈10 w25≈20
   const b=MOBS[type];
@@ -252,10 +280,41 @@ function spawnMob(type){
   // 不再固定在格子正中：在所选行附近随机散开
   const row=Math.floor(Math.random()*ROWS);
   const y=Math.max(0,Math.min(ROWS-1,row+(Math.random()*.7-.35)));
-  mobs.push({type,row,y,x:COLS+.5+Math.random()*.4,
-    hp:b.hp*mul,maxHp:b.hp*mul,spd:b.spd,atk:b.atk*mul,r:b.r,atkR:b.atkR,
+  mul*=opt.mul||1;
+  mobs.push({type,row,y,x:COLS+.5+Math.random()*.4+(opt.dx||0),
+    hp:b.hp*mul,maxHp:b.hp*mul,spd:b.spd,atk:b.atk*mul,r:b.r*(opt.rs||1),atkR:b.atkR,
     reward:b.reward,xp:b.xp,lives:b.lives,armor:b.armor,mres:b.mres,
+    trial:opt.trial||null,bonus:opt.bonus||0,chest:opt.chest||0,
     color:b.color,cd:0,fight:false,slowT:0,slowF:0});
+}
+/* 四大试炼：点图标开打，怪即刻入场；奖励在击杀时结算（见 damage） */
+function trialReady(k){
+  return started&&!over&&trialCd[k]<=0&&wave>=TRIALS[k].minWave;
+}
+function startTrial(k){
+  const T=TRIALS[k];
+  if(!started||over){showToast('先点右上角 <b>▶ 启动</b> 才能开启试炼');return;}
+  if(wave<T.minWave){showToast(`<b style="color:${T.color}">${T.n}</b> 第 ${T.minWave} 波后开放`);return;}
+  if(trialCd[k]>0){showToast(`<b style="color:${T.color}">${T.n}</b> 冷却中 ${Math.ceil(trialCd[k])}s`);return;}
+  trialCd[k]=T.cd;
+  // 一波比一波难：数量与强度都跟当前波数走
+  const w=Math.max(1,wave);
+  if(k==='elite'){
+    const n=1+Math.floor(w/5);
+    for(let i=0;i<n;i++)
+      spawnMob(w>=15?'boss':'tank',{trial:k,mul:1.5+.06*w,rs:1.15,dx:i*.7,chest:1});
+    for(let i=0;i<2+Math.floor(w/3);i++)
+      spawnMob('fast',{trial:k,mul:1.2+.04*w,dx:1.2+i*.4,chest:Math.random()<.35?1:0});
+  }else{
+    const n=4+Math.floor(w*.7);
+    const bonus=k==='gold'?10+w*3:(k==='wood'?6+w*2:4+w*2);
+    for(let i=0;i<n;i++){
+      const t=k==='xp'?(i%3===2?'tank':'normal'):(i%3===2?'fast':'normal');
+      spawnMob(t,{trial:k,mul:1.15+.05*w,dx:i*.35,bonus});
+    }
+  }
+  showToast(`<b style="color:${T.color}">${T.n}</b> 开始！`);
+  renderTrials();
 }
 
 /* ================= 伤害 ================= */
@@ -271,10 +330,34 @@ function damage(m,d,color){
     m.dead=true;
     gold+=m.reward;
     gainXp(m.xp);
+    // 试炼奖励：击杀即结算
+    if(m.trial==='gold'){gold+=m.bonus;dnum(m.x,m.y+.2,m.bonus,'#f0c46a');}
+    else if(m.trial==='wood'){wood+=m.bonus;dnum(m.x,m.y+.2,m.bonus,'#7ec87e');}
+    else if(m.trial==='xp'){gainXp(m.bonus);dnum(m.x,m.y+.2,m.bonus,'#b070ff');}
+    else if(m.trial==='elite'&&m.chest)dropChest(m.x,m.y+.5);
     onKill();
     updateHUD();refreshAfford();
     fx.push({type:'ring',x:m.x,y:m.y+.5,rr:m.r*1.7,t:.28,max:.28,color:m.color});
   }
+}
+/* 精英试炼宝箱：掉在战斗区，点击开启，出精英池装备 */
+function dropChest(x,y){
+  chests.push({x:Math.max(HCOLS+.4,Math.min(COLS-.4,x)),y:Math.max(.4,Math.min(ROWS-.4,y)),t:0});
+  fx.push({type:'ring',x,y,rr:.7,t:.5,max:.5,color:'#f0c46a'});
+}
+function openChest(ch){
+  const pool=EQUIPS.filter(e=>e.pool==='elite');
+  const d=pool[Math.floor(Math.random()*pool.length)];
+  inv.push({t:'eq',id:d.id});
+  ch.dead=true;
+  const q=QUALS[d.q];
+  for(let i=0;i<8;i++){
+    const a=i/8*6.283;
+    fx.push({type:'spark',x:ch.x,y:ch.y,ax:Math.cos(a),ay:Math.sin(a),t:.5,max:.5,color:q.c});
+  }
+  fx.push({type:'ring',x:ch.x,y:ch.y,rr:.9,t:.45,max:.45,color:q.c});
+  showToast(`宝箱开启：<b style="color:${q.c}">${d.n}</b> [${q.n}]<br>${eqDesc(d)}`);
+  renderInv();
 }
 /* 敌人死亡触发：魂吸(+智,上限随等级)、死神收割(+敏,上限随专精) */
 function onKill(){
@@ -432,6 +515,34 @@ function update(dt){
     }
   }
   hails=hails.filter(h=>!h.done);
+  /* 火焰风暴：延迟1s后在固定区域持续灼烧（每0.5s结算一次） */
+  for(const s of storms){
+    if(s.delay>0){
+      s.delay-=dt;
+      if(s.delay<=0)fx.push({type:'ring',x:s.cx,y:s.cy,rr:s.R,t:.35,max:.35,color:'#ff7a2f'});
+      continue;
+    }
+    s.t-=dt;s.tick-=dt;s.fxT-=dt;
+    if(s.fxT<=0){   // 火舌粒子
+      s.fxT=.035;
+      const a=Math.random()*6.283,d=Math.sqrt(Math.random())*s.R;
+      fx.push({type:'flame',x:s.cx+Math.cos(a)*d,y:s.cy+Math.sin(a)*d,
+        sz:.7+Math.random()*.7,t:.55,max:.55,color:Math.random()<.4?'#ffd24f':'#ff7a2f'});
+    }
+    if(s.tick<=0){
+      s.tick=.5;
+      for(const m of mobs){
+        if(m.dead)continue;
+        if(Math.hypot(m.x-s.cx,(m.y+.5)-s.cy)<=s.R+m.r)magDamage(m,s.dps*.5,'#ff7a2f');
+      }
+    }
+    if(s.t<=0)s.done=true;
+  }
+  storms=storms.filter(s=>!s.done);
+  /* 试炼CD + 宝箱计时（宝箱不会消失，只做浮动动画） */
+  for(const k of TRIAL_KEYS)if(trialCd[k]>0)trialCd[k]=Math.max(0,trialCd[k]-dt);
+  for(const ch of chests)ch.t+=dt;
+  chests=chests.filter(c=>!c.dead);
   /* 英雄 */
   for(const h of heroes){
     if(!h.alive)continue;
@@ -653,6 +764,15 @@ function castSkill(h,name,lv,hx,hy){
     }
     return true;
   }
+  if(name==='火焰风暴'){
+    const t=frontInRange(h,hx,hy);
+    if(!t)return false;
+    // 延迟1秒落地，之后每0.5秒灼烧一次，持续 2+0.5×等级 秒
+    const R=1.5,dur=2+.5*lv,dps=12+h.int*.55*lv;
+    storms.push({cx:t.x,cy:t.y+.5,R,delay:1,t:dur,tick:0,fxT:0,dps});
+    fx.push({type:'aoe',x:t.x,y:t.y+.5,rr:R,t:1,max:1,color:'#ff7a2f'});   // 1秒预警圈
+    return true;
+  }
   if(name==='闪电链'){
     let cur=frontInRange(h,hx,hy);
     if(!cur)return false;
@@ -853,6 +973,13 @@ function drawMob(m,x,y){
   ctx.lineJoin='round';
   ctx.fillStyle='rgba(0,0,0,.32)';
   ctx.beginPath();ctx.ellipse(0,1.02,.78,.2,0,0,7);ctx.fill();
+  if(m.trial){   // 试炼怪：脚下对应颜色的光环
+    const tc=TRIALS[m.trial].color;
+    ctx.globalAlpha=.35+.25*Math.sin(gt*4+m.x);
+    ctx.strokeStyle=tc;ctx.lineWidth=.12;
+    ctx.beginPath();ctx.ellipse(0,1.02,.85,.24,0,0,7);ctx.stroke();
+    ctx.globalAlpha=1;
+  }
   const eye=(ex,ey,er)=>{
     ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(ex,ey,er,0,7);ctx.fill();
     ctx.fillStyle='#12060f';ctx.beginPath();ctx.arc(ex-er*.35,ey,er*.5,0,7);ctx.fill();
@@ -926,6 +1053,119 @@ function drawMob(m,x,y){
   }
   ctx.restore();
 }
+/* ===== 宝箱（精英试炼掉落，点击开启）===== */
+function drawChest(ch){
+  const bob=Math.sin(gt*3+ch.x)*.03, pulse=.5+.5*Math.sin(gt*4+ch.x);
+  ctx.save();ctx.translate(ch.x,ch.y+bob);
+  ctx.globalAlpha=.2+.2*pulse;                    // 光柱/光晕
+  ctx.fillStyle='#f0c46a';
+  ctx.beginPath();ctx.arc(0,.02,.42+.06*pulse,0,7);ctx.fill();
+  ctx.globalAlpha=1;
+  ctx.fillStyle='rgba(0,0,0,.35)';
+  ctx.beginPath();ctx.ellipse(0,.22,.24,.06,0,0,7);ctx.fill();
+  ctx.fillStyle='#7a4f28';rrect(-.22,-.06,.44,.26,.04);ctx.fill();   // 箱体
+  ctx.fillStyle='#8f5f31';                                           // 箱盖
+  ctx.beginPath();ctx.moveTo(-.22,-.06);ctx.lineTo(-.22,-.14);
+  ctx.quadraticCurveTo(0,-.3,.22,-.14);ctx.lineTo(.22,-.06);ctx.closePath();ctx.fill();
+  ctx.fillStyle='#f0c46a';
+  ctx.fillRect(-.05,-.22,.1,.32);                                    // 金扣带
+  ctx.fillRect(-.22,-.08,.44,.03);
+  ctx.fillStyle='#2a1a0c';ctx.fillRect(-.03,-.02,.06,.07);           // 锁孔
+  ctx.restore();
+}
+/* ===== 异世界背景（离屏预渲染，resize 时重画）===== */
+let bgCv=null;
+function buildBG(){
+  const W=Math.round(COLS*cell*dpr),H=Math.round(ROWS*cell*dpr);
+  if(W<=0||H<=0)return;
+  bgCv=bgCv||document.createElement('canvas');
+  bgCv.width=W;bgCv.height=H;
+  const g=bgCv.getContext('2d');
+  g.setTransform(W/COLS,0,0,H/ROWS,0,0);   // 统一用格子坐标
+  const rnd=(s)=>{const x=Math.sin(s*127.1)*43758.5453;return x-Math.floor(x);};
+  /* --- 战斗区：异界荒原（冷色调，压暗以突出单位）--- */
+  const sky=g.createLinearGradient(0,0,0,ROWS);
+  sky.addColorStop(0,'#0c1830');sky.addColorStop(.5,'#0d1b2c');
+  sky.addColorStop(.78,'#0b1a24');sky.addColorStop(1,'#081218');
+  g.fillStyle=sky;g.fillRect(HCOLS,0,BCOLS,ROWS);
+  // 双月
+  g.fillStyle='rgba(120,200,220,.1)';
+  g.beginPath();g.arc(HCOLS+7.6,.6,.66,0,7);g.fill();
+  g.fillStyle='rgba(170,220,235,.17)';
+  g.beginPath();g.arc(HCOLS+7.6,.6,.42,0,7);g.fill();
+  g.fillStyle='rgba(255,170,120,.14)';
+  g.beginPath();g.arc(HCOLS+5.1,.32,.19,0,7);g.fill();
+  // 远景尖塔剪影
+  g.fillStyle='rgba(26,44,64,.75)';
+  for(let i=0;i<9;i++){
+    const x=HCOLS+.3+i*1.02+rnd(i)*.3, w=.34+rnd(i+9)*.3, h=.5+rnd(i+21)*.95;
+    g.beginPath();g.moveTo(x,ROWS*.66);g.lineTo(x+w/2,ROWS*.66-h);g.lineTo(x+w,ROWS*.66);g.closePath();g.fill();
+  }
+  // 浮空岛（青色辉光）
+  const isle=(x,y,w)=>{
+    g.fillStyle='rgba(28,48,66,.85)';
+    g.beginPath();g.moveTo(x-w,y);g.lineTo(x+w,y);g.lineTo(x+w*.25,y+w*1.15);g.closePath();g.fill();
+    g.fillStyle='rgba(44,74,92,.9)';
+    g.beginPath();g.ellipse(x,y,w,w*.26,0,0,7);g.fill();
+    g.fillStyle='rgba(120,230,215,.22)';
+    g.beginPath();g.ellipse(x,y-.02,w*.8,w*.12,0,0,7);g.fill();
+  };
+  isle(HCOLS+1.5,.7,.42);isle(HCOLS+4.4,.42,.28);isle(HCOLS+8.5,.92,.34);
+  // 地面与裂谷微光
+  g.fillStyle='rgba(16,34,42,.6)';g.fillRect(HCOLS,ROWS*.84,BCOLS,ROWS*.16);
+  g.strokeStyle='rgba(90,220,200,.13)';g.lineWidth=.035;
+  for(let i=0;i<5;i++){
+    const x=HCOLS+.8+i*1.9;
+    g.beginPath();g.moveTo(x,ROWS);g.lineTo(x+.35,ROWS*.88);g.lineTo(x+.15,ROWS*.74);g.stroke();
+  }
+  // 漂浮尘埃
+  for(let i=0;i<36;i++){
+    g.globalAlpha=.07+rnd(i+3)*.14;
+    g.fillStyle=i%3?'#9fd8ff':'#7ff0d8';
+    g.beginPath();g.arc(HCOLS+rnd(i)*BCOLS,rnd(i+7)*ROWS,.02+rnd(i+11)*.03,0,7);g.fill();
+  }
+  g.globalAlpha=1;
+  /* --- 左侧：出兵村庄 --- */
+  const vg=g.createLinearGradient(0,0,0,ROWS);
+  vg.addColorStop(0,'#101d31');vg.addColorStop(1,'#0a1420');
+  g.fillStyle=vg;g.fillRect(0,0,HCOLS,ROWS);
+  // 每行一栋小屋（坐在该行底线上，作为背景）
+  const hut=(x,base,w,h,roof)=>{
+    const y=base-h;
+    g.fillStyle='#2f2a24';g.fillRect(x,y,w,h);                        // 墙
+    g.strokeStyle='rgba(0,0,0,.5)';g.lineWidth=.02;g.strokeRect(x,y,w,h);
+    g.fillStyle=roof;                                                  // 屋顶
+    g.beginPath();g.moveTo(x-w*.16,y);g.lineTo(x+w/2,y-h*.72);g.lineTo(x+w*1.16,y);g.closePath();g.fill();
+    g.fillStyle='rgba(255,198,110,.9)';                                // 暖光窗
+    g.fillRect(x+w*.16,y+h*.28,w*.22,h*.26);
+    g.fillStyle='rgba(255,198,110,.14)';
+    g.fillRect(x+w*.02,y+h*.14,w*.5,h*.55);
+    g.fillStyle='#241c14';g.fillRect(x+w*.58,y+h*.42,w*.24,h*.58);     // 门
+  };
+  hut(.16,.98,.6,.46,'#7d4a33');
+  hut(1.6,1.96,.54,.42,'#5b5288');
+  hut(.5,2.96,.62,.48,'#7d4a33');
+  // 小树
+  const tree=(x,base,s2)=>{
+    g.fillStyle='#3b2c1e';g.fillRect(x-.03*s2,base-.22*s2,.06*s2,.22*s2);
+    g.fillStyle='#2f5a44';
+    g.beginPath();g.moveTo(x-.19*s2,base-.2*s2);g.lineTo(x,base-.62*s2);g.lineTo(x+.19*s2,base-.2*s2);g.closePath();g.fill();
+  };
+  tree(1.15,.98,1);tree(2.5,1.96,.85);tree(1.85,2.96,1);
+  // 村旗
+  g.strokeStyle='#5b4a35';g.lineWidth=.045;
+  g.beginPath();g.moveTo(2.62,.2);g.lineTo(2.62,1.0);g.stroke();
+  g.fillStyle='#c94d5e';
+  g.beginPath();g.moveTo(2.64,.22);g.lineTo(2.98,.36);g.lineTo(2.64,.52);g.closePath();g.fill();
+  // 地面草带 + 栅栏（村庄与战场分界）
+  g.fillStyle='rgba(52,86,64,.35)';
+  for(let r=0;r<ROWS;r++)g.fillRect(0,r+.9,HCOLS,.1);
+  g.strokeStyle='rgba(140,116,80,.5)';g.lineWidth=.05;
+  for(let i=0;i<12;i++){
+    const y=i*ROWS/12+.04;
+    g.beginPath();g.moveTo(HCOLS-.1,y);g.lineTo(HCOLS-.1,y+.17);g.stroke();
+  }
+}
 /* ===== 弹道模型 ===== */
 function drawShot(s){
   ctx.save();ctx.translate(s.x,s.y);ctx.rotate(s.a||0);
@@ -956,14 +1196,13 @@ function drawShot(s){
 function draw(){
   ctx.setTransform(dpr*cell,0,0,dpr*cell,0,0);
   ctx.clearRect(0,0,COLS,ROWS);
+  if(bgCv)ctx.drawImage(bgCv,0,0,COLS,ROWS);
   for(let c=0;c<HCOLS;c++){
     const col=CLASSES[COL_CLASS[c]].color;
     ctx.fillStyle=rgba(col,.09);
     for(let r=0;r<ROWS;r++)ctx.fillRect(c+.03,r+.03,.94,.94);
   }
-  ctx.fillStyle='#0d1420';
-  ctx.fillRect(HCOLS,0,BCOLS,ROWS);
-  ctx.strokeStyle='#1c2940';ctx.lineWidth=.02;
+  ctx.strokeStyle='rgba(120,140,190,.16)';ctx.lineWidth=.02;
   ctx.beginPath();
   for(let c=HCOLS;c<=COLS;c++){ctx.moveTo(c,0);ctx.lineTo(c,ROWS);}
   for(let r=0;r<=ROWS;r++){ctx.moveTo(0,r);ctx.lineTo(COLS,r);}
@@ -973,6 +1212,16 @@ function draw(){
   if(sel){
     ctx.strokeStyle='#8ab8d8';ctx.lineWidth=.06;
     ctx.strokeRect(sel.col+.06,sel.row+.06,.88,.88);
+  }
+  // 火焰风暴：燃烧区域
+  for(const s of storms){
+    if(s.delay>0)continue;
+    const fl=.75+.25*Math.sin(gt*13+s.cx);
+    ctx.globalAlpha=.17*fl;ctx.fillStyle='#ff7a2f';
+    ctx.beginPath();ctx.arc(s.cx,s.cy,s.R,0,7);ctx.fill();
+    ctx.globalAlpha=.5*fl;ctx.strokeStyle='#ffb04f';ctx.lineWidth=.05;
+    ctx.beginPath();ctx.arc(s.cx,s.cy,s.R,0,7);ctx.stroke();
+    ctx.globalAlpha=1;
   }
   ctx.textAlign='center';
   // 英雄
@@ -1010,6 +1259,7 @@ function draw(){
     ctx.fillStyle='rgba(0,0,0,.6)';ctx.fillRect(m.x-m.r,y-m.r-.15,m.r*2,.08);
     ctx.fillStyle='#6ee7a0';ctx.fillRect(m.x-m.r,y-m.r-.15,m.r*2*Math.max(m.hp/m.maxHp,0),.08);
   }
+  for(const ch of chests)drawChest(ch);
   for(const s of shots)drawShot(s);
   for(const f of fx){
     const k=1-f.t/f.max;
@@ -1078,6 +1328,12 @@ function draw(){
       ctx.strokeStyle='rgba(255,255,255,.85)';ctx.lineWidth=.03;
       ctx.beginPath();ctx.arc(0,0,f.rr*(.7+.5*k),-.85,.85);ctx.stroke();
       ctx.restore();ctx.globalAlpha=1;
+    }else if(f.type==='flame'){
+      // 火焰风暴：上窜的火舌
+      const fy=f.y-.45*k, sz=f.sz*(1-k*.55);
+      ctx.globalAlpha=(1-k)*.9;ctx.fillStyle=f.color;
+      poly([[f.x,fy-.3*sz],[f.x+.12*sz,fy],[f.x,fy+.14*sz],[f.x-.12*sz,fy]]);ctx.fill();
+      ctx.globalAlpha=1;
     }else if(f.type==='heal'){
       // 治疗：上浮的十字
       const hy=f.y-.55*k;
@@ -1118,6 +1374,7 @@ function updateHUD(){
   uiMoney.textContent=Math.floor(gold);uiWood.textContent=Math.floor(wood);
   uiLife.textContent=lives;
   uiWave.textContent=wave+'/'+TOTAL_WAVES+(running&&started&&!over&&wave<TOTAL_WAVES?' · '+Math.ceil(waveT)+'s':'');
+  renderTrials();
   document.getElementById('mineLvT').textContent='Lv'+mineLv+' +'+mineLv+'/s';
   document.getElementById('millLvT').textContent='Lv'+millLv+' +'+millLv+'/s';
   // 英雄面板的HP/MP实时刷新（不重建DOM，避免打断点击）
@@ -1318,6 +1575,33 @@ document.getElementById('sellAll').addEventListener('click',()=>{
   showToast(`出售 ${sellable.length} 件装备，获得 <b style="color:var(--gold)">${total}金</b>`);
   updateHUD();renderInv();renderInfo();
 });
+/* 四大试炼图标：旋转CD遮罩 + 就绪脉动 */
+const trialBtns=[...document.querySelectorAll('.tile.trial')];
+for(const b of trialBtns){
+  const k=b.dataset.trial;
+  b.style.setProperty('--tc',TRIALS[k].color);
+  b.addEventListener('click',()=>{
+    if(trialReady(k))startTrial(k);
+    else{
+      const T=TRIALS[k];
+      showToast(`<b style="color:${T.color}">${T.n}</b>（CD ${T.cd}s）<br>${T.desc}`
+        +(wave<T.minWave?`<br><b style="color:#ff9d9d">第 ${T.minWave} 波后开放</b>`
+          :(trialCd[k]>0?`<br>冷却中 ${Math.ceil(trialCd[k])}s`:'')));
+    }
+  });
+}
+function renderTrials(){
+  if(!trialCd)return;
+  for(const b of trialBtns){
+    const k=b.dataset.trial,T=TRIALS[k],cd=trialCd[k]||0;
+    const locked=wave<T.minWave;
+    b.classList.toggle('locked',locked);
+    b.classList.toggle('ready',!locked&&cd<=0&&started&&!over);
+    b.querySelector('.cdmask').style.setProperty('--p',(cd/T.cd*360)+'deg');
+    b.querySelector('.lv').textContent=
+      locked?`第${T.minWave}波开`:(cd>0?Math.ceil(cd)+'s':'就绪');
+  }
+}
 tiles.skill.addEventListener('click',()=>setShop('skill'));
 tiles.item.addEventListener('click',()=>setShop('item'));
 tiles.mine.addEventListener('click',()=>setShop('mine'));
@@ -1510,7 +1794,12 @@ info.addEventListener('click',ev=>{
 cv.addEventListener('pointerdown',ev=>{
   if(!running)return;
   const rect=cv.getBoundingClientRect();
-  const c=Math.floor((ev.clientX-rect.left)/cell),r=Math.floor((ev.clientY-rect.top)/cell);
+  const fx0=(ev.clientX-rect.left)/cell,fy0=(ev.clientY-rect.top)/cell;
+  // 先判宝箱（精英试炼掉落，点击开启）
+  for(const ch of chests){
+    if(!ch.dead&&Math.hypot(ch.x-fx0,ch.y-fy0)<.5){openChest(ch);return;}
+  }
+  const c=Math.floor(fx0),r=Math.floor(fy0);
   if(c<0||c>=COLS||r<0||r>=ROWS)return;
   sel=c<HCOLS?{col:c,row:r}:null;
   invSel=null;advPick=false;

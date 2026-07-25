@@ -32,19 +32,21 @@
 ## 方块战线·代码架构（⚠️ 改代码前先看这节）
 - **文件已拆分**（为省 token，别再合回单文件）：
   - `www/rpg.html`（约50行）= 骨架 + DOM 结构（header/canvas/信息区/商店条/背包条）
-  - `www/rpg.css`（约164行）= 全部样式，`:root` 里是配色变量
-  - `www/rpg.js`（约1234行）= 全部逻辑，**几乎所有改动都在这里**
+  - `www/rpg.css`（约174行）= 全部样式，`:root` 里是配色变量
+  - `www/rpg.js`（约1830行）= 全部逻辑，**几乎所有改动都在这里**
 - **改动方式**：**不要整文件 Read**。先 `grep -n "关键词" www/rpg.js` 定位，再用 Edit 局部替换。数值/表格都在文件前 150 行，改数值只需要读那一段。
 - **rpg.js 结构地图**（按顺序）：
-  - 1–150 行 = **全部配置表**：`CLASSES`(职业基础) / `ADV`+`SPECS`(转职支线与专精) / `HERO_COSTS` / `xpNeed` / `armorRed` / `SKB`(技能池) / `QC`+`QN`+`CATS`(品质色/属性色) / `PACK_COST,ROLL_COST,PACK_N` / `SELL_EQ`+`canSell` / `QUALS` / `EQUIPS`(装备池) / `EQ_TIERS`(三档roll) / `MOBS`(怪物属性含 atkR) / `mineCost,millCost` / `WAVE_EVERY` / `AGGRO_R,VEER_SPD,BEAR_MAX_X`
-  - 150–220 = 全局状态变量 + `resize` + `makeHero` + **`calc(h)`（英雄属性总结算，改属性/装备/专精加成都动这里）**
-  - 220–320 = `reset` `waveComp`(每波构成) `startWave` `spawnMob` `damage` `onKill` `physDamage/magDamage` `gainXp` `levelFx`
-  - **322–532 = `update(dt)` 主循环**：怪物AI、英雄选敌与攻击、召唤熊、冰雹波次(hails)、特效与收入结算都在里面
-  - 532–690 = `cleaveAround` `berserkRatio` `effAtk` `effInterval`(攻速公式) `attack` `shotHit` `hitUnit` `frontInRange`(射程判定) **`castSkill`(所有主动技能实现)** `endGame` `begin`
-  - 690–870 = **矢量模型层**：`shade/rrect/poly` 工具 + `ANIM_T`(攻击动作时长)/`gt`(全局时间) + `drawHero`(三职业模型) + `drawBear` + `drawShot`(箭矢/奥术弹)
-  - 870–1000 = `draw()` 渲染(含 fx 分支：line/aoe/fall/spark/**bolt火球/zap闪电/slash挥砍/heal治疗**) + `showToast` + `updateHUD`(每0.25s刷新HP/MP)
-  - 823–1120 = **DOM/UI**：`renderInfo`(信息区+英雄面板) `setShop/closeShop/shopHTML/refreshAfford` `buyPack` `autoLearnPass` `buyEquip` `renderInv`(背包) `applyItem`(学技能/穿装备)
-  - 1118–1453 = 拖拽(drag)、双击(lastTap)、canvas 点击、主循环 `loop`
+  - 1–160 行 = **全部配置表**：`CLASSES`(职业基础) / `ADV`+`SPECS`(转职支线与专精) / `HERO_COSTS` / `xpNeed` / `armorRed` / `SKB`(技能池) / `QC`+`QN`+`CATS`(品质色/属性色) / `PACK_COST,ROLL_COST,PACK_N` / `SELL_EQ`+`canSell` / `QUALS` / `EQUIPS`(装备池,含精英池 `pool:'elite'`) / `EQ_TIERS`(三档roll) / `MOBS`(怪物属性含 atkR) / `mineCost,millCost` / `WAVE_EVERY` / `AGGRO_R,VEER_SPD,BEAR_MAX_X`
+  - 160–200 = `TRIALS`(四大试炼表) + 全局状态变量 + `resize`(内含 buildBG)
+  - 196–240 = `makeHero` + **`calc(h)`（英雄属性总结算，改属性/装备/专精加成都动这里）**
+  - 243–320 = `reset` `waveComp` `startWave` `spawnMob(type,opt)` **`trialReady/startTrial`(试炼)**
+  - 321–400 = `dnum` `damage`(含试炼奖励结算) **`dropChest/openChest`(宝箱)** `onKill` `physDamage/magDamage` `gainXp` `levelFx`
+  - **405–645 = `update(dt)` 主循环**：怪物AI、英雄选敌与攻击、召唤熊、冰雹(hails)、**火焰风暴(storms)**、试炼CD、特效与收入结算
+  - 646–812 = `cleaveAround` `berserkRatio` `effAtk` `effInterval` `attack` `shotHit` `hitUnit` `frontInRange` **`castSkill`(所有主动技能实现)** `endGame` `begin`
+  - 814–1195 = **矢量模型层**：`shade/rrect/poly` + `ANIM_T`/`gt` + `drawHero`(843) `drawMob`(968) `drawChest`(1057) **`buildBG`(1078,离屏背景)** `drawShot`(1170)
+  - 1196–1390 = `draw()` 渲染(fx 分支：line/aoe/fall/spark/bolt火球/zap闪电/slash挥砍/heal治疗/**flame火焰风暴**) + `showToast` + `updateHUD`(每0.25s刷新HP/MP+试炼CD)
+  - 1389–1700 = **DOM/UI**：`renderInfo` `setShop/closeShop/shopHTML/refreshAfford` `buyPack` `autoLearnPass` `buyEquip` **`renderTrials`(1593)** `renderInv` `applyItem`
+  - 1700–1833 = 拖拽(drag)、双击、canvas 点击(含点宝箱)、主循环 `loop`
 - **发布 Artifact**（用户在手机上就是看这个链接测试）：`python3 www/_build_artifact.py <输出路径>` 把三个文件内联成单文件（去掉 doctype/html/head/body），再用 Artifact 工具发布，**文件路径保持不变**才能保住同一个 URL：https://claude.ai/code/artifact/463665a7-a08f-4cd2-b42d-0b95f1d6d779
 - 改完 js 后可 `node --check www/rpg.js` 快速验语法。
 
@@ -63,7 +65,7 @@
 ## 方块战线·技能与装备系统（用户会持续加新技能/装备，技能实现在 rpg.js 的 `SKB` 表，装备在 `EQUIPS` 表）
 - 规则：技能书从商店买（指定系200金4本，全池roll 125），进背包后**拖到英雄上学习**，同名书升级（**上限Lv10**），每英雄4技能位。拖到已占用的技能栏/装备栏=覆盖(会提示)；双击装备栏=脱下退回背包。背包最右"出售装备"只卖装备(**技能书不可出售**)，价白8/绿18/蓝40/紫80——各档roll回本率58%/48%/40%。蓝=稀有、绿=普通、紫=史诗。被动直接生效，主动自动释放（各自CD/蓝耗）。系数吃英雄力/敏/智属性。特效约定：**AOE显示范围圈，指定单体显示弹道线**。**买新技能书会清掉上次没用完的旧书**（不累积）。
 - 英雄升级=**打怪吃经验**（怪死全体英雄各得xp：普5/快6/坦12/Boss60；升级需求40+45×(lv-1)，上限Lv15，升级回满血，金圈+八向粒子特效，等级显示在血条左端小框）。金木商店上限10级，升级费：金矿45+30×(lv-1)、伐木场35+25×(lv-1)。
-- **转职分支系统**（ADV表2条/职业+SPECS专精表，实现在rpg.js）：Lv5花150金+250木转职，"转职▸"单按钮点开弹二选一支线(advPick状态)，各带专精技能。专精用金木升级(费=60+40(lv-1)金 + 40+25(lv-1)木，**上限Lv10**，练满共1980金1260木)。战士→狂战士(血怒:失血越多攻/攻速越高)/护卫(坚壁:+3甲×lv)；游侠→精灵游侠(迅捷:额外-0.2-0.01lv攻击间隔)/死亡射手(死神收割:敌死+0.5敏,上限20+10(lv-1))；法师→牧师(治愈祷言:主动30蓝CD8s回全体30+智×(0.6+0.4lv))/德鲁伊(自然之力:召唤物属性+20%×lv)。
+- **转职分支系统**（ADV表2条/职业+SPECS专精表，实现在rpg.js）：Lv5花**400金+250木**转职，"转职▸"单按钮点开弹二选一支线(advPick状态)，各带专精技能。专精用金木升级(费=60+40(lv-1)金 + 40+25(lv-1)木，**上限Lv10**，练满共1980金1260木)。战士→狂战士(血怒:失血越多攻/攻速越高)/护卫(坚壁:+3甲×lv)；游侠→精灵游侠(迅捷:额外-0.2-0.01lv攻击间隔)/死亡射手(死神收割:敌死+0.5敏,上限20+10(lv-1))；法师→牧师(治愈祷言:主动30蓝CD8s回全体30+智×(0.6+0.4lv))/德鲁伊(自然之力:召唤物属性+20%×lv)。
 - **英雄递增定价**：第1个50、第2个100、第3个200金（HERO_COSTS表）。
 - **魔兽式属性系统**：主属性加攻击（战士主力/游侠主敏/法师主智）；力量×8加HP；敏捷/7加护甲、1点敏捷=1攻速点；**攻速用魔兽/DotA正版公式：每秒攻击=(1+攻速/100)/BAT**（BAT1.4时+140攻速=每秒多A一下），攻速上限400；护甲减伤=甲×0.06/(1+甲×0.06)；魔抗固定百分比（英雄基础25%上限75%）。普攻=物理吃护甲，技能/毒/反伤=魔法吃魔抗。职业基础(攻击间隔bat/武器wep/甲)：法师1.9s/6/1(射程4.5)，游侠1.3s/8/2(射程6)，战士1.7s/15/4(射程1.15)；成长/级：战士+2.7力，游侠+2.9敏，法师+3.2智（副属性各1~1.5）。怪物也有甲/抗：坦克6甲15%抗、Boss10甲30%抗。转职=属性×1.35+武器/HP/攻速倍率。
 - **装备池（用户自定义，会持续加，实现在 rpg.js 的 EQUIPS 表）**：装备商店三档roll(EQ_TIERS)，每档固定出4件，越贵越出高品质：低级100金(白60/绿30/蓝9/紫1)、中级200金(30/40/24/6)、高级400金(5/30/45/20)。进背包拖到英雄穿（**装备栏2×3=6格**）。背包=技能书+装备混放一行。
@@ -92,6 +94,20 @@
   - 冰风暴（**紫**,主动CD10s,35蓝,AOE）：**暴风雪式**，**固定区域**(半径1.1+0.1lv)**每0.9秒对圈内全体结算一次**、共(3+lv)波，每波15+智×0.8lv魔法伤+减速40%+5%lv持续2s（参考魔兽暴风雪，同一敌人每波都吃）；整片范围圈+每波落地前0.5s撒下一片下落冰棱(fx type 'fall')。实现用 hails 数组存波次。
   - CD光环（蓝,被动）：主动技能CD-4%×lv（与装备叠加，总上限50%）。
   - 闪电链（蓝,主动CD4s,**16蓝**）：短CD低耗蓝中低伤，跳(2+lv)个目标（2.5格内弹跳），各12+智×0.45lv魔法伤，连线特效。
+  - 火焰风暴（蓝,主动CD12s,40蓝,AOE）：**延迟1秒**后在半径1.5格区域燃起，每0.5秒灼烧一次，持续2+0.5lv秒，每秒12+智×0.55lv魔法伤（DoT）。实现用 `storms` 数组，落地前有橙色预警圈，燃烧期画火圈+火舌粒子(fx 'flame')。
+
+## 方块战线·四大试炼 + 宝箱（TRIALS 表在 rpg.js 前部）
+- 商店条右侧4个图标（`.tile.trial`，HTML 在 rpg.html 的 #dock 里），**点图标才开始试炼**，怪立刻入场，奖励在**击杀时结算**。
+- CD 从左到右依次变长：金币40s / 木头60s / 经验85s / 精英120s；CD 用 CSS `conic-gradient` 遮罩做成**魔兽式旋转扫圈**（`.cdmask` 的 `--p` 角度，updateHUD 每0.25s刷新），就绪时图标脉动发光。
+- **精英试炼第5波后开放**；所有试炼难度跟当前波数走（数量与倍率都随 wave 增长）。
+- 试炼怪脚下有对应颜色光环（`m.trial`）。金币/木头/经验试炼击杀给额外金/木/经验飘字。
+- **精英试炼掉宝箱**（`chests`，画在战斗区带金色光晕，点击开启）→ 随机一件**精英池装备**（EQUIPS 里 `pool:'elite'` 的，商店roll不出）：精英战刃(攻30力12)/幽影斗篷(敏22攻速25)/秘法王冠(智22CD-10%)/巨力腰带(力18血120)/守护护符(甲8魔抗15%)。**boss池以后再加**。
+- 装备已支持 `int`/`mres` 属性（calc 里 eqInt/eqMres）。
+
+## 方块战线·场景背景
+- `buildBG()` 在 resize 时把背景**离屏预渲染**成 `bgCv`，draw 里一次 drawImage（省性能，别改成每帧重画）。
+- 左侧3列 = **村庄**（暖光小屋+树+村旗+草地+栅栏分界线）；右侧战斗区 = **异世界荒原**（冷色调夜空、双月、远景尖塔、浮空岛、地面裂谷微光、漂浮尘埃）。
+- 配色刻意压暗压冷：紫色怪/彩色英雄要能跳出来，改背景时别把饱和度调高。
 
 ## 内容边界
 - 用户多次想内置露骨/色情模型（限制级文件夹、"俯卧翘臀"等），**已拒绝并坚持**。合规模型正常协助。
