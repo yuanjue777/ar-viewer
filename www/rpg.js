@@ -225,6 +225,7 @@ function calc(h){
   // 魔兽/DotA公式：每秒攻击=(1+攻速/100)/BAT；1敏=1攻速；上限400⇒最多5/BAT次每秒
   // 精灵游侠专精：迅捷额外降BAT
   const bat=Math.max(.35,b.bat*(a?a.bat:1)-eqBat-(key==='elf'?.2+.01*sp:0));
+  h.bat=Math.round(bat*100)/100;   // 基础攻击间隔(BAT)：只含职业/转职/装备/迅捷，不含攻速
   h.ias=Math.min(400,h.agi+eqAspd);
   h.interval=bat/(1+h.ias/100);
   h.cdr=Math.min(.5,eqCdr+.04*(h.skills['CD光环']||0));
@@ -1408,7 +1409,8 @@ function renderInfo(){
         <span>MP <b id="mpVal">${Math.floor(h.mp)}/${h.maxMp}</b> +${h.mpRegen.toFixed(1)}/s</span>
         <span>攻击 <b>${h.atk}</b></span>
         <span>攻速 <b>${h.ias}</b></span>
-        <span>间隔 <b id="itvVal">${effInterval(h).toFixed(2)}s</b> <span class="dim">${(1/effInterval(h)).toFixed(2)}次/s</span></span>
+        <span>基础间隔 <b>${h.bat.toFixed(2)}s</b></span>
+        <span>实际间隔 <b id="itvVal">${effInterval(h).toFixed(2)}s</b> <span class="dim">${(1/effInterval(h)).toFixed(2)}次/s</span></span>
         <span>护甲 <b>${h.armor}</b> ${Math.round(armorRed(h.armor)*100)}%</span>
         <span style="color:#ff9d9d">力 <b>${h.str}</b></span>
         <span style="color:#8ce8a8">敏 <b>${h.agi}</b></span>
