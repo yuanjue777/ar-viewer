@@ -57,7 +57,7 @@
 | 画布尺寸/背景重建 | `function resize` | 186 |
 | 英雄初始字段 | `function makeHero` | 198 |
 | **英雄总属性结算（装备/专精/技能加成）** | `function calc(h)` | 205 |
-| 开局初始金币/木头/命 | `function reset` | 245 |
+| 开局初始金币/木头/命（现为 **350金**/0木/10命） | `function reset` | 245 |
 | **每波怪的构成** | `function waveComp` | 255 |
 | **整波一起刷怪的队形** | `function startWave` | 270 |
 | 怪物生成（含试炼/宝箱标记） | `function spawnMob` | 279 |

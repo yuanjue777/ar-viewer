@@ -261,7 +261,7 @@ function dispName(h){return h.tier?advOf(h).name:CLASSES[h.cls].name;}
 
 /* ================= 流程 ================= */
 function reset(){
-  gold=200;wood=0;lives=10;wave=0;queue=[];spawnT=0;incomeT=0;
+  gold=350;wood=0;lives=10;wave=0;queue=[];spawnT=0;incomeT=0;
   waveT=WAVE_EVERY;cleared=true;hudAcc=0;
   mineLv=1;millLv=1;
   heroes=[];mobs=[];shots=[];fx=[];nums=[];bears=[];inv=[];hails=[];storms=[];quakes=[];chests=[];
