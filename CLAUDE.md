@@ -35,7 +35,7 @@
   - `www/rpg.html`（59行）= DOM 骨架：header / canvas / `#dock`商店条(含4个 `.tile.trial`) / `#info`信息区 / `#inv`背包 / `#overlay`开始页
   - `www/rpg.css`（176行）= 全部样式，`:root` 里是配色变量
   - `www/rpg.js`（约1500行）= **纯逻辑**（数值/技能/AI/波次/商店/UI），不含任何绘制代码
-  - `www/rpg3d.js`（约690行）= **纯渲染**（Three.js 3D 场景/模型/特效/血条），逻辑层不用管
+  - `www/rpg3d.js`（约900行）= **纯渲染**（Three.js 3D 场景/模型/特效/血条），逻辑层不用管
   - `www/vendor/three.min.js`（706KB）= Three.js r180 打包产物
 - **改动方式**：**永远不要整文件 Read `rpg.js` 或 `rpg3d.js`**。先查下面两张"改什么→去哪里"表，用 `grep -n "锚点" www/rpg.js` 定位（行号会漂移，锚点不会），再 Edit 局部替换。改完 `node --check`。
 - 🚫 **`www/vendor/three.min.js` 永远不要 Read**（706KB 压缩过的第三方代码，读一次就烧掉几十万 token，而且毫无用处）。要换版本就跑 `python3 www/vendor/_fetch_three.py [版本号]` 重新生成。Three.js 的 API 直接按记忆写。
@@ -86,7 +86,7 @@
 | **所有主动技能的实现** | `function castSkill` | 885 |
 | 顶栏数值 + 面板HP/MP/间隔实时刷新 | `function updateHUD` | 1014 |
 | **信息区/英雄面板（属性网格、技能栏、装备栏）** | `function renderInfo` | 1033 |
-| 商店内容（技能/装备/金矿/伐木场） | `shopHTML` | 1182 |
+| 商店内容（技能/装备/金矿/伐木场），入口是地图建筑 | `shopHTML` / `setShop` | 1182 |
 | 试炼图标CD扫圈刷新 | `function renderTrials` | 1240 |
 | 买技能书 / 自动学习 / 买装备 | `buyPack` / `autoLearnPass` / `buyEquip` | 1258+ |
 | 背包渲染 / 学技能穿装备 | `renderInv` / `applyItem` | 1296 / 1322 |
@@ -94,34 +94,40 @@
 | **点击战场（选英雄/点宝箱）**，坐标走 `R3.pick(ev)` | `cv.addEventListener('pointerdown'` | 1448 |
 | 启动/倍速按钮 | `launchBtn` / `speedBtn` | 1470 / 1477 |
 
-### 改什么 → 去哪里 · `www/rpg3d.js`（3D 渲染，约690行）
+### 改什么 → 去哪里 · `www/rpg3d.js`（3D 渲染，约900行）
 | 想改的东西 | 去哪里（grep 锚点） | 行号约 |
 |---|---|---|
-| **相机俯角/投影方式** | `const TILT=` | 21 |
-| 几何缓存小工具（box/球/锥/环…） | `const GEO=` | 25 |
-| 受击闪白/死亡变灰/冰霜染色 | `function tint` | 56 |
-| 对象池（复用 mesh，别每帧 new） | `function bind` / `take` | 69 / 88 |
-| 两点之间拉光束（闪电/射线用） | `function beam` | 101 |
-| **英雄模型（法师/游侠/战士外观）** | `function buildHero` | 110 |
-| **怪物模型（普通/快速/坦克/Boss）** | `function buildMob` | 153 |
-| **召唤物模型（熊/火/水/地狱火）** | `function buildMinion` | 201 |
-| 宝箱模型 | `function buildChest` | 238 |
-| 弹道模型（箭矢/奥术弹） | `function buildShot` | 248 |
-| **场景搭建：光照/阴影/地面/网格/出兵色块** | `function init` | 270 |
-| **相机装框（正交范围计算）** | `function resize` | 342 |
-| 世界坐标→屏幕坐标（覆盖层用） | `function proj` / `ppu` | 366 / 371 |
-| **点击拾取（屏幕→格子坐标）** | `function pick` | 380 |
-| **每帧渲染主函数**（地面效果/英雄/召唤物/怪物/宝箱/弹道/血条/飘字） | `function draw` | 397 |
-| **所有 fx 特效的 3D 实现**（aoe/line/bolt/zap/slash/fall/flame/sword/rock/heal/spark） | `function drawFx` | 576 |
+| **相机俯角/投影方式** | `const TILT=` | — |
+| 几何缓存小工具（box/球/锥/环…） | `const GEO=` | — |
+| 受击闪白/死亡变灰/冰霜染色 | `function tint` | — |
+| 对象池（复用 mesh，别每帧 new） | `function bind` / `take` | — |
+| 两点之间拉光束（闪电/射线用） | `function beam` | — |
+| **英雄模型（法师/游侠/战士外观）** | `function buildHero` | — |
+| **怪物模型（普通/快速/坦克/Boss）** | `function buildMob` | — |
+| **召唤物模型（熊/火/水/地狱火）** | `function buildMinion` | — |
+| 宝箱模型 | `function buildChest` | — |
+| 弹道模型（箭矢/奥术弹） | `function buildShot` | — |
+| **程序化贴图（草地/石板/符文/柔光）** | `function texGrass` / `texStone` / `texRune` | — |
+| **商店建筑模型 + 位置/点击半径** | `function buildShop` / `const SHOPS=` / `SHOP_Z` | — |
+| 地图装饰（树/石头/草簇的散布） | `function scatterDecor` | — |
+| **场景搭建：光照/阴影/草地/石板路/法阵光圈/商店建筑** | `function init` | — |
+| **相机装框（正交范围计算）** | `function resize` | — |
+| 世界坐标→屏幕坐标（覆盖层用） | `function proj` / `ppu` | — |
+| **点击拾取（屏幕→格子坐标）** | `function pick` | — |
+| **每帧渲染主函数**（地面效果/英雄/召唤物/怪物/宝箱/弹道/血条/飘字） | `function draw` | — |
+| **所有 fx 特效的 3D 实现**（aoe/line/bolt/zap/slash/fall/flame/sword/rock/heal/spark） | `function drawFx` | — |
 
-- **发布 Artifact**（用户在手机上就是看这个链接测试）：`python3 www/_build_artifact.py <输出路径>` 把三个文件内联成单文件，再用 Artifact 工具发布，**传 url 参数**才能保住同一个 URL：https://claude.ai/code/artifact/463665a7-a08f-4cd2-b42d-0b95f1d6d779
+- **发布 Artifact**（用户在手机上就是看这个链接测试）：`python3 www/_build_artifact.py <输出路径>` 把 html+css+three+rpg3d+rpg 内联成单文件，再用 Artifact 工具发布，**传 url 参数**才能保住同一个 URL：https://claude.ai/code/artifact/463665a7-a08f-4cd2-b42d-0b95f1d6d779
 - **本地验证手段**（省事又省token）：容器里有 Chromium + 全局 playwright，可跑无头浏览器截图看效果：
   `NODE_PATH=/opt/node22/lib/node_modules node 脚本.js`，executablePath 用 `/opt/pw-browsers/chromium-1194/chrome-linux/chrome`。
   测试时可把内联出来的 test.html 临时改数值（如 gold=9999、给英雄预置技能）再截图。
 
 ## 方块战线·玩法现状
 - 横屏。左侧 3×3 出兵格**按列定职业**：蓝法师/绿游侠/红战士；中间 **3×13** 横向战线（战斗区加长过4格，COLS=16），怪从右来；最多 3 英雄（定价 50/100/200）。
-- 金币+木头双货币。商店内容**在常驻信息区内切换，不弹层**：技能书商店 / 装备商店 / 金矿 / 伐木场（后两个初始1级，每秒产出，上限10级）。
+- 金币+木头双货币。四个商店**入口是地图上的建筑**（不在 dock 了）：技能=紫顶法师书塔 / 装备=红顶铁匠铺 / 金矿=土黄矿洞 / 伐木场=绿顶锯木厂（后两个初始1级，每秒产出，上限10级）。
+  - 建筑摆在战斗区下方的草地上，位置常量在 rpg3d.js：`SHOP_Z/SHOP_X0/SHOP_DX/SHOP_R/SHOP_S`；模型在 `buildShop()`；名牌和 Lv 文字画在 2D 覆盖层。
+  - 点击流程：rpg.js 的 canvas pointerdown → `R3.shopAt(x,y)` 返回商店 key → `setShop(k)`。**商店内容仍然在常驻信息区内切换，不弹层**（`shopHTML()` 没变）。
+  - dock 那一行现在**只剩 4 个试炼图标**（用户明确要求试炼保持原样，不做成建筑）。
 - 开局是布阵阶段，点右上角 ▶ 才开波。共 **25 波**，每 **35 秒**一波自动来；逢5(5/15/25)是精英波、逢10(10/20)是纯Boss关，最后一波总攻。
   - **整波一起入场**（不再一只只放）：`startWave` 直接把 `waveComp` 全部 spawn 出来，用 `dx=(i%8)*.55+floor(i/8)*.85` 排成纵深队形从右边压上来（queue/spawnT 已弃用）。
   - **英雄会推进**：开波后有怪时，射程内没敌人就以 `HERO_SPD=0.55`格/秒 往右压；清场后**瞬间传送回**本阵格子（不再走回去，两端各有一圈传送特效）。英雄位置存 `h.x`（老家=`h.col+.5`），战斗/特效/怪物索敌都用 `h.x`；点英雄本体也能选中（不必点老家格子）。
@@ -189,7 +195,7 @@
   - 火焰风暴（蓝,主动CD12s,40蓝,AOE）：**延迟1秒**后在半径1.5格区域燃起，每0.5秒灼烧一次，持续2+0.5lv秒，每秒12+智×0.55lv魔法伤（DoT）。实现用 `storms` 数组，落地前有橙色预警圈，燃烧期画火圈+火舌粒子(fx 'flame')。
 
 ## 方块战线·四大试炼 + 宝箱（TRIALS 表在 rpg.js 前部）
-- 商店条右侧4个图标（`.tile.trial`，HTML 在 rpg.html 的 #dock 里），**点图标才开始试炼**，怪立刻入场，奖励在**击杀时结算**。
+- dock 那一行的4个图标（`.tile.trial`，HTML 在 rpg.html 的 #dock 里；商店已挪进地图，dock 只剩试炼），**点图标才开始试炼**，怪立刻入场，奖励在**击杀时结算**。
 - CD 从左到右依次变长：金币40s / 木头60s / 经验85s / 精英120s；CD 用 CSS `conic-gradient` 遮罩做成**魔兽式旋转扫圈**（`.cdmask` 的 `--p` 角度，updateHUD 每0.25s刷新），就绪时图标脉动发光。
 - **精英试炼第5波后开放**；所有试炼难度跟当前波数走（数量与倍率都随 wave 增长）。
 - 试炼怪脚下有对应颜色光环（`m.trial`）。金币/木头/经验试炼击杀给额外金/木/经验飘字。
@@ -199,10 +205,12 @@
 
 ## 方块战线·场景背景（3D）
 - 场景在 `rpg3d.js` 的 `init()` 里一次搭好（地面 / 战斗区台面 / 网格线 / 出兵色块 / 红色分界线 / 选中框），**都是静态 mesh，不要改成每帧重建**。
-- ⚠️ **整张地图都不画背景美术**，地面就是纯色（地面 `#0d1420`、战斗区台面 `#1c2740`），立体感全靠**光照 + 阴影**：
-  - 战斗区做过异世界荒原（双月/浮空岛/尖塔/裂谷），用户觉得丑且违和，已去掉。
-  - 左侧3列出兵区做过村庄（暖光小屋+树+村旗+草地+栅栏），用户也要求去掉。
-  - **两边都别再加回去**。出兵格的职业色块（蓝/绿/红）是功能性UI，保留。
+- ⚠️ **背景规则已被用户推翻两次，看清楚现在这条**：2026-07 用户看了参考图后**明确要求做连贯的地图背景**（之前 2D 时代嫌丑要求"整张纯色"那条已作废，别再照旧删掉）。现在：
+  - **一整张连贯的草地大地图**（`texGrass()` 程序化生成，暗绿+噪点+草簇斑块），战斗区是铺在草地上的**石板路**（`texStone()`，错缝石板）。
+  - 战场外围散着树/石头/草簇（`scatterDecor()`，用 `srand()` 定种子所以每次一样，只摆在战斗区和商店排之外）。
+  - **所有贴图都是程序化 canvas 生成**（`makeTex()`），不用任何外部图片——Artifact 的 CSP 不许外链，而且省体积。
+  - 左侧出兵位**不再是色块，是职业色法阵光圈**（`texRune()` 六芒星+刻度环，符文环缓慢自转；有英雄站着的更亮更快）。存在 `circles[]`，每帧在 `draw()` 里更新。
+  - **3×n 方格线保留**（用户明确要求先不隐藏），出兵区和战斗区都画竖线。
 - **相机是正交（OrthographicCamera）不是透视**：战场 16×3 太宽，透视会把两端格子拉变形；正交下所有格子等大、战线清楚。俯角 `TILT=55°`。`resize()` 里按 stage 宽高比算正交范围，横向必装下 COLS+0.5。
 - 光照：半球光(天蓝/地暗) + 主平行光(带 2048×1024 阴影贴图) + 一盏补光。
 - **低端机自动降级**：`draw()` 末尾统计帧时，连续 120 帧平均 >17ms 就自动关阴影（`shadowOn`）。

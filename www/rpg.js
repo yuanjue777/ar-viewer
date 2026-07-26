@@ -1004,8 +1004,6 @@ const uiMoney=document.getElementById('uiMoney'),uiWood=document.getElementById(
       uiLife=document.getElementById('uiLife'),uiWave=document.getElementById('uiWave'),
       info=document.getElementById('info'),invEl=document.getElementById('invItems'),
       toast=document.getElementById('toast'),ghost=document.getElementById('dragGhost');
-const tiles={skill:document.getElementById('tileSkill'),item:document.getElementById('tileItem'),
-             mine:document.getElementById('tileMine'),mill:document.getElementById('tileMill')};
 let toastT=null;
 function showToast(msg){
   toast.innerHTML=msg;toast.classList.add('show');
@@ -1016,8 +1014,6 @@ function updateHUD(){
   uiLife.textContent=lives;
   uiWave.textContent=wave+'/'+TOTAL_WAVES+(running&&started&&!over&&wave<TOTAL_WAVES?' · '+Math.ceil(waveT)+'s':'');
   renderTrials();
-  document.getElementById('mineLvT').textContent='Lv'+mineLv+' +'+mineLv+'/s';
-  document.getElementById('millLvT').textContent='Lv'+millLv+' +'+millLv+'/s';
   // 英雄面板的HP/MP实时刷新（不重建DOM，避免打断点击）
   const hv=document.getElementById('hpVal'),mv=document.getElementById('mpVal'),h=selHero();
   if(h&&hv&&mv){
@@ -1172,12 +1168,10 @@ function renderInfo(){
 function setShop(kind){
   openShop=openShop===kind?null:kind;
   invSel=null;
-  for(const k in tiles)tiles[k].classList.toggle('on',k===openShop);
   renderInfo();
 }
 function closeShop(){
   openShop=null;
-  for(const k in tiles)tiles[k].classList.remove('on');
 }
 function shopHTML(){
   if(openShop==='skill'){
@@ -1249,10 +1243,6 @@ function renderTrials(){
       locked?`第${T.minWave}波开`:(cd>0?Math.ceil(cd)+'s':'就绪');
   }
 }
-tiles.skill.addEventListener('click',()=>setShop('skill'));
-tiles.item.addEventListener('click',()=>setShop('item'));
-tiles.mine.addEventListener('click',()=>setShop('mine'));
-tiles.mill.addEventListener('click',()=>setShop('mill'));
 
 /* ---- 背包（技能书+装备混放）---- */
 function buyPack(cat){
@@ -1450,6 +1440,9 @@ cv.addEventListener('pointerdown',ev=>{
   const gp=R3.pick(ev);
   if(!gp)return;
   const fx0=gp.x,fy0=gp.y;
+  // 商店建筑（摆在战斗区下方的草地上）
+  const shop=R3.shopAt(fx0,fy0);
+  if(shop){sel=null;invSel=null;advPick=false;setShop(shop);return;}
   // 先判宝箱（精英试炼掉落，点击开启）
   for(const ch of chests){
     if(!ch.dead&&Math.hypot(ch.x-fx0,ch.y-fy0)<.5){openChest(ch);return;}

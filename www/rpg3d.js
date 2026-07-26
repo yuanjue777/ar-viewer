@@ -267,6 +267,199 @@ function shade3(hex,f){
 }
 
 /* ================= 初始化 ================= */
+/* ================= 程序化贴图（不用任何外部图片，Artifact 的 CSP 也不许外链） ================= */
+let _sd=12345;
+function srand(){_sd=(_sd*1664525+1013904223)&0x7fffffff;return _sd/0x7fffffff;}
+function makeTex(size,fn,rep){
+  const c=document.createElement('canvas');c.width=c.height=size;
+  fn(c.getContext('2d'),size);
+  const t=new T.CanvasTexture(c);
+  t.wrapS=t.wrapT=T.RepeatWrapping;
+  if(rep)t.repeat.set(rep[0],rep[1]);
+  t.colorSpace=T.SRGBColorSpace;
+  return t;
+}
+/* 草地：暗绿基底 + 噪点 + 草簇斑块。四角重画保证无缝平铺 */
+function texGrass(){
+  return makeTex(256,(x,S)=>{
+    x.fillStyle='#16251c';x.fillRect(0,0,S,S);
+    const blob=(px,py,r,col,a)=>{
+      x.globalAlpha=a;
+      for(let dx=-1;dx<2;dx++)for(let dy=-1;dy<2;dy++){
+        const g=x.createRadialGradient(px+dx*S,py+dy*S,0,px+dx*S,py+dy*S,r);
+        g.addColorStop(0,col);g.addColorStop(1,'rgba(0,0,0,0)');
+        x.fillStyle=g;x.beginPath();x.arc(px+dx*S,py+dy*S,r,0,7);x.fill();
+      }
+      x.globalAlpha=1;
+    };
+    for(let i=0;i<26;i++)blob(srand()*S,srand()*S,18+srand()*30,'#233a2a',.5);
+    for(let i=0;i<18;i++)blob(srand()*S,srand()*S,14+srand()*22,'#0f1a14',.45);
+    for(let i=0;i<10;i++)blob(srand()*S,srand()*S,10+srand()*16,'#2d4632',.35);
+    for(let i=0;i<2600;i++){                       // 草纹噪点
+      const v=srand();
+      x.fillStyle=v>.72?'#2b4331':v>.42?'#1b2c21':'#111d16';
+      x.fillRect(srand()*S,srand()*S,1+(v>.9?1:0),1+(v>.85?2:0));
+    }
+  },[9,5.5]);
+}
+/* 石板路：4×4 块，块与块之间有缝，每块亮度随机 */
+function texStone(){
+  return makeTex(256,(x,S)=>{
+    const N=4,u=S/N;
+    x.fillStyle='#161f2e';x.fillRect(0,0,S,S);
+    for(let i=0;i<N;i++)for(let j=0;j<N;j++){
+      const v=srand(),o=(j%2)*u*.5;                // 错缝
+      const px=(i*u+o)%S,py=j*u,pad=1.6;
+      const lum=.82+v*.36;
+      const col=(n)=>'#'+[0x22,0x2d,0x40].map((b,k)=>Math.min(255,(b*n)|0).toString(16).padStart(2,'0')).join('');
+      for(const dx of [0,-S]){
+        x.fillStyle=col(lum);
+        x.fillRect(px+dx+pad,py+pad,u-pad*2,u-pad*2);
+        x.fillStyle='rgba(255,255,255,.05)';       // 上沿高光
+        x.fillRect(px+dx+pad,py+pad,u-pad*2,2);
+      }
+    }
+    for(let i=0;i<1400;i++){                       // 石面颗粒
+      x.fillStyle=srand()>.5?'rgba(255,255,255,.035)':'rgba(0,0,0,.09)';
+      x.fillRect(srand()*S,srand()*S,1,1);
+    }
+  },[COLS/1.6,ROWS/1.6]);
+}
+/* 法阵符文环（白色，靠材质染成职业色） */
+function texRune(){
+  return makeTex(256,(x,S)=>{
+    const c=S/2;
+    x.strokeStyle='#fff';
+    x.lineWidth=4;
+    x.beginPath();x.arc(c,c,c*.9,0,7);x.stroke();
+    x.lineWidth=3;
+    x.beginPath();x.arc(c,c,c*.74,0,7);x.stroke();
+    for(let i=0;i<20;i++){                          // 一圈刻度
+      const a=i/20*Math.PI*2,l=i%5===0?.16:.09;
+      x.lineWidth=i%5===0?7:4;
+      x.beginPath();
+      x.moveTo(c+cos(a)*c*.74,c+sin(a)*c*.74);
+      x.lineTo(c+cos(a)*c*(.74+l),c+sin(a)*c*(.74+l));
+      x.stroke();
+    }
+    x.lineWidth=4;                                  // 内部六芒星
+    for(let k=0;k<2;k++){
+      x.beginPath();
+      for(let i=0;i<3;i++){
+        const a=k*Math.PI/3+i/3*Math.PI*2;
+        const px=c+cos(a)*c*.6,py=c+sin(a)*c*.6;
+        i?x.lineTo(px,py):x.moveTo(px,py);
+      }
+      x.closePath();x.stroke();
+    }
+    x.lineWidth=2.5;
+    x.beginPath();x.arc(c,c,c*.34,0,7);x.stroke();
+  });
+}
+/* 径向柔光（法阵中心、建筑光晕） */
+function texGlow(){
+  return makeTex(64,(x,S)=>{
+    const g=x.createRadialGradient(S/2,S/2,0,S/2,S/2,S/2);
+    g.addColorStop(0,'#fff');g.addColorStop(.45,'rgba(255,255,255,.45)');
+    g.addColorStop(1,'rgba(255,255,255,0)');
+    x.fillStyle=g;x.fillRect(0,0,S,S);
+  });
+}
+
+/* ================= 商店建筑（原来 dock 上那一行，现在摆进地图） ================= */
+const SHOPS=[
+  {k:'skill',name:'技能'},
+  {k:'item', name:'装备'},
+  {k:'mine', name:'金矿'},
+  {k:'mill', name:'伐木场'},
+];
+const SHOP_Z=3.45, SHOP_X0=4.3, SHOP_DX=1.9, SHOP_R=.62;
+const SHOP_S=1.15;                                 // 建筑整体缩放
+let shopGroups=[],circles=[];
+function shopAt(x,z){                              // 供 rpg.js 判断点击
+  for(let i=0;i<SHOPS.length;i++){
+    if(abs(x-(SHOP_X0+i*SHOP_DX))<SHOP_R&&abs(z-SHOP_Z)<SHOP_R)return SHOPS[i].k;
+  }
+  return null;
+}
+function buildShop(kind,glowTex){
+  const g=mk();
+  /* 圆形石台（参考图里建筑都站在石盘上） */
+  const base=new T.Mesh(g_cyl(.5,.54,.11,16),new T.MeshLambertMaterial({color:0x5b6685}));
+  base.position.y=.055;base.receiveShadow=true;g.add(base);
+  const rim=new T.Mesh(g_ring(.46,.53),
+    new T.MeshBasicMaterial({color:0x93a4c6,transparent:true,opacity:.5,depthWrite:false}));
+  rim.rotation.x=-PI/2;rim.position.y=.112;g.add(rim);
+  const halo=new T.Mesh(new T.PlaneGeometry(1.5,1.5),
+    new T.MeshBasicMaterial({map:glowTex,transparent:true,opacity:.18,depthWrite:false}));
+  halo.rotation.x=-PI/2;halo.position.y=.012;g.add(halo);
+  g.userData.halo=halo;
+  if(kind==='skill'){                              // 法师书塔
+    add(g,g_cyl(.2,.25,.58,10),0x8e9bbe,0,.4,0);   // 塔身（浅色，压得住深色路面）
+    add(g,g_cyl(.28,.28,.06,10),0xb8c4de,0,.71,0);
+    add(g,g_cone(.32,.4,10),0x8a6cff,0,.94,0);     // 紫顶（别用蓝，会和石板路撞色）
+    add(g,g_sph(.085,8),0xe0d0ff,0,1.19,0,{glow:1});
+    const bk=add(g,g_box(.22,.05,.17),0xfff2d0,0,.8,.32,{glow:1});  // 悬浮的书
+    add(g,g_box(.025,.06,.18),0x8a5f38,0,.84,.32,{glow:1});
+    g.userData.bob=bk;
+  }else if(kind==='item'){                         // 铁匠铺
+    add(g,g_box(.52,.36,.44),0x8a6a4e,0,.29,0);
+    add(g,g_cone(.46,.34,4),0xe0603f,0,.64,0,{ry:PI/4});  // 四坡屋顶（亮红）
+    add(g,g_box(.17,.13,.15),0x4a5464,.02,.17,.3);        // 铁砧
+    add(g,g_box(.22,.06,.2),0x5e6a7c,.02,.26,.3);
+    const fr=add(g,g_sph(.1,7),0xffa040,-.26,.22,.22,{glow:1});      // 炉火
+    add(g,g_box(.11,.34,.11),0x6b5340,-.26,.5,0);                     // 烟囱
+    g.userData.pulse=fr;
+  }else if(kind==='mine'){                         // 矿洞
+    add(g,g_oct(.46),0x8a8168,0,.32,0,{s:[1.15,.95,1]});           // 土黄岩体
+    add(g,g_oct(.26),0x9c927a,.3,.2,.18);
+    add(g,g_box(.28,.28,.1),0x14161c,0,.21,.38,{glow:1});           // 洞口
+    add(g,g_box(.055,.34,.055),0x6b5334,-.17,.22,.38);              // 支撑木
+    add(g,g_box(.055,.34,.055),0x6b5334,.17,.22,.38);
+    add(g,g_box(.44,.055,.055),0x6b5334,0,.39,.38);
+    const or1=add(g,g_sph(.09,7),0xffd35c,-.32,.15,.26,{glow:1});   // 金矿石
+    add(g,g_sph(.07,7),0xffd35c,-.38,.11,.38,{glow:1});
+    g.userData.pulse=or1;
+  }else{                                           // 伐木场
+    add(g,g_box(.46,.34,.4),0x9c7a4a,0,.28,0);
+    add(g,g_cone(.44,.32,4),0x6fa84a,0,.62,0,{ry:PI/4});             // 亮绿顶
+    for(let i=0;i<3;i++)                                             // 原木堆
+      add(g,g_cyl(.08,.08,.36,7),0xc09660,-.32+(i%2)*.03,.1+i*.15,.32,{rz:PI/2});
+    const saw=add(g,g_cyl(.17,.17,.025,14),0xe2ecfa,.32,.28,.14,{rz:PI/2});  // 锯片
+    g.userData.spin=saw;
+  }
+  return g;
+}
+
+/* ================= 地图装饰（树/石头/草簇，只摆在战场外围） ================= */
+function scatterDecor(){
+  const inBattle=(x,z)=>x>-.7&&x<COLS+2.2&&z>-.45&&z<3.2;
+  const inShops =(x,z)=>x>3.2&&x<11.4&&z>3.1&&z<4.15;
+  let n=0,guard=0;
+  while(n<52&&guard++<900){
+    const x=-3+srand()*(COLS+8), z=-2.6+srand()*8.4;
+    if(inBattle(x,z)||inShops(x,z))continue;
+    const t=srand(),g=mk();
+    if(t<.3){                                      // 树
+      add(g,g_cyl(.07,.09,.5,6),0x4a3a2a,0,.25,0);
+      add(g,g_cone(.34,.55,7),0x24422c,0,.68,0);
+      add(g,g_cone(.26,.42,7),0x2d5236,0,.98,0);
+    }else if(t<.55){                               // 石头
+      const s=.7+srand()*.9;
+      add(g,g_oct(.22),0x3c4454,0,.14,0,{s:[s*1.2,s*.8,s]});
+      add(g,g_oct(.12),0x48505f,.18,.08,.1);
+    }else{                                         // 草簇
+      for(let i=0;i<4;i++)
+        add(g,g_cone(.05,.24,4),i%2?0x2d4a32:0x233a29,
+            (srand()-.5)*.3,.12,(srand()-.5)*.3,{noSh:1});
+    }
+    g.position.set(x,0,z);
+    g.rotation.y=srand()*6.28;
+    g.scale.setScalar(.8+srand()*.5);
+    scene.add(g);n++;
+  }
+}
+
 function init(){
   const cv=document.getElementById('cv');
   ren=new T.WebGLRenderer({canvas:cv,antialias:true,powerPreference:'high-performance'});
@@ -288,30 +481,55 @@ function init(){
   dirLight.target.position.set(COLS/2,0,ROWS/2);
   const fill=new T.DirectionalLight(0x5f7fb8,.5);fill.position.set(6,4,6);scene.add(fill);
 
-  /* 地面（纯色，靠光照出立体感；不加背景美术） */
-  const ground=new T.Mesh(new T.PlaneGeometry(COLS+16,ROWS+16),
-    new T.MeshLambertMaterial({color:0x0d1420}));
+  const glowTex=texGlow(), runeTex=texRune();
+
+  /* 连贯的草地大地图（一整张，战斗区只是铺在上面的石板路） */
+  const ground=new T.Mesh(new T.PlaneGeometry(COLS+24,ROWS+22),
+    new T.MeshLambertMaterial({map:texGrass()}));
   ground.rotation.x=-PI/2;ground.position.set(COLS/2,0,ROWS/2);ground.receiveShadow=true;
   scene.add(ground);
 
-  /* 战斗区台面（略高一点，边缘有厚度，才有"棋盘"的立体感） */
-  const board=new T.Mesh(new T.BoxGeometry(COLS,.16,ROWS),
-    new T.MeshLambertMaterial({color:0x1c2740}));
-  board.position.set(COLS/2,-.08,ROWS/2);board.receiveShadow=true;
+  /* 战斗区：石板路台面（边缘有厚度，和草地区分开） */
+  const board=new T.Mesh(new T.BoxGeometry(COLS,.14,ROWS),
+    new T.MeshLambertMaterial({color:0x222c3e}));
+  board.position.set(COLS/2,-.07,ROWS/2);board.receiveShadow=true;
   scene.add(board);
+  const road=new T.Mesh(new T.PlaneGeometry(COLS,ROWS),
+    new T.MeshLambertMaterial({map:texStone()}));
+  road.rotation.x=-PI/2;road.position.set(COLS/2,.005,ROWS/2);road.receiveShadow=true;
+  scene.add(road);
 
-  /* 左侧出兵格：职业色块（功能性UI，保留） */
+  /* 左侧出兵位：不再是色块，改成职业色法阵光圈 */
   for(let c=0;c<HCOLS;c++){
     const col=CLASSES[COL_CLASS[c]].color;
     for(let r=0;r<ROWS;r++){
-      const t=new T.Mesh(new T.PlaneGeometry(.94,.94),
-        new T.MeshBasicMaterial({color:col,transparent:true,opacity:.2}));
-      t.rotation.x=-PI/2;t.position.set(c+.5,.012,r+.5);scene.add(t);
+      const g=new T.Group();g.position.set(c+.5,0,r+.5);
+      const glow=new T.Mesh(new T.PlaneGeometry(1.05,1.05),
+        new T.MeshBasicMaterial({color:col,map:glowTex,transparent:true,opacity:.3,depthWrite:false}));
+      glow.rotation.x=-PI/2;glow.position.y=.016;g.add(glow);
+      const rune=new T.Mesh(new T.PlaneGeometry(.92,.92),
+        new T.MeshBasicMaterial({color:col,map:runeTex,transparent:true,opacity:.75,depthWrite:false}));
+      rune.rotation.x=-PI/2;rune.position.y=.022;g.add(rune);
+      const ring=new T.Mesh(g_ring(.4,.46),
+        new T.MeshBasicMaterial({color:col,transparent:true,opacity:.85,depthWrite:false}));
+      ring.rotation.x=-PI/2;ring.position.y=.024;g.add(ring);
+      g.userData={rune,glow,ring,col,c,r};
+      circles.push(g);scene.add(g);
     }
   }
+
+  /* 商店建筑：原来 dock 上那一行，摆到战斗区下方的草地上 */
+  for(let i=0;i<SHOPS.length;i++){
+    const g=buildShop(SHOPS[i].k,glowTex);
+    g.position.set(SHOP_X0+i*SHOP_DX,0,SHOP_Z);
+    g.scale.setScalar(SHOP_S);
+    g.userData.k=SHOPS[i].k;
+    shopGroups.push(g);scene.add(g);
+  }
+  scatterDecor();
   /* 网格线 */
   const pts=[];
-  for(let c=HCOLS;c<=COLS;c++)pts.push(c,.014,0, c,.014,ROWS);
+  for(let c=0;c<=COLS;c++)pts.push(c,.014,0, c,.014,ROWS);
   for(let r=0;r<=ROWS;r++)pts.push(0,.014,r, COLS,.014,r);
   const gg=new T.BufferGeometry();
   gg.setAttribute('position',new T.Float32BufferAttribute(pts,3));
@@ -351,11 +569,15 @@ function resize(){
   ren.setPixelRatio(PR);ren.setSize(W,H,false);
 
   const asp=W/H;
-  const needW=(COLS+.5)/2;                        // 横向要装下整个战场
-  const needH=(ROWS*cos(TILT)+1.5*sin(TILT))/2+.35;  // 纵向要装下战场进深+单位高度
+  /* 纵向要装下：战场上沿(留点草地) → 商店建筑下沿，外加单位高度。
+     相机空间的垂直坐标 v(y,z) = (y-.3)*cos(TILT) - (z-tz)*sin(TILT) */
+  const zTop=-.28, zBot=SHOP_Z+.68*SHOP_S, tz=(zTop+zBot)/2;
+  const v=(y,z)=>(y-.3)*cos(TILT)-(z-tz)*sin(TILT);
+  const needW=(COLS+.5)/2;
+  const needH=max(abs(v(.95,.2)),abs(v(0,zBot)))+.06;
   const hh=max(needH,needW/asp), hw=max(needW,hh*asp);
   cam.left=-hw;cam.right=hw;cam.top=hh;cam.bottom=-hh;
-  const tx=COLS/2,tz=ROWS/2;
+  const tx=COLS/2;
   cam.position.set(tx,CAM_D*sin(TILT),tz+CAM_D*cos(TILT));
   cam.lookAt(tx,.3,tz);
   cam.updateProjectionMatrix();
@@ -405,6 +627,49 @@ function draw(){
   /* --- 选中格 --- */
   if(sel){selGroup.visible=true;selGroup.position.set(sel.col+.5,0,sel.row+.5);}
   else selGroup.visible=false;
+
+  /* --- 出兵法阵：符文环缓慢转，有英雄站着的更亮 --- */
+  for(const g of circles){
+    const u=g.userData;
+    const taken=heroes.some(h=>h.col===u.c&&h.row===u.r);
+    const p=.5+.5*sin(gt*1.6+u.c*1.1+u.r*.7);
+    u.rune.rotation.z-=(taken?.006:.0022);
+    u.rune.material.opacity=taken?.62+.3*p:.4+.14*p;
+    u.glow.material.opacity=taken?.34+.2*p:.2;
+    u.ring.material.opacity=taken?.85:.4;
+    u.ring.scale.setScalar(taken?1+.035*p:1);
+  }
+
+  /* --- 商店建筑：待机动画 + 打开中的高亮 --- */
+  for(const g of shopGroups){
+    const u=g.userData,on=openShop===u.k;
+    const p=.5+.5*sin(gt*3+u.k.length);
+    u.halo.material.opacity=on?.3+.22*p:.13;
+    u.halo.material.color.set(on?0xffd24f:0x8ab8d8);
+    if(u.spin)u.spin.rotation.y+=.06;
+    if(u.bob){u.bob.position.y=.72+.05*sin(gt*2.2);u.bob.rotation.y+=.012;}
+    if(u.pulse)u.pulse.scale.setScalar(.85+.3*p);
+    g.position.y=on?.05+.03*p:0;
+  }
+  /* 建筑名牌（覆盖层，跟着建筑走） */
+  for(let i=0;i<SHOPS.length;i++){
+    const sx=SHOP_X0+i*SHOP_DX;
+    const u=ppu(sx,.9,SHOP_Z), sp=proj(sx,1.12*SHOP_S,SHOP_Z-.12);
+    const on=openShop===SHOPS[i].k;
+    const fs=max(11,.24*u);
+    octx.font='700 '+fs.toFixed(1)+'px -apple-system,sans-serif';
+    octx.lineWidth=3.5;octx.strokeStyle='rgba(0,0,0,.75)';
+    octx.strokeText(SHOPS[i].name,sp[0],sp[1]);
+    octx.fillStyle=on?'#ffd24f':'#dce6f2';
+    octx.fillText(SHOPS[i].name,sp[0],sp[1]);
+    const k=SHOPS[i].k, sub=k==='mine'?'Lv'+mineLv+' +'+mineLv+'/s'
+      :k==='mill'?'Lv'+millLv+' +'+millLv+'/s'
+      :k==='skill'?'出4本书':'roll品质';
+    octx.font='500 '+(fs*.72).toFixed(1)+'px -apple-system,sans-serif';
+    octx.strokeText(sub,sp[0],sp[1]+fs*.95);
+    octx.fillStyle='rgba(190,205,225,.9)';
+    octx.fillText(sub,sp[0],sp[1]+fs*.95);
+  }
 
   /* --- 地面区域效果：火焰风暴 / 大地震颤 --- */
   for(const s of storms){
@@ -683,5 +948,5 @@ function drawFx(f){
   }
 }
 
-return {resize,draw,pick};
+return {resize,draw,pick,shopAt};
 })();
