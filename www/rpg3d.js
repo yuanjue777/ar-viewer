@@ -18,7 +18,7 @@ let shadowOn=true,ftAcc=0,ftN=0;     // 帧时统计（用于低端机自动降�
 
 /* 相机：正交投影。战场是 16×3 的超宽比例，用透视会把两端格子拉变形，
    正交则格子等大、战线清楚，立体感交给模型高度和阴影。 */
-const TILT=55*PI/180;                // 俯角
+const TILT=50*PI/180;                // 俯角（5行后放平一点，纵向才装得下）
 const CAM_D=26;                      // 相机距离（正交下只影响裁剪，不影响大小）
 
 /* ================= 几何 / 材质小工具 ================= */
@@ -437,12 +437,12 @@ const SHOPS=[
   {k:'mine', name:'金矿'},
   {k:'mill', name:'伐木场'},
 ];
-const SHOP_Z=3.45, SHOP_X0=4.3, SHOP_DX=1.9, SHOP_R=.62;
-const SHOP_S=1.15;                                 // 建筑整体缩放
+const SHOP_X=-1.45, SHOP_Z0=.55, SHOP_DZ=1.32, SHOP_R=.66;   // 竖排在战场左侧
+const SHOP_S=1.05;                                 // 建筑整体缩放
 let shopGroups=[],circles=[];
 function shopAt(x,z){                              // 供 rpg.js 判断点击
   for(let i=0;i<SHOPS.length;i++){
-    if(abs(x-(SHOP_X0+i*SHOP_DX))<SHOP_R&&abs(z-SHOP_Z)<SHOP_R)return SHOPS[i].k;
+    if(abs(x-SHOP_X)<SHOP_R&&abs(z-(SHOP_Z0+i*SHOP_DZ))<SHOP_R)return SHOPS[i].k;
   }
   return null;
 }
@@ -497,11 +497,11 @@ function buildShop(kind,glowTex){
 
 /* ================= 地图装饰（树/石头/草簇，只摆在战场外围） ================= */
 function scatterDecor(){
-  const inBattle=(x,z)=>x>-.7&&x<COLS+2.2&&z>-.45&&z<3.2;
-  const inShops =(x,z)=>x>3.2&&x<11.4&&z>3.1&&z<4.15;
+  const inBattle=(x,z)=>x>-.7&&x<COLS+2.2&&z>-.45&&z<ROWS+.2;
+  const inShops =(x,z)=>x>SHOP_X-1&&x<SHOP_X+1&&z>-.4&&z<ROWS+.6;
   let n=0,guard=0;
   while(n<52&&guard++<900){
-    const x=-3+srand()*(COLS+8), z=-2.6+srand()*8.4;
+    const x=-5+srand()*(COLS+10), z=-3+srand()*(ROWS+6);
     if(inBattle(x,z)||inShops(x,z))continue;
     const t=srand(),g=mk();
     if(t<.3){                                      // 树
@@ -566,7 +566,7 @@ function init(){
   /* 左侧出兵位：不再是色块，改成职业色法阵光圈 */
   for(let c=0;c<HCOLS;c++){
     const col=CLASSES[COL_CLASS[c]].color;
-    for(let r=0;r<ROWS;r++){
+    for(let r=ROW0;r<ROW0+HROWS;r++){
       const g=new T.Group();g.position.set(c+.5,0,r+.5);
       const glow=new T.Mesh(new T.PlaneGeometry(1.05,1.05),
         new T.MeshBasicMaterial({color:col,map:glowTex,transparent:true,opacity:.3,depthWrite:false}));
@@ -585,7 +585,7 @@ function init(){
   /* 商店建筑：原来 dock 上那一行，摆到战斗区下方的草地上 */
   for(let i=0;i<SHOPS.length;i++){
     const g=buildShop(SHOPS[i].k,glowTex);
-    g.position.set(SHOP_X0+i*SHOP_DX,0,SHOP_Z);
+    g.position.set(SHOP_X,0,SHOP_Z0+i*SHOP_DZ);
     g.scale.setScalar(SHOP_S);
     g.userData.k=SHOPS[i].k;
     shopGroups.push(g);scene.add(g);
@@ -635,13 +635,15 @@ function resize(){
   const asp=W/H;
   /* 纵向要装下：战场上沿(留点草地) → 商店建筑下沿，外加单位高度。
      相机空间的垂直坐标 v(y,z) = (y-.3)*cos(TILT) - (z-tz)*sin(TILT) */
-  const zTop=-.28, zBot=SHOP_Z+.68*SHOP_S, tz=(zTop+zBot)/2;
+  /* 纵向装下整个战场(含最上排单位的身高)，横向还要装下左侧那排商店建筑 */
+  const zTop=-.3, zBot=ROWS+.3, tz=(zTop+zBot)/2;
   const v=(y,z)=>(y-.3)*cos(TILT)-(z-tz)*sin(TILT);
-  const needW=(COLS+.5)/2;
-  const needH=max(abs(v(.95,.2)),abs(v(0,zBot)))+.06;
+  const xL=SHOP_X-.85, xR=COLS+.5;
+  const needW=(xR-xL)/2;
+  const needH=max(abs(v(1,zTop)),abs(v(0,zBot)))+.06;
   const hh=max(needH,needW/asp), hw=max(needW,hh*asp);
   cam.left=-hw;cam.right=hw;cam.top=hh;cam.bottom=-hh;
-  const tx=COLS/2;
+  const tx=(xL+xR)/2;
   cam.position.set(tx,CAM_D*sin(TILT),tz+CAM_D*cos(TILT));
   cam.lookAt(tx,.3,tz);
   cam.updateProjectionMatrix();
@@ -717,23 +719,27 @@ function draw(){
   }
   /* 建筑名牌（覆盖层，跟着建筑走） */
   for(let i=0;i<SHOPS.length;i++){
-    const sx=SHOP_X0+i*SHOP_DX;
-    const u=ppu(sx,.9,SHOP_Z), sp=proj(sx,1.12*SHOP_S,SHOP_Z-.12);
+    const sx=SHOP_X, sz=SHOP_Z0+i*SHOP_DZ;
+    const u=ppu(sx,.9,sz), sp=proj(sx+.62,.62*SHOP_S,sz);
     const on=openShop===SHOPS[i].k;
-    const fs=max(11,.24*u);
+    const fs=max(11,.23*u);
+    octx.textAlign='left';                       // 名牌画在建筑右侧，竖排才不会上下压在一起
     octx.font='700 '+fs.toFixed(1)+'px -apple-system,sans-serif';
     octx.lineWidth=3.5;octx.strokeStyle='rgba(0,0,0,.75)';
     octx.strokeText(SHOPS[i].name,sp[0],sp[1]);
     octx.fillStyle=on?'#ffd24f':'#dce6f2';
     octx.fillText(SHOPS[i].name,sp[0],sp[1]);
-    const k=SHOPS[i].k, sub=k==='mine'?'Lv'+mineLv+' +'+mineLv+'/s'
-      :k==='mill'?'Lv'+millLv+' +'+millLv+'/s'
-      :k==='skill'?'出4本书':'roll品质';
-    octx.font='500 '+(fs*.72).toFixed(1)+'px -apple-system,sans-serif';
-    octx.strokeText(sub,sp[0],sp[1]+fs*.95);
-    octx.fillStyle='rgba(190,205,225,.9)';
-    octx.fillText(sub,sp[0],sp[1]+fs*.95);
+    // 技能/装备不再显示小字，只有金矿伐木场标 Lv 和产量
+    const k=SHOPS[i].k;
+    const sub=k==='mine'?'Lv'+mineLv+' +'+mineLv+'/s':k==='mill'?'Lv'+millLv+' +'+millLv+'/s':'';
+    if(sub){
+      octx.font='500 '+(fs*.72).toFixed(1)+'px -apple-system,sans-serif';
+      octx.strokeText(sub,sp[0],sp[1]+fs*.95);
+      octx.fillStyle='rgba(190,205,225,.9)';
+      octx.fillText(sub,sp[0],sp[1]+fs*.95);
+    }
   }
+  octx.textAlign='center';
 
   /* --- 地面区域效果：火焰风暴 / 大地震颤 --- */
   for(const s of storms){

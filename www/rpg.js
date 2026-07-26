@@ -1,6 +1,8 @@
 'use strict';
 /* ================= 职业（魔兽式属性）================= */
-const ROWS=3, HCOLS=3, BCOLS=13, COLS=HCOLS+BCOLS, TOTAL_WAVES=25, HERO_COST=50, MAX_HEROES=3;
+const ROWS=5, HCOLS=3, BCOLS=17, COLS=HCOLS+BCOLS, TOTAL_WAVES=25, HERO_COST=50, MAX_HEROES=3;
+/* 出兵区仍是 3 列×3 行，纵向居中（第1~3行）；上下两行只有怪，靠英雄横移/射程去拦 */
+const HROWS=3, ROW0=(ROWS-HROWS)>>1;
 const MAX_SLOTS=4, MAX_SKILL_LV=10, MAX_EQUIP=6, MAX_HERO_LV=15;   // 装备栏2×3
 const COL_CLASS=['mage','archer','warrior'];
 /* bat=基础攻击间隔s wep=武器基础攻击 main=主属性(加攻) grow=每级属性成长 */
@@ -698,8 +700,8 @@ function update(dt){
     let best=null;
     for(const m of mobs){
       if(m.dead)continue;
-      if(h.cls==='archer'&&Math.abs(m.y-h.row)>1.6)continue;
-      if(h.cls==='warrior'&&Math.abs(m.y-h.row)>.7)continue;
+      if(h.cls==='archer'&&Math.abs(m.y-h.row)>2.3)continue;
+      if(h.cls==='warrior'&&Math.abs(m.y-h.row)>1.15)continue;
       const d=Math.hypot(m.x-hx,(m.y+.5)-hy);
       if(d<=h.range+m.r&&(!best||m.x<best.x))best=m;
     }
@@ -1090,9 +1092,11 @@ function openHireCards(){
 }
 /* 该职业列里第一个没人的行 */
 function freeRow(col){
-  for(let r=0;r<ROWS;r++)if(!heroAt(col,r))return r;
+  for(let r=ROW0;r<ROW0+HROWS;r++)if(!heroAt(col,r))return r;
   return -1;
 }
+/* 是不是出兵格（英雄只能站/拖到这9格里） */
+function isHomeCell(c,r){return c>=0&&c<HCOLS&&r>=ROW0&&r<ROW0+HROWS;}
 /* 转职：两张支线卡，带天赋技能说明 */
 function openAdvCards(h){
   if(!h||h.tier||h.lv<ADV_LV)return;
@@ -1129,6 +1133,50 @@ function openAdvCards(h){
   cardsEl.classList.add('show');
   R3.cardShow(views);
 }
+/* 背包里点技能书/装备 → 弹出当前英雄的卡片（按购买顺序从左往右），点谁给谁 */
+function openGiveCards(idx){
+  const it=inv[idx];
+  if(!it){closeCards();return;}
+  if(!heroes.length){showToast('还没有英雄');return;}
+  const isBook=it.t==='book';
+  const nm=isBook?it.name:eqDef(it).n;
+  cardMode='give';
+  cardTitle.innerHTML=isBook
+    ? `把 <b style="color:${QC[SKB[nm].q]}">${nm}</b> 教给哪位英雄？`
+    : `把 <b style="color:${qOf(it).c}">${nm}</b> 装备给哪位英雄？`;
+  const views=[];
+  cardRow.innerHTML='';
+  heroes.forEach((h,i)=>{
+    const b=CLASSES[h.cls], a=advOf(h);
+    // 这本书学得了吗（满级/技能位满都要拦下来）
+    let why='';
+    if(isBook){
+      const lv=h.skills[nm]||0;
+      const cost=BOOK_COST[SKB[nm].q]||0;
+      if(lv>=MAX_SKILL_LV)why='已满级';
+      else if(!lv&&Object.keys(h.skills).length>=MAX_SLOTS)why='技能位已满';
+      else if(gold<cost)why='学费不足';
+      else why='';
+    }
+    const ok=!why;
+    const el=document.createElement('div');
+    el.className='chcard'+(ok?'':' no');
+    const cur=isBook?(h.skills[nm]||0):h.equips.length;
+    el.innerHTML=`<div class="hcName" style="color:${b.color}">${a?a.name:b.name} <span style="opacity:.7;font-size:10px">Lv${h.lv}</span></div>
+      <canvas width="200" height="240"></canvas>
+      <div class="hcStats">${attrRows({str:h.str,agi:h.agi,int:h.int},b.grow,b.main)}</div>
+      <div class="hcBuy">${why||(isBook?(cur?`升到 Lv${cur+1}`:'学习'):`装备（${cur}/${MAX_EQUIP}）`)}</div>`;
+    if(ok)el.onclick=()=>{
+      closeCards();
+      applyItem(idx,h);
+    };
+    cardRow.appendChild(el);
+    views.push({canvas:el.querySelector('canvas'),cls:h.cls,tier:h.tier,branch:h.branch,phase:i*2.1});
+  });
+  cardsEl.classList.add('show');
+  R3.cardShow(views);
+}
+
 /* dock 左侧的招募按钮：满3人就消失 */
 function refreshHire(){
   if(heroes.length>=MAX_HEROES){hireBtn.style.display='none';return;}
@@ -1151,11 +1199,11 @@ function renderInfo(){
       const d=SKB[it.name];
       info.innerHTML=`<div class="card"><b style="color:${CATS[d.cat].color}">${it.name}</b>
         <span style="color:${QC[d.q]}">[${QN[d.q]}]</span>
-        <span>${CATS[d.cat].label}系技能书</span><br><span>${d.desc}</span><br><span>拖到英雄上学习，<b style="color:var(--gold)">学习费 ${bookCost(it.name)}金</b>，同名升级（上限Lv${MAX_SKILL_LV}）</span></div>`;
+        <span>${CATS[d.cat].label}系技能书</span><br><span>${d.desc}</span><br><span>点这本书 → 选英雄卡片学习，<b style="color:var(--gold)">学习费 ${bookCost(it.name)}金</b>，同名升级（上限Lv${MAX_SKILL_LV}）</span></div>`;
     }else{
       const d=eqDef(it),q=qOf(it);
       info.innerHTML=`<div class="card"><b style="color:${q.c}">${d.n}</b> <span style="color:${q.c}">[${q.n}]</span><br>
-        <span>${eqDesc(d)}</span><br><span>拖到英雄上穿戴（${MAX_EQUIP}个装备位）</span></div>`;
+        <span>${eqDesc(d)}</span><br><span>点这件装备 → 选英雄卡片穿戴（${MAX_EQUIP}个装备位）</span></div>`;
     }
     return;
   }
@@ -1220,7 +1268,7 @@ function renderInfo(){
     const n=mobs.length+queue.length;
     html=`<div class="hint">${!started?'布阵阶段：买好英雄后点右上角 <b style="color:#8ab8d8">▶ 启动</b> 开始进攻':
       n?'第 '+wave+' 波'+(isBossWave(wave)?' <b style="color:#ff5d5d">· BOSS关</b>':isEliteWave(wave)?' <b style="color:#f0c46a">· 精英波</b>':'')+' — 剩余 '+n
-       :'点 3×3 格子买英雄；技能书/装备从背包拖到英雄身上'}</div>`;
+       :'点左边建筑逛商店；背包里点技能书/装备再选英雄；英雄可在本职业那一列的法阵间拖动换行'}</div>`;
   }
   info.innerHTML=html;
   const ba=document.getElementById('buyAt');
@@ -1436,7 +1484,7 @@ function applyItem(idx,h,slot){
   renderInv();
   if(selHero()===h)renderInfo();
 }
-/* 拖拽：短按查看说明，拖到英雄上使用 */
+/* 背包：单击=弹英雄卡片选给谁（主要交互）；拖动到技能栏/装备栏=指定栏位覆盖（保留） */
 let drag=null;
 invEl.addEventListener('pointerdown',ev=>{
   const el=ev.target.closest('.book');if(!el)return;
@@ -1458,7 +1506,9 @@ window.addEventListener('pointerup',ev=>{
   ghost.style.display='none';
   const {idx,moved}=drag;drag=null;
   if(!moved){
+    // 单击 = 弹出英雄卡片选给谁（拖动仍然可用，两种都行）
     invSel=idx;closeShop();sel=null;renderInfo();
+    openGiveCards(idx);
     return;
   }
   const it=inv[idx];if(!it)return;
@@ -1476,7 +1526,7 @@ window.addEventListener('pointerup',ev=>{
   const gp=R3.pick(ev);
   if(!gp)return;
   const c=Math.floor(gp.x),r=Math.floor(gp.y);
-  if(c>=0&&c<HCOLS&&r>=0&&r<ROWS){
+  if(isHomeCell(c,r)){
     const hh=heroAt(c,r);
     if(hh)applyItem(idx,hh);
     else showToast('拖到已购买的英雄方块上');
@@ -1521,12 +1571,14 @@ info.addEventListener('click',ev=>{
     return;
   }
 });
+/* 战场拖动：按住英雄可以在本职业那一列的出兵格之间换行 */
+let hDrag=null;
 cv.addEventListener('pointerdown',ev=>{
   if(!running)return;
   const gp=R3.pick(ev);
   if(!gp)return;
   const fx0=gp.x,fy0=gp.y;
-  // 商店建筑（摆在战斗区下方的草地上）
+  // 商店建筑（摆在战场左侧）
   const shop=R3.shopAt(fx0,fy0);
   if(shop){sel=null;invSel=null;setShop(shop);return;}
   // 先判宝箱（精英试炼掉落，点击开启）
@@ -1536,16 +1588,38 @@ cv.addEventListener('pointerdown',ev=>{
   // 英雄会推进到战斗区，点身上也能选中（不只是点老家格子）
   for(const h of heroes){
     if(Math.abs(h.x-fx0)<.5&&Math.abs(h.row+.5-fy0)<.5){
-      sel={col:h.col,row:h.row};invSel=null;closeShop();renderInfo();return;
+      sel={col:h.col,row:h.row};invSel=null;closeShop();renderInfo();
+      hDrag={h,moved:false};cv.setPointerCapture&&cv.setPointerCapture(ev.pointerId);
+      return;
     }
   }
   const c=Math.floor(fx0),r=Math.floor(fy0);
   if(c<0||c>=COLS||r<0||r>=ROWS)return;
-  sel=c<HCOLS?{col:c,row:r}:null;
+  sel=isHomeCell(c,r)?{col:c,row:r}:null;
   invSel=null;
   if(sel)closeShop();
   renderInfo();
 });
+cv.addEventListener('pointermove',ev=>{
+  if(!hDrag)return;
+  const gp=R3.pick(ev);if(!gp)return;
+  const r=Math.round(gp.y-.5);
+  if(r!==hDrag.h.row)hDrag.moved=true;
+  hDrag.row=r;
+});
+cv.addEventListener('pointerup',ev=>{
+  if(!hDrag)return;
+  const h=hDrag.h, r=hDrag.row;
+  hDrag=null;
+  if(r==null||r===h.row)return;
+  if(!isHomeCell(h.col,r)){showToast('只能放在本职业那一列的出兵格上');return;}
+  const other=heroAt(h.col,r);
+  if(other){other.row=h.row;other.x=other.col+.5;}   // 同列两人直接换位
+  h.row=r;h.x=h.col+.5;
+  sel={col:h.col,row:h.row};
+  renderInfo();
+});
+cv.addEventListener('pointercancel',()=>{hDrag=null;});
 document.getElementById('launchBtn').addEventListener('click',ev=>{
   if(started)return;
   started=true;
