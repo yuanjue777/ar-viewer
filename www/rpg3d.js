@@ -106,46 +106,110 @@ function beam(m,x1,y1,z1,x2,y2,z2,th){
 }
 
 /* ================= 单位模型 ================= */
-/* 英雄：面向 +X（敌人从右来）。整体高约 0.95，宽约 0.5 */
-function buildHero(cls){
-  const g=mk(),c=CLASSES[cls].color;
-  const dark=shade3(c,.55),lite=shade3(c,1.35);
+/* 英雄：二头身 chibi 比例（大头在小屏上辨识度最高），面向 +X（敌人从右来）。
+   总高约 1.05。tier>0 = 已转职：加披风/肩饰/头饰，武器也升级一档。
+   ⚠️ 对象池的 key 里带了 tier/branch，所以转职后模型会自动重建。 */
+function buildHero(cls,tier,branch){
+  tier=tier|0;branch=branch|0;
+  const g=mk(), c=CLASSES[cls].color;
+  const dk=shade3(c,.5), lt=shade3(c,1.42);
+  const SKIN=0xf6d9bb, EYE=0x2b2436, GOLD=0xf0c46a;
+  const HAIR=cls==='mage'?0x7a5a9a:cls==='archer'?0xe8c46a:0xd4713a;
+  const CLOAK=branch?shade3(c,1.15):shade3(c,.62);
+  const HY=.66;                                   // 头中心高度
+
+  /* ---- 腿 + 鞋（短腿，二头身） ---- */
+  for(const z of [-.075,.075]){
+    add(g,g_box(.085,.15,.095),dk,0,.075,z);
+    add(g,g_box(.115,.055,.125),shade3(c,.34),.014,.028,z);
+  }
+  /* ---- 脸（三职业共用：大眼 + 高光 + 腮红） ---- */
+  const face=()=>{
+    add(g,g_sph(.196,12),SKIN,0,HY,0);
+    for(const z of [-.073,.073]){
+      add(g,g_sph(.034,7),EYE,.171,HY+.012,z,{glow:1});
+      add(g,g_sph(.013,6),0xffffff,.188,HY+.045,z+.012,{glow:1});
+    }
+    add(g,g_sph(.03,6),0xf0a898,.163,HY-.055,-.115,{glow:1,op:.55,noSh:1});
+    add(g,g_sph(.03,6),0xf0a898,.163,HY-.055,.115,{glow:1,op:.55,noSh:1});
+  };
+
   if(cls==='mage'){
-    add(g,g_cone(.25,.56,10),c,0,.28,0);                       // 长袍
-    add(g,g_cyl(.13,.16,.16,8),lite,0,.56,0);                  // 领口
-    add(g,g_sph(.105,8),0xe8d3b0,0,.66,0);                     // 头
-    add(g,g_cone(.17,.36,9),dark,0,.88,0);                     // 尖帽
-    add(g,g_sph(.05,6),0xffe9a8,0,1.06,0,{glow:1});            // 帽尖
-    const st=add(g,g_cyl(.022,.022,.9,6),0x8a6a44,.2,.45,.02,{rz:-.12});
-    const orb=add(g,g_sph(.075,8),0x9fd4ff,.24,.93,.02,{glow:1});
-    add(g,g_sph(.13,8),0x4fa8ff,.24,.93,.02,{glow:1,op:.28,noSh:1});
-    g.userData.wep=st;g.userData.orb=orb;
+    add(g,g_cone(.245,.44,10),c,0,.22,0);                    // 长袍下摆
+    add(g,g_cyl(.145,.185,.22,10),lt,0,.44,0);               // 上身
+    add(g,g_box(.09,.2,.075),c,.02,.46,-.19);                // 袖
+    add(g,g_box(.09,.2,.075),c,.02,.46,.19);
+    face();
+    add(g,g_sph(.21,10),HAIR,-.03,HY+.03,0,{s:[.92,.9,1.04]}); // 头发
+    add(g,g_box(.1,.3,.075),HAIR,-.11,HY-.16,-.15);            // 两侧长发
+    add(g,g_box(.1,.3,.075),HAIR,-.11,HY-.16,.15);
+    add(g,g_cyl(.265,.265,.028,12),dk,0,HY+.21,0);           // 帽檐（抬到头顶之上，不挡脸）
+    add(g,g_cone(.2,tier?.46:.36,10),dk,0,HY+(tier?.46:.41),0); // 尖帽
+    add(g,g_sph(tier?.06:.045,7),0xffe9a8,0,HY+(tier?.72:.61),0,{glow:1});
+    /* 法杖 */
+    add(g,g_cyl(.024,.028,.94,7),0x8a6a44,.24,.47,.2,{rz:-.1});
+    const orb=add(g,g_sph(tier?.105:.08,10),0xcfe8ff,.29,.97,.2,{glow:1});
+    add(g,g_sph(tier?.19:.14,10),0x4fa8ff,.29,.97,.2,{glow:1,op:.3,noSh:1});
+    if(tier){
+      const ring=add(g,g_torus(6.28),0x9fd4ff,.29,.97,.2,{rx:PI/2,glow:1,op:.7,noSh:1});
+      ring.scale.set(.2,.2,.2);
+      g.userData.orbit=ring;
+    }
+    g.userData.wep=null;g.userData.orb=orb;
   }else if(cls==='archer'){
-    add(g,g_cone(.24,.5,9),dark,0,.25,0);                      // 披风
-    add(g,g_cyl(.135,.155,.34,8),c,0,.42,0);                   // 身体
-    add(g,g_sph(.1,8),0xe8d3b0,0,.63,0);                       // 头
-    add(g,g_cone(.155,.28,8),c,0,.72,0);                       // 兜帽
-    const bow=add(g,g_torus(2.3),0xb98a4e,.2,.5,0,{rx:PI/2,ry:0,s:[.24,.24,.24]});
-    bow.rotation.set(0,-PI/2,0);bow.scale.set(.26,.26,.26);
-    add(g,g_cyl(.05,.05,.26,6),0x6b4a2c,-.13,.55,.1,{rz:.5});  // 箭袋
-    add(g,g_cone(.02,.1,5),0xd8c9a8,-.15,.7,.1,{rz:.5});
+    add(g,g_cone(.235,.3,9),dk,0,.17,0);                     // 短披风下摆
+    add(g,g_cyl(.14,.175,.24,10),c,0,.42,0);                 // 身体
+    add(g,g_box(.16,.06,.4),shade3(c,.4),0,.34,0);           // 腰带
+    add(g,g_box(.085,.19,.07),lt,.02,.46,-.185);
+    add(g,g_box(.085,.19,.07),lt,.02,.46,.185);
+    face();
+    add(g,g_sph(.212,10),HAIR,-.02,HY+.035,0,{s:[.95,.92,1.02]});
+    add(g,g_cone(.1,.42,7),HAIR,-.2,HY-.02,0,{rz:1.15});     // 马尾
+    add(g,g_sph(.08,7),HAIR,-.13,HY+.1,0);
+    if(!tier)add(g,g_cone(.205,.27,9),c,-.11,HY+.17,0,{rz:.32});  // 兜帽（往后戴，露脸）
+    else{
+      add(g,g_box(.03,.05,.2),GOLD,.15,HY+.15,0);            // 额饰
+      add(g,g_cone(.035,.22,5),0xffffff,-.06,HY+.26,-.1,{rz:-.5,glow:1});  // 羽毛
+    }
+    /* 弓 */
+    const bow=add(g,g_torus(2.5),0xb98a4e,.24,.5,0,{});
+    bow.rotation.set(0,-PI/2,0);bow.scale.setScalar(tier?.34:.28);
+    if(tier)add(g,g_sph(.045,7),GOLD,.24,.5,0,{glow:1});
+    add(g,g_cyl(.055,.055,.28,6),0x6b4a2c,-.15,.55,.13,{rz:.45});  // 箭袋
+    for(let i=0;i<3;i++)add(g,g_cone(.022,.11,5),0xd8c9a8,-.17,.72,.1+i*.045,{rz:.45});
     g.userData.wep=bow;
   }else{
-    add(g,g_box(.11,.24,.12),dark,-.02,.12,-.09);              // 腿
-    add(g,g_box(.11,.24,.12),dark,-.02,.12,.09);
-    add(g,g_box(.3,.34,.26),c,0,.41,0);                        // 胸甲
-    add(g,g_sph(.1,7),lite,0,.53,-.16);                        // 护肩
-    add(g,g_sph(.1,7),lite,0,.53,.16);
-    add(g,g_box(.19,.17,.19),0xdbe6f3,0,.67,0);                // 头盔
-    add(g,g_box(.05,.11,.16),0xf0c46a,.02,.78,0);              // 盔冠
-    add(g,g_box(.05,.3,.26),0xb9c6d6,-.1,.45,-.24);            // 盾
-    add(g,g_box(.03,.24,.2),shade3(c,.8),-.13,.45,-.24);
-    const sw=mk();                                             // 剑（绕肩挥砍）
-    add(sw,g_box(.045,.46,.09),0xe6eef8,0,.24,0);
-    add(sw,g_box(.05,.05,.2),0xf0c46a,0,.02,0);
-    sw.position.set(.1,.5,.22);
-    g.add(sw);g.userData.mats.push(...sw.userData.mats);g.userData.base.push(...sw.userData.base);
+    add(g,g_box(.19,.16,.24),shade3(c,.42),0,.19,0);         // 战裙
+    add(g,g_box(.29,.26,.25),c,0,.4,0);                      // 胸甲
+    add(g,g_box(.3,.05,.26),GOLD,0,.29,0);                   // 腰带
+    add(g,g_sph(.105,8),lt,0,.52,-.185);                     // 护肩
+    add(g,g_sph(.105,8),lt,0,.52,.185);
+    face();
+    add(g,g_sph(.208,10),HAIR,-.02,HY+.04,0,{s:[.94,.94,1.02]});
+    for(let i=0;i<3;i++)                                     // 竖起的短发
+      add(g,g_cone(.06,.17,5),HAIR,-.02+i*.045,HY+.22,(i-1)*.1,{rz:-.25});
+    add(g,g_box(.035,.045,.34),tier?GOLD:0xb9c6d6,.16,HY+.1,0);  // 额带/头环
+    /* 盾 */
+    add(g,g_box(.05,.28,.24),0xc3cede,-.11,.44,-.23);
+    add(g,g_box(.03,.2,.17),shade3(c,.85),-.145,.44,-.23);
+    if(tier)add(g,g_sph(.05,7),GOLD,-.15,.44,-.23,{glow:1});
+    /* 剑（绕肩挥砍） */
+    const sw=mk();
+    add(sw,g_box(.05,tier?.56:.46,.1),0xeef4fc,0,tier?.29:.24,0);
+    add(sw,g_box(.055,.055,.22),GOLD,0,.02,0);
+    if(tier)add(sw,g_box(.075,.5,.13),0xffd98a,0,.3,0,{glow:1,op:.32,noSh:1});
+    sw.position.set(.11,.5,.23);sw.rotation.z=.25;
+    g.add(sw);
+    g.userData.mats.push(...sw.userData.mats);g.userData.base.push(...sw.userData.base);
     g.userData.wep=sw;
+  }
+
+  /* ---- 转职通用：披风 + 肩章 ---- */
+  if(tier){
+    const cl=add(g,g_cone(.3,.7,7),CLOAK,-.14,.36,0,{rz:-.1});
+    cl.scale.set(.5,1,1.2);
+    add(g,g_sph(.055,7),GOLD,-.06,.56,-.2);
+    add(g,g_sph(.055,7),GOLD,-.06,.56,.2);
   }
   return g;
 }
@@ -698,7 +762,7 @@ function draw(){
 
   /* --- 英雄 --- */
   for(const h of heroes){
-    const g=bind(h,'H'+h.cls,()=>buildHero(h.cls));
+    const g=bind(h,'H'+h.cls+h.tier+h.branch,()=>buildHero(h.cls,h.tier,h.branch));
     const dead=!h.alive, sz=(h.sizeMul||1)*1.12;
     const bob=dead?0:sin(gt*2.2+h.row*1.7)*.02;
     g.position.set(h.x,bob,h.row+.5);
@@ -709,13 +773,13 @@ function draw(){
     const p=h.anim>0?h.anim/ANIM_T:0;
     const wep=g.userData.wep;
     if(wep){
-      if(h.cls==='warrior')wep.rotation.z=-2.1*p+.25;
-      else if(h.cls==='archer')wep.position.x=.2-.1*p;
-      else wep.rotation.z=-.12-.5*p;
+      if(h.cls==='warrior')wep.rotation.z=-2.1*p+.25;   // 挥砍
+      else wep.position.x=.24-.11*p;                     // 拉弓
     }
-    if(g.userData.orb){
-      const s=1+.25*sin(gt*4)+p*.6;
-      g.userData.orb.scale.setScalar(s);
+    if(g.userData.orb)g.userData.orb.scale.setScalar(1+.22*sin(gt*4)+p*.6);
+    if(g.userData.orbit){                                // 转职法师：宝珠环绕光环
+      g.userData.orbit.rotation.z+=.05;
+      g.userData.orbit.rotation.y=gt*.9;
     }
     /* 转职：脚下金环 */
     if(h.tier&&!dead){
@@ -825,6 +889,7 @@ function draw(){
 
   sweep();tmpHide();
   ren.render(scene,cam);
+  cardTick();
 
   /* 低端机自动降级：连续掉帧就关阴影 */
   if(shadowOn){
@@ -948,5 +1013,50 @@ function drawFx(f){
   }
 }
 
-return {resize,draw,pick,shopAt};
+/* ================= 角色卡片里的 3D 预览 =================
+   用一个独立的小 renderer 逐张渲染，再 drawImage 到各卡片的 2D canvas 上。
+   这样只多占 1 个 WebGL context（手机上下文数量有限，别一卡一个）。
+   rpg.js 通过 R3.cardShow([{canvas,cls,tier,branch}]) 挂上，cardHide() 摘掉。 */
+let cardRen,cardScene,cardCam,cardSlot;
+let cardViews=[];
+const cardCache={};
+function cardInit(){
+  const c=document.createElement('canvas');
+  cardRen=new T.WebGLRenderer({canvas:c,antialias:true,alpha:true});
+  cardRen.setPixelRatio(min(window.devicePixelRatio||1,2));
+  cardRen.setSize(200,240,false);
+  cardScene=new T.Scene();
+  cardScene.add(new T.HemisphereLight(0xd6e6ff,0x33405c,1.5));
+  const d1=new T.DirectionalLight(0xfff4e0,1.7);d1.position.set(3,5,4);cardScene.add(d1);
+  const d2=new T.DirectionalLight(0x8fb0ff,.7); d2.position.set(-4,2,-3);cardScene.add(d2);
+  cardCam=new T.OrthographicCamera(-.62,.62,.86,-.62,.1,20);
+  cardCam.position.set(1.5,1.3,3.2);cardCam.lookAt(0,.5,0);
+  cardSlot=new T.Group();cardScene.add(cardSlot);
+}
+function cardShow(list){
+  if(!cardRen)cardInit();
+  cardViews=list||[];
+}
+function cardHide(){cardViews=[];}
+function cardTick(){
+  if(!cardViews.length)return;
+  for(const v of cardViews){
+    const key=v.cls+'|'+(v.tier|0)+'|'+(v.branch|0);
+    let g=cardCache[key];
+    if(!g)g=cardCache[key]=buildHero(v.cls,v.tier,v.branch);
+    cardSlot.clear();cardSlot.add(g);
+    /* 模型面朝 +X，转 90° 才面对相机；再左右缓慢摆动展示侧面 */
+    /* 模型面朝 +X；相机在 (1.5,1.3,3.2)，要转到 -PI/2 附近才是面对镜头 */
+    g.rotation.y=-PI/2+.34+sin(gt*.6+(v.phase||0))*.26;
+    g.position.y=sin(gt*1.6+(v.phase||0))*.012;
+    cardRen.render(cardScene,cardCam);
+    const cv=v.canvas;
+    if(!cv||!cv.width)continue;
+    const x=cv.getContext('2d');
+    x.clearRect(0,0,cv.width,cv.height);
+    x.drawImage(cardRen.domElement,0,0,cv.width,cv.height);
+  }
+}
+
+return {resize,draw,pick,shopAt,cardShow,cardHide};
 })();

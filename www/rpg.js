@@ -39,8 +39,8 @@ function advOf(h){return h.tier?ADV[h.cls][h.branch]:null;}
 function specCost(lv){return {g:60+40*(lv-1),w:40+25*(lv-1)};}   // 专精升级费用（当前级→下一级）
 const SPEC_MAX=10;
 const ADV_LV=5, ADV_GOLD=400, ADV_WOOD=250;
-/* 英雄递增定价：第1个50、第2个100、第3个200 */
-const HERO_COSTS=[50,100,200];
+/* 英雄递增定价：第1个免费(开局卡片选)、第2个100、第3个200 */
+const HERO_COSTS=[0,100,200];   // 开局送1个，之后100/200
 function heroCost(){return HERO_COSTS[Math.min(heroes.length,HERO_COSTS.length-1)];}
 function xpNeed(lv){return 40+45*(lv-1);}
 /* 魔兽护甲减伤公式 */
@@ -178,7 +178,7 @@ const BOSS_WAVE_MUL=2.5, ELITE_RS=1.2;
 function isBossWave(w){return w%10===0;}
 function isEliteWave(w){return w%10===5;}
 /* 怪物AI：仇恨范围>攻击范围（攻击距离见 MOBS.atkR），仇恨内只做轻微纵向贴靠 */
-const AGGRO_R=3.2, VEER_SPD=.7;
+const AGGRO_R=3.2, VEER_SPD=1.05;   // 仇恨内纵向贴靠速度（大一点=包围感更强）
 /* 召唤物不再有活动上限：召出来就一路向右压，波次结束随波消散 */
 /* ===== 召唤物（bears 数组统一管理，kind 决定属性/外观）=====
    hp/atk = 基础 + 智力×系数×技能等级；rng=攻击距离 ivl=攻击间隔 splash=溅射半径 */
@@ -210,7 +210,7 @@ const TRIAL_KEYS=['gold','wood','xp','elite'];
 let gold,wood,lives,wave,queue,spawnT,incomeT,waveT,cleared,hudAcc;
 let mineLv,millLv;
 let heroes,mobs,shots,fx,nums,bears,inv,hails,storms,quakes,chests,trialCd;
-let sel=null,invSel=null,speed=1,running=false,started=false,over=false,openShop=null,advPick=false;
+let sel=null,invSel=null,speed=1,running=false,started=false,over=false,openShop=null;
 const ANIM_T=.22;   // 攻击动作时长（rpg3d.js 的挥砍/拉弓动作用它算进度）
 let gt=0;           // 全局时间（呼吸/脉动/走路相位）
 
@@ -294,8 +294,8 @@ function reset(){
   heroes=[];mobs=[];shots=[];fx=[];nums=[];bears=[];inv=[];hails=[];storms=[];quakes=[];chests=[];
   trialCd={};for(const k of TRIAL_KEYS)trialCd[k]=0;
   renderTrials();
-  sel=null;invSel=null;over=false;openShop=null;advPick=false;
-  closeShop();updateHUD();renderInfo();renderInv();
+  sel=null;invSel=null;over=false;openShop=null;
+  closeShop();closeCards();updateHUD();renderInfo();renderInv();refreshHire();
 }
 function waveComp(w){
   // 数量封顶30只（约27秒出完，不与下一波堆叠），后期靠强度而非数量
@@ -348,7 +348,8 @@ function spawnMob(type,opt){
   if(wave>15)mul*=Math.pow(1.06,wave-15);
   // 不再固定在格子正中：在所选行附近随机散开
   const row=Math.floor(Math.random()*ROWS);
-  const y=Math.max(0,Math.min(ROWS-1,row+(Math.random()*.7-.35)));
+  // 散开幅度做大（原来±0.35），整波看起来是一片压上来而不是三条直线
+  const y=Math.max(-.32,Math.min(ROWS-1+.32,row+(Math.random()*1.3-.65)));
   mul*=opt.mul||1;
   mobs.push({type,row,y,x:COLS+.5+Math.random()*.4+(opt.dx||0),
     hp:b.hp*mul,maxHp:b.hp*mul,spd:b.spd,atk:b.atk*mul,r:b.r*(opt.rs||1),atkR:b.atkR,
@@ -528,7 +529,7 @@ function update(dt){
       if(o===m||o.dead)continue;
       if(Math.abs(o.x-m.x)<.38&&Math.abs(o.y-m.y)<.34){
         const dir=(m.y-o.y)||(Math.random()-.5);
-        m.y=Math.max(0,Math.min(ROWS-1,m.y+Math.sign(dir)*.5*dt));
+        m.y=Math.max(-.32,Math.min(ROWS-1+.32,m.y+Math.sign(dir)*.5*dt));
         break;
       }
     }
@@ -537,7 +538,7 @@ function update(dt){
       const dy=tgt.row-m.y;
       if(Math.abs(dy)>.02){
         const step=Math.min(Math.abs(dy),VEER_SPD*dt)*Math.sign(dy);
-        m.y=Math.max(0,Math.min(ROWS-1,m.y+step));
+        m.y=Math.max(-.32,Math.min(ROWS-1+.32,m.y+step));
       }
     }
     m.row=Math.max(0,Math.min(ROWS-1,Math.round(m.y)));   // 派生所在行
@@ -997,6 +998,7 @@ function begin(){
   reset();running=true;started=false;resize();
   document.getElementById('launchBtn').style.display='';   // 布阵阶段：右上角点▶启动才开波
   renderInfo();
+  openHireCards();                                         // 开局免费选一个英雄
 }
 
 /* ================= UI ================= */
@@ -1013,7 +1015,7 @@ function updateHUD(){
   uiMoney.textContent=Math.floor(gold);uiWood.textContent=Math.floor(wood);
   uiLife.textContent=lives;
   uiWave.textContent=wave+'/'+TOTAL_WAVES+(running&&started&&!over&&wave<TOTAL_WAVES?' · '+Math.ceil(waveT)+'s':'');
-  renderTrials();
+  renderTrials();refreshHire();
   // 英雄面板的HP/MP实时刷新（不重建DOM，避免打断点击）
   const hv=document.getElementById('hpVal'),mv=document.getElementById('mpVal'),h=selHero();
   if(h&&hv&&mv){
@@ -1025,6 +1027,120 @@ function updateHUD(){
   }
 }
 function selHero(){return sel?heroAt(sel.col,sel.row):null;}
+
+/* ================= 角色卡片（招募 / 转职） =================
+   开局和每次招募都弹三张职业卡；转职弹两张支线卡（带天赋说明）。
+   卡片里的人物是 rpg3d.js 用同一套模型渲的大号预览（R3.cardShow）。 */
+const cardsEl=document.getElementById('cards'),
+      cardRow=document.getElementById('cardRow'),
+      cardTitle=document.getElementById('cardTitle'),
+      hireBtn=document.getElementById('hireBtn'),
+      hireLvT=document.getElementById('hireLv');
+let cardMode=null;                       // 'hire' | 'adv'
+const ATTR_ICON={str:'⚔',agi:'🏹',int:'✦'};
+
+function attrRows(base,grow,main){
+  return ['str','agi','int'].map(k=>{
+    const cc=CATS[k].color, hot=k===main;
+    return `<div class="hcRow" style="color:${hot?cc:'#8fa2bb'}">
+      <i style="color:${cc}">${ATTR_ICON[k]}</i>${CATS[k].label}
+      <b style="color:${hot?cc:'#c8d4e4'}">${base[k].toFixed(1)}</b>
+      <span class="gr">+${grow[k].toFixed(1)}</span></div>`;
+  }).join('');
+}
+function closeCards(){
+  cardMode=null;cardsEl.classList.remove('show');
+  cardRow.innerHTML='';R3.cardHide();
+}
+/* 招募：三张职业卡，选一张就把英雄放进该职业那一列的空位 */
+function openHireCards(){
+  if(heroes.length>=MAX_HEROES)return;
+  const cost=heroCost(), free=cost===0;
+  cardMode='hire';
+  cardTitle.textContent=free?'选择你的第一位英雄（免费）':`招募第 ${heroes.length+1} 位英雄 · ${cost} 金`;
+  const views=[];
+  cardRow.innerHTML='';
+  ['warrior','archer','mage'].forEach((cls,i)=>{
+    const b=CLASSES[cls];
+    const col=COL_CLASS.indexOf(cls);
+    const full=freeRow(col)<0;                       // 该职业的3格都占满了
+    const afford=gold>=cost;
+    const ok=!full&&afford;
+    const el=document.createElement('div');
+    el.className='chcard'+(free?' free':'')+(ok?'':' no');
+    el.innerHTML=`<div class="hcName" style="color:${b.color}">${b.name}</div>
+      <canvas width="200" height="240"></canvas>
+      <div class="hcStats">${attrRows(b.attr,b.grow,b.main)}</div>
+      <div class="hcBuy">${full?'该职业已满':!afford?'金币不足':free?'免费获得':cost+' 金'}</div>`;
+    if(ok)el.onclick=()=>{
+      const row=freeRow(col);
+      if(row<0)return;
+      gold-=cost;
+      const h=makeHero(cls,row,col);
+      heroes.push(h);
+      sel={col,row};
+      closeCards();updateHUD();renderInfo();refreshHire();
+      showToast(`<b style="color:${b.color}">${b.name}</b> 已加入战场`);
+    };
+    cardRow.appendChild(el);
+    views.push({canvas:el.querySelector('canvas'),cls,tier:0,branch:0,phase:i*2.1});
+  });
+  cardsEl.classList.add('show');
+  R3.cardShow(views);
+}
+/* 该职业列里第一个没人的行 */
+function freeRow(col){
+  for(let r=0;r<ROWS;r++)if(!heroAt(col,r))return r;
+  return -1;
+}
+/* 转职：两张支线卡，带天赋技能说明 */
+function openAdvCards(h){
+  if(!h||h.tier||h.lv<ADV_LV)return;
+  cardMode='adv';
+  const can=gold>=ADV_GOLD&&wood>=ADV_WOOD;
+  cardTitle.innerHTML=`${CLASSES[h.cls].name} Lv${h.lv} 转职 · <span style="color:var(--gold)">${ADV_GOLD}金</span> + <span style="color:var(--wood)">${ADV_WOOD}木</span>`;
+  const views=[];
+  cardRow.innerHTML='';
+  ADV[h.cls].forEach((br,i)=>{
+    const sp=SPECS[br.key], b=CLASSES[h.cls];
+    // 转职后的三维（×1.35）与成长，给玩家一个直观对比
+    const na={},ng={};
+    for(const k of ['str','agi','int']){na[k]=b.attr[k]*1.35;ng[k]=b.grow[k];}
+    const el=document.createElement('div');
+    el.className='chcard'+(can?'':' no');
+    el.innerHTML=`<div class="hcName" style="color:${b.color}">${br.name}</div>
+      <canvas width="200" height="240"></canvas>
+      <div class="hcStats">${attrRows(na,ng,b.main)}</div>
+      <div class="hcTal"><div class="tn">【天赋】${sp.n}</div>
+        <div class="td">${sp.d(1)}</div></div>
+      <div class="hcBuy">${can?'选择这条路':'资源不足'}</div>`;
+    if(can)el.onclick=()=>{
+      if(gold<ADV_GOLD||wood<ADV_WOOD)return;
+      gold-=ADV_GOLD;wood-=ADV_WOOD;
+      h.tier=1;h.branch=i;h.specLv=1;
+      calc(h);h.hp=h.maxHp;
+      levelFx(h.x,h.row+.5);
+      closeCards();updateHUD();renderInfo();
+      showToast(`转职成功：<b style="color:${b.color}">${br.name}</b>（天赋 ${sp.n}）`);
+    };
+    cardRow.appendChild(el);
+    views.push({canvas:el.querySelector('canvas'),cls:h.cls,tier:1,branch:i,phase:i*2.6});
+  });
+  cardsEl.classList.add('show');
+  R3.cardShow(views);
+}
+/* dock 左侧的招募按钮：满3人就消失 */
+function refreshHire(){
+  if(heroes.length>=MAX_HEROES){hireBtn.style.display='none';return;}
+  hireBtn.style.display='';
+  const c=heroCost();
+  hireLvT.textContent=c===0?'免费':c+'金';
+  hireBtn.disabled=gold<c;
+  hireBtn.style.opacity=gold<c?.45:1;
+}
+hireBtn.onclick=()=>{if(heroes.length<MAX_HEROES&&gold>=heroCost())openHireCards();};
+document.getElementById('cardCancel').onclick=closeCards;
+cardsEl.onclick=ev=>{if(ev.target===cardsEl)closeCards();};
 
 function renderInfo(){
   if(over)return;
@@ -1048,11 +1164,11 @@ function renderInfo(){
   if(sel&&!h){
     const cls=COL_CLASS[sel.col],b=CLASSES[cls];
     const hc=heroCost();
-    html=`<div class="card"><b style="color:${b.color}">初始${b.name}</b> <span>${b.desc}</span><br>
+    html=`<div class="card"><b style="color:${b.color}">${b.name}位</b> <span>${b.desc}</span><br>
       <span>HP ${b.hpB+b.attr.str*8} · 攻 ${b.wep+b.attr[b.main]} · 间隔 ${b.bat}s · 甲 ${b.baseArmor}</span><br>
       <span>力${b.attr.str}(+${b.grow.str}) 敏${b.attr.agi}(+${b.grow.agi}) 智${b.attr.int}(+${b.grow.int})</span></div>
-      <button class="btn" id="buyAt" data-cost="${hc}" data-lock="${heroes.length>=MAX_HEROES?1:0}" ${gold<hc||heroes.length>=MAX_HEROES?'disabled':''}>
-        买入 <span class="cost">${hc}金</span>${heroes.length>=MAX_HEROES?'<br><span class="sub">已满3人</span>':'<br><span class="sub">第'+(heroes.length+1)+'个英雄</span>'}</button>`;
+      <button class="btn" id="buyAt" data-lock="${heroes.length>=MAX_HEROES?1:0}" ${heroes.length>=MAX_HEROES?'disabled':''}>
+        招募英雄 ▸${heroes.length>=MAX_HEROES?'<br><span class="sub">已满3人</span>':'<br><span class="sub">第'+(heroes.length+1)+'个 <span class="cost">'+(hc||'免费')+(hc?'金':'')+'</span></span>'}</button>`;
   }else if(h){
     const b=CLASSES[h.cls];
     const advOK=!h.tier&&h.lv>=ADV_LV, canAdv=advOK&&gold>=ADV_GOLD&&wood>=ADV_WOOD;
@@ -1091,20 +1207,10 @@ function renderInfo(){
       <div class="slotgrid sk">${sk.join('')}</div>
       <div class="slotgrid eq">${eq.join('')}</div>`;
     if(!h.tier){
+      // 点开弹转职卡片（两条支线各一张，带天赋说明）
       const canBase=h.lv>=ADV_LV, can=canBase&&gold>=ADV_GOLD&&wood>=ADV_WOOD;
-      if(!advPick){
-        // 单个转职按钮，点击后展开分支选择
-        html+=`<button class="btn" id="advOpen" data-lock="${canBase?0:1}" ${can?'':'disabled'}>
-          转职 ▸<br><span class="sub">${canBase?'选择支线':'需Lv'+ADV_LV}</span> <span class="cost">${ADV_GOLD}金</span>+<span class="costw">${ADV_WOOD}木</span></button>`;
-      }else{
-        // 展开：两条支线二选一
-        html+=`<div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0">`+
-          ADV[h.cls].map((br,i)=>
-            `<button class="btn" data-adv="${i}" data-cost="${ADV_GOLD}" data-wood="${ADV_WOOD}" data-lock="0" ${can?'':'disabled'} style="padding:4px 8px">
-              ${br.name} <span style="color:${b.color};font-size:9px">[${SPECS[br.key].n}]</span></button>`
-          ).join('')+
-          `<button class="btn" id="advCancel" style="padding:2px 8px;font-size:10px">取消</button></div>`;
-      }
+      html+=`<button class="btn" id="advOpen" data-lock="${canBase?0:1}" ${can?'':'disabled'}>
+        转职 ▸<br><span class="sub">${canBase?'选择支线':'需Lv'+ADV_LV}</span> <span class="cost">${ADV_GOLD}金</span>+<span class="costw">${ADV_WOOD}木</span></button>`;
     }else if(h.specLv<SPEC_MAX){
       const sc=specCost(h.specLv);
       html+=`<button class="btn" data-spec="1" data-cost="${sc.g}" data-wood="${sc.w}" data-lock="0" ${gold>=sc.g&&wood>=sc.w?'':'disabled'}>
@@ -1118,14 +1224,7 @@ function renderInfo(){
   }
   info.innerHTML=html;
   const ba=document.getElementById('buyAt');
-  if(ba)ba.onclick=()=>{
-    const hc=heroCost();
-    if(gold>=hc&&heroes.length<MAX_HEROES&&sel&&!heroAt(sel.col,sel.row)){
-      gold-=hc;
-      heroes.push(makeHero(COL_CLASS[sel.col],sel.row,sel.col));
-      updateHUD();renderInfo();
-    }
-  };
+  if(ba)ba.onclick=()=>openHireCards();
   const au=info.querySelector('[data-auto]');
   if(au)au.onclick=()=>{
     const hh=selHero();if(!hh)return;
@@ -1137,20 +1236,7 @@ function renderInfo(){
     renderInfo();
   };
   const ao=document.getElementById('advOpen');
-  if(ao)ao.onclick=()=>{advPick=true;renderInfo();};
-  const ac=document.getElementById('advCancel');
-  if(ac)ac.onclick=()=>{advPick=false;renderInfo();};
-  info.querySelectorAll('[data-adv]').forEach(btn=>btn.onclick=()=>{
-    const hh=selHero();if(!hh||hh.tier||hh.lv<ADV_LV)return;
-    if(gold>=ADV_GOLD&&wood>=ADV_WOOD){
-      gold-=ADV_GOLD;wood-=ADV_WOOD;
-      hh.tier=1;hh.branch=+btn.dataset.adv;hh.specLv=1;
-      calc(hh);hh.hp=hh.maxHp;
-      levelFx(hh.x,hh.row+.5);
-      advPick=false;
-      updateHUD();renderInfo();
-    }
-  });
+  if(ao)ao.onclick=()=>openAdvCards(selHero());
   const sb=info.querySelector('[data-spec]');
   if(sb)sb.onclick=()=>{
     const hh=selHero();if(!hh||!hh.tier||hh.specLv>=SPEC_MAX)return;
@@ -1442,7 +1528,7 @@ cv.addEventListener('pointerdown',ev=>{
   const fx0=gp.x,fy0=gp.y;
   // 商店建筑（摆在战斗区下方的草地上）
   const shop=R3.shopAt(fx0,fy0);
-  if(shop){sel=null;invSel=null;advPick=false;setShop(shop);return;}
+  if(shop){sel=null;invSel=null;setShop(shop);return;}
   // 先判宝箱（精英试炼掉落，点击开启）
   for(const ch of chests){
     if(!ch.dead&&Math.hypot(ch.x-fx0,ch.y-fy0)<.5){openChest(ch);return;}
@@ -1450,13 +1536,13 @@ cv.addEventListener('pointerdown',ev=>{
   // 英雄会推进到战斗区，点身上也能选中（不只是点老家格子）
   for(const h of heroes){
     if(Math.abs(h.x-fx0)<.5&&Math.abs(h.row+.5-fy0)<.5){
-      sel={col:h.col,row:h.row};invSel=null;advPick=false;closeShop();renderInfo();return;
+      sel={col:h.col,row:h.row};invSel=null;closeShop();renderInfo();return;
     }
   }
   const c=Math.floor(fx0),r=Math.floor(fy0);
   if(c<0||c>=COLS||r<0||r>=ROWS)return;
   sel=c<HCOLS?{col:c,row:r}:null;
-  invSel=null;advPick=false;
+  invSel=null;
   if(sel)closeShop();
   renderInfo();
 });

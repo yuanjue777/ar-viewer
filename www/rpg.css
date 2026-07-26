@@ -174,3 +174,57 @@
   @keyframes spin90{0%,20%{transform:rotate(0)}60%,100%{transform:rotate(90deg)}}
   @media (orientation:portrait){#rotate{display:flex}}
   @media (prefers-reduced-motion:reduce){#rotate .ph{animation:none;transform:rotate(90deg)}}
+
+  /* ===== 招募按钮（dock 左侧） ===== */
+  #dock .tile.hire .ic{background:linear-gradient(135deg,#f0c46a,#e08a3a)}
+  #dock .tile.hire{border-color:#f0c46a;box-shadow:0 0 10px rgba(240,196,106,.28)}
+  #dock .tile.hire .lv{color:#f0c46a}
+
+  /* ===== 角色卡片选择层 ===== */
+  #cards{
+    position:fixed;inset:0;z-index:60;display:none;
+    flex-direction:column;align-items:center;justify-content:center;gap:8px;
+    background:rgba(6,9,15,.86);backdrop-filter:blur(3px);
+  }
+  #cards.show{display:flex}
+  #cardTitle{font-size:15px;font-weight:700;color:#e8eef7;letter-spacing:1px}
+  #cardRow{display:flex;gap:10px;align-items:stretch}
+  .chcard{
+    width:150px;background:linear-gradient(180deg,#1b2740,#121a2a);
+    border:2px solid #3a4a68;border-radius:10px;overflow:hidden;
+    display:flex;flex-direction:column;cursor:pointer;
+    transition:transform .12s,border-color .12s,box-shadow .12s;
+  }
+  .chcard:hover,.chcard.on{transform:translateY(-3px)}
+  .chcard .hcName{
+    text-align:center;font-size:12px;font-weight:700;padding:4px 2px;
+    background:linear-gradient(180deg,#2c3a58,#1e2942);border-bottom:1px solid #3a4a68;
+  }
+  .chcard canvas{display:block;width:100%;height:132px;background:radial-gradient(ellipse at 50% 70%,#243354,#111828 70%)}
+  .chcard .hcStats{padding:5px 7px;display:flex;flex-direction:column;gap:2px}
+  .chcard .hcRow{display:flex;align-items:center;font-size:10.5px;line-height:1.35}
+  .chcard .hcRow i{width:13px;font-style:normal;text-align:center;margin-right:3px}
+  .chcard .hcRow b{margin-left:auto;font-weight:700;font-variant-numeric:tabular-nums}
+  .chcard .hcRow .gr{color:#6ee7a0;font-size:9.5px;margin-left:3px}
+  .chcard .hcTal{
+    margin:0 6px 5px;padding:4px 6px;border-radius:6px;
+    background:rgba(120,90,200,.16);border:1px solid rgba(160,130,240,.35);
+  }
+  .chcard .hcTal .tn{font-size:10.5px;font-weight:700;color:#c9b0ff}
+  .chcard .hcTal .td{font-size:9px;color:#9fb0c8;line-height:1.35;margin-top:2px}
+  .chcard .hcBuy{
+    margin:auto 6px 6px;padding:5px;border-radius:6px;text-align:center;
+    font-size:11px;font-weight:700;border:1px solid #4a5a7a;background:#26314a;color:#dce6f2;
+  }
+  .chcard.free .hcBuy{background:#2a6ee0;border-color:#2a6ee0;color:#fff}
+  .chcard.no{opacity:.45}
+  .chcard.no .hcBuy{background:#20242e;border-color:#333a48;color:#7a8496}
+  #cardCancel{
+    margin-top:2px;padding:4px 18px;border-radius:6px;font-size:11px;
+    background:#1c2436;border:1px solid #3a4a68;color:#9fb0c8;
+  }
+  @media (max-height:400px){
+    .chcard{width:132px}
+    .chcard canvas{height:108px}
+    #cardTitle{font-size:13px}
+  }
