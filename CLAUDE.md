@@ -4,7 +4,8 @@
 - 本文件（CLAUDE.md）以后简称 **md**。用户说"记在 md 里"就是指更新本文件。
 - 用户目前主要**在手机上操作** Claude Code（网页/移动端），回复要适合手机阅读，命令别太长。
 - 开发路线：可能做**电脑端或手机 app**，但**先用网页端测试迭代，验证 OK 后再打包**成 app。不要一上来就走打包流程。
-- **省 token 是硬要求**（用户明确提过消耗太快）：**永远不要整文件 Read `rpg.js`**，先 grep 定位再 Edit 局部替换；回复只说改了什么，别贴大段代码；用户会攒一批需求一起说。
+- **省 token 是硬要求**（用户明确提过消耗太快）：**永远不要整文件 Read `rpg.js` / `rpg3d.js`，更不要 Read `www/vendor/three.min.js`**；先 grep 定位再 Edit 局部替换；回复只说改了什么，别贴大段代码；用户会攒一批需求一起说。
+  - ⚠️ 仓库变大 ≠ token 变多：只有**被 Read 的文件**才花 token。第三方库（three.js）和构建产物永远不用打开，所以体积无所谓。
 - **不要每次改完就 git push**，用户明确要求推送时才推。注意：云端容器是一次性的，会话结束未推送的改动会丢——长会话结束前主动提醒用户"要不要推送"。
 
 ## ⚠️ 硬件约束：坏盘 / 防蓝屏（最重要）
@@ -27,16 +28,20 @@
   - `/admin` 管理端上传模型；`/api/models` 列表；`/library/<file>` 模型文件；`/viewer` iPhone PWA 查看页。
   - 局域网 IP 192.168.0.102:8000；电脑防火墙坏着通常不拦。
 - **iPhone 路线（用户最终选用）**：PWA + AR Quick Look（ARKit），效果好，免 Google/ARCore/Mac。`server/viewer.html` 已配 PWA（可加到主屏）。
-- **网页小游戏**（零依赖，先网页迭代后打包）：`www/td.html` 塔防（单文件，竖屏，已完成没再动）；`www/rpg.html`+`rpg.css`+`rpg.js` 方块战线（横屏，主力项目，详见下面几节）。
+- **网页小游戏**（先网页迭代后打包）：`www/td.html` 塔防（单文件，竖屏，零依赖，已完成没再动）；`www/rpg.html`+`rpg.css`+`rpg.js`+`rpg3d.js`+`vendor/three.min.js` 方块战线（横屏，**Three.js 3D 俯视**，主力项目，详见下面几节）。
 
 ## 方块战线·代码架构（⚠️ 改代码前先看这节，别遍历代码）
 - **文件已拆分**（为省 token，别再合回单文件）：
-  - `www/rpg.html`（57行）= DOM 骨架：header / canvas / `#dock`商店条(含4个 `.tile.trial`) / `#info`信息区 / `#inv`背包 / `#overlay`开始页
-  - `www/rpg.css`（174行）= 全部样式，`:root` 里是配色变量
-  - `www/rpg.js`（约2080行）= 全部逻辑，**几乎所有改动都在这里**
-- **改动方式**：**永远不要整文件 Read `rpg.js`**。先查下面的"改什么→去哪里"表，用 `grep -n "锚点" www/rpg.js` 定位（行号会漂移，锚点不会），再 Edit 局部替换。改完 `node --check www/rpg.js`。
+  - `www/rpg.html`（59行）= DOM 骨架：header / canvas / `#dock`商店条(含4个 `.tile.trial`) / `#info`信息区 / `#inv`背包 / `#overlay`开始页
+  - `www/rpg.css`（176行）= 全部样式，`:root` 里是配色变量
+  - `www/rpg.js`（约1500行）= **纯逻辑**（数值/技能/AI/波次/商店/UI），不含任何绘制代码
+  - `www/rpg3d.js`（约690行）= **纯渲染**（Three.js 3D 场景/模型/特效/血条），逻辑层不用管
+  - `www/vendor/three.min.js`（706KB）= Three.js r180 打包产物
+- **改动方式**：**永远不要整文件 Read `rpg.js` 或 `rpg3d.js`**。先查下面两张"改什么→去哪里"表，用 `grep -n "锚点" www/rpg.js` 定位（行号会漂移，锚点不会），再 Edit 局部替换。改完 `node --check`。
+- 🚫 **`www/vendor/three.min.js` 永远不要 Read**（706KB 压缩过的第三方代码，读一次就烧掉几十万 token，而且毫无用处）。要换版本就跑 `python3 www/vendor/_fetch_three.py [版本号]` 重新生成。Three.js 的 API 直接按记忆写。
+- 逻辑↔渲染的**唯一契约**：格子坐标 (x, y) → 世界坐标 (x, 高度, y)（世界X=格子X，**世界Z=格子Y**，世界Y=离地高度）。逻辑层只通过 3 个入口碰渲染：`R3.resize()` / `R3.draw()` / `R3.pick(ev)`（后者把点击换算成格子浮点坐标）。加新单位/新特效**只改 rpg3d.js**，调数值/技能**只改 rpg.js**，两边基本不用同时动。
 
-### 改什么 → 去哪里（锚点 grep 关键词 / 大致行号）
+### 改什么 → 去哪里 · `www/rpg.js`（逻辑，约1500行）
 | 想改的东西 | 去哪里（grep 锚点） | 行号约 |
 |---|---|---|
 | 职业基础属性/射程/成长 | `const CLASSES=` | 7 |
@@ -44,58 +49,70 @@
 | 转职等级与花费 | `const ADV_LV=` | 41 |
 | 英雄定价 | `const HERO_COSTS=` | 43 |
 | **加/改技能（技能表）** | `const SKB=` | 50 |
-| 品质颜色/属性系颜色 | `const QC=` / `const CATS=` | 66 / 76 |
-| 技能书roll价、按品质的学习费 | `const PACK_COST=` / `const BOOK_COST=` | 77 |
-| 装备出售价 | `const SELL_EQ=` | 79 |
-| **加/改装备（精英池 `pool:'elite'` / 金色池 `pool:'gold'`）** | `const EQUIPS=` / `GOLD_DROP` | 90 |
-| 装备roll三档权重/价格 | `const EQ_TIERS=` | 111 |
-| 装备属性显示文案 | `function eqDesc` | 125 |
-| **怪物属性/攻击距离/颜色** | `const MOBS=` | 144 |
-| 金矿/伐木场费用与上限 | `mineCost` / `INCOME_MAX` | 151 |
-| 每波间隔、仇恨半径、**英雄推进速度** | `const WAVE_EVERY` / `AGGRO_R` / `HERO_SPD` | 154–160 |
-| **四大试炼（CD/开放波数/奖励文案）** | `const TRIALS=` | 165 |
-| 画布尺寸/背景重建 | `function resize` | 186 |
-| 英雄初始字段 | `function makeHero` | 198 |
-| **英雄总属性结算（装备/专精/技能加成）** | `function calc(h)` | 205 |
-| 开局初始金币/木头/命（现为 **350金**/0木/10命） | `function reset` | 245 |
-| **每波怪的构成** | `function waveComp` | 255 |
-| **整波一起刷怪的队形** | `function startWave` | 270 |
-| 怪物生成（含试炼/宝箱标记） | `function spawnMob` | 279 |
-| **试炼开启逻辑与难度** | `function startTrial` | 300 |
-| 击杀结算/试炼奖励 | `function damage` | 331 |
-| **宝箱掉落与开箱奖励** | `dropChest` / `openChest` | 350 / 354 |
-| 经验与升级 | `function gainXp` | 387 |
-| **主循环** | `function update(dt)` | 411 |
-| ├ 怪物AI/寻敌/推进 | 注释 `/* 怪物：沿自己的路线` | 425 |
-| ├ 熊灵行为 | 注释 `/* 熊灵 */` | 471 |
-| ├ 冰风暴波次 | 注释 `/* 暴风雪冰雹` | 492 |
-| ├ 火焰风暴DoT | 注释 `/* 火焰风暴：延迟` | 520 |
-| ├ 试炼CD计时 | 注释 `/* 试炼CD` | 544 |
-| └ **英雄：回蓝/放技能/推进/选敌/攻击** | 注释 `/* 英雄 */` | 548 |
-| 溅射/血怒/攻速公式 | `cleaveAround` / `berserkRatio` / `effInterval` | 653–669 |
-| 普攻结算（暴击/毒/溅射/弹道） | `function attack` | 676 |
-| 英雄挨打/反伤/格挡/泰坦叠层 | `function hitUnit` | 707 |
-| 怪物有效护甲（含幽冥刃破甲） | `function mobArmor` / `physDamage` | 420 |
-| **所有主动技能的实现** | `function castSkill` | 741 |
-| 颜色工具/圆角矩形/多边形 | `shade` / `rrect` / `poly` | 827–844 |
-| **英雄模型（三职业外观）** | `function drawHero` | 850 |
-| 熊灵模型 | `function drawBear` | 955 |
-| **召唤物属性表 / 技能名映射 / 创建** | `const MINIONS=` / `const SUMMONS=` / `function summon` | 165 / 775 |
-| 元素召唤物模型（火/水/地狱火） | `function drawElemental` | 1020 |
-| **怪物模型（四种）** | `function drawMob` | 975 |
-| 宝箱模型 | `function drawChest` | 1064 |
-| **背景（现在整张纯色）** | `function buildBG` | 1085 |
-| 弹道模型（箭矢/奥术弹） | `function drawShot` | 1136 |
-| **渲染主函数 + 所有 fx 特效分支** | `function draw()` | 1162 |
-| 顶栏数值 + 面板HP/MP/间隔实时刷新 | `function updateHUD` | 1339 |
-| **信息区/英雄面板（属性网格、技能栏、装备栏）** | `function renderInfo` | 1358 |
-| 商店内容（技能/装备/金矿/伐木场） | `shopHTML` | 1505 |
-| 试炼图标CD扫圈刷新 | `function renderTrials` | 1563 |
-| 买技能书 / 自动学习 / 买装备 | `buyPack` / `autoLearnPass` / `buyEquip` | 1581+ |
-| 背包渲染 / 学技能穿装备 | `renderInv` / `applyItem` | 1620+ |
-| 拖拽、双击脱装备 | `let drag=null` | 1681 |
-| **canvas 点击（选英雄/点宝箱）** | `cv.addEventListener('pointerdown'` | 1764 |
-| 启动/倍速按钮 | `launchBtn` / `speedBtn` | 1785 |
+| 品质颜色/属性系颜色 | `const QC=` / `const CATS=` | 73 / 83 |
+| 技能书roll价、按品质的学习费 | `const PACK_COST=` / `const BOOK_COST=` | 84 / 86 |
+| 装备出售价 | `const SELL_EQ=` | 89 |
+| **加/改装备**（精英池 `pool:'elite'` / 金色池 `pool:'gold'`） | `const EQUIPS=` / `GOLD_DROP` | 101 / 125 |
+| 装备roll三档权重/价格 | `const EQ_TIERS=` | 128 |
+| 装备属性显示文案 | `function eqDesc` | 142 |
+| **怪物属性/攻击距离/颜色** | `const MOBS=` | 165 |
+| 金矿/伐木场费用与上限 | `mineCost` / `INCOME_MAX` | 173 / 172 |
+| 每波间隔、仇恨半径、**英雄推进速度** | `const WAVE_EVERY` / `AGGRO_R` / `HERO_SPD` | 175–192 |
+| **召唤物属性表** | `const MINIONS=` | 185 |
+| **四大试炼（CD/开放波数/奖励文案）** | `const TRIALS=` | 197 |
+| 画布尺寸（只是转发给 R3.resize） | `function resize` | 221 |
+| 英雄初始字段 | `function makeHero` | 225 |
+| **英雄总属性结算（装备/专精/技能加成）** | `function calc(h)` | 232 |
+| 开局初始金币/木头/命（现为 **350金**/0木/10命） | `function reset` | 290 |
+| **每波怪的构成** | `function waveComp` | 300 |
+| **整波一起刷怪的队形** | `function startWave` | 327 |
+| 怪物生成（含试炼/宝箱标记、新手期折扣） | `function spawnMob` | 341 |
+| **试炼开启逻辑与难度** | `function startTrial` | 364 |
+| 击杀结算/试炼奖励 | `function damage` | 396 |
+| **宝箱掉落与开箱奖励** | `dropChest` / `openChest` | 415 / 419 |
+| 怪物有效护甲（含幽冥刃破甲） | `mobArmor` / `physDamage` | 451 / 452 |
+| 经验与升级 | `function gainXp` | 454 |
+| **主循环** | `function update(dt)` | 478 |
+| ├ 怪物AI/寻敌/推进 | 注释 `/* 怪物：沿自己的路线` | 496 |
+| ├ 熊灵行为 | 注释 `/* 熊灵 */` | 545 |
+| ├ 冰风暴波次 | 注释 `/* 暴风雪冰雹` | 573 |
+| ├ 火焰风暴DoT | 注释 `/* 火焰风暴：延迟` | 601 |
+| ├ 试炼CD计时 | 注释 `/* 试炼CD` | 649 |
+| └ **英雄：回蓝/放技能/推进/选敌/攻击** | 注释 `/* 英雄 */` | 653 |
+| 溅射/血怒/攻速公式 | `cleaveAround` / `berserkRatio` / `effInterval` | 768–784 |
+| 普攻结算（暴击/毒/溅射/弹道） | `function attack` | 791 |
+| 英雄挨打/反伤/格挡/泰坦叠层 | `function hitUnit` | 824 |
+| 技能名→召唤物映射 / 创建召唤物 | `const SUMMONS=` / `function summon` | 855 / 856 |
+| **所有主动技能的实现** | `function castSkill` | 885 |
+| 顶栏数值 + 面板HP/MP/间隔实时刷新 | `function updateHUD` | 1014 |
+| **信息区/英雄面板（属性网格、技能栏、装备栏）** | `function renderInfo` | 1033 |
+| 商店内容（技能/装备/金矿/伐木场） | `shopHTML` | 1182 |
+| 试炼图标CD扫圈刷新 | `function renderTrials` | 1240 |
+| 买技能书 / 自动学习 / 买装备 | `buyPack` / `autoLearnPass` / `buyEquip` | 1258+ |
+| 背包渲染 / 学技能穿装备 | `renderInv` / `applyItem` | 1296 / 1322 |
+| 拖拽、双击脱装备 | `let drag=null` | 1364 |
+| **点击战场（选英雄/点宝箱）**，坐标走 `R3.pick(ev)` | `cv.addEventListener('pointerdown'` | 1448 |
+| 启动/倍速按钮 | `launchBtn` / `speedBtn` | 1470 / 1477 |
+
+### 改什么 → 去哪里 · `www/rpg3d.js`（3D 渲染，约690行）
+| 想改的东西 | 去哪里（grep 锚点） | 行号约 |
+|---|---|---|
+| **相机俯角/投影方式** | `const TILT=` | 21 |
+| 几何缓存小工具（box/球/锥/环…） | `const GEO=` | 25 |
+| 受击闪白/死亡变灰/冰霜染色 | `function tint` | 56 |
+| 对象池（复用 mesh，别每帧 new） | `function bind` / `take` | 69 / 88 |
+| 两点之间拉光束（闪电/射线用） | `function beam` | 101 |
+| **英雄模型（法师/游侠/战士外观）** | `function buildHero` | 110 |
+| **怪物模型（普通/快速/坦克/Boss）** | `function buildMob` | 153 |
+| **召唤物模型（熊/火/水/地狱火）** | `function buildMinion` | 201 |
+| 宝箱模型 | `function buildChest` | 238 |
+| 弹道模型（箭矢/奥术弹） | `function buildShot` | 248 |
+| **场景搭建：光照/阴影/地面/网格/出兵色块** | `function init` | 270 |
+| **相机装框（正交范围计算）** | `function resize` | 342 |
+| 世界坐标→屏幕坐标（覆盖层用） | `function proj` / `ppu` | 366 / 371 |
+| **点击拾取（屏幕→格子坐标）** | `function pick` | 380 |
+| **每帧渲染主函数**（地面效果/英雄/召唤物/怪物/宝箱/弹道/血条/飘字） | `function draw` | 397 |
+| **所有 fx 特效的 3D 实现**（aoe/line/bolt/zap/slash/fall/flame/sword/rock/heal/spark） | `function drawFx` | 576 |
 
 - **发布 Artifact**（用户在手机上就是看这个链接测试）：`python3 www/_build_artifact.py <输出路径>` 把三个文件内联成单文件，再用 Artifact 工具发布，**传 url 参数**才能保住同一个 URL：https://claude.ai/code/artifact/463665a7-a08f-4cd2-b42d-0b95f1d6d779
 - **本地验证手段**（省事又省token）：容器里有 Chromium + 全局 playwright，可跑无头浏览器截图看效果：
@@ -120,8 +137,9 @@
 - **怪物属性**（MOBS）：普通 40血/1.1速/8攻，快速 26/1.9/6，坦克 150/0.7/14（6甲15%抗，扣2命），Boss 700/0.55/30（10甲30%抗，扣3命）。
 - **怪物AI**：出生点在行附近随机散开（不固定格子中心），沿自己路线向左走；仇恨半径 3.2；**攻击距离按种类**（atkR：快速0.42/普通0.62/坦克0.85/Boss1.05，**都<战士射程1.15**保证近战能还手）；仇恨内只以 0.7格/秒**轻微纵向贴靠**，一进攻击范围就停下开打（不会跑到英雄格子上）；**不排队**，各走各的，只在几乎重叠时纵向轻推 0.5格/秒。
 - 英雄选敌用 y 距离筛同线（战士±0.7格/游侠±1.6格）。有伤害飘字、AOE范围圈/单体弹道线特效。
-- **单位外观**：英雄不再是方块，改 canvas 矢量模型（法师=尖帽长袍+发光宝珠法杖；游侠=兜帽披风+弓+背后箭袋；战士=头盔胸甲+盾+挥砍的剑），带呼吸浮动、受击闪白、转职脚下金环、攻击动作(`h.anim`)。熊灵也有模型。怪物也是矢量模型（`drawMob`，配色沿用 MOBS.color 保证辨识度，按 m.r 缩放、走路上下摆腿）：普通=驼背小鬼(双角+大眼)、快速=前倾尖头+速度线、坦克=重甲方体(头盔+背甲铆钉)、Boss=巨体恶魔(弯角+尖牙+发光眼+光环)；减速时罩一层冰霜。
-- **弹道/技能样式**：游侠=箭矢(杆+箭头+尾羽，含拖影)，法师=奥术弹(光晕+锥形拖尾)，战士=弧形刀光(slash)；火球=飞行火弹+落点爆闪(bolt)，闪电链=锯齿电弧(zap)，冰风暴=菱形冰棱坠落，治愈祷言=上浮绿十字(heal)。
+- **单位外观（3D 低模，全在 rpg3d.js 里程序化拼出来，不用外部模型文件）**：法师=尖帽长袍+发光宝珠法杖；游侠=兜帽披风+弓+背后箭袋；战士=头盔胸甲+盾+挥砍的剑（`h.anim` 驱动挥砍/拉弓/法杖蓄光）。带呼吸浮动、受击闪白(emissive)、死亡变灰、转职脚下金环。怪物模型按 `m.r` 缩放、走路上下颠，配色沿用 MOBS.color 保证辨识度：普通=驼背小鬼(双角+大眼)、快速=前倾锥体+速度鳍、坦克=重甲方体(头盔+背刺)、Boss=巨体恶魔(弯角+尖牙+发光眼)；减速时整体染一层冰霜蓝。召唤物：熊灵/火元素(自发光锥焰)/水元素(半透明)/地狱火(岩石身+熔岩裂缝)。
+- **血条/蓝条/经验条/等级框/伤害飘字不在 3D 里**，画在覆盖层 2D canvas `#cv2` 上（`draw()` 用 `proj()` 把世界坐标投影成屏幕坐标）——文字清晰、性能好。`#cv2` 设了 `pointer-events:none`，点击照样落到 `#cv`。
+- **弹道/技能样式（3D，实现在 `drawFx`）**：游侠=箭矢，法师=奥术弹(带光晕锥尾)，战士=弧形刀光(slash，用局部 torus)；火球=飞行光球+落点爆闪(bolt)，闪电链=分段光束折线(zap)，冰风暴=八面体冰棱从天而降(fall)，火焰风暴=上窜火舌(flame)，剑雨=剑插下(sword)，大地震颤=崩起碎石(rock)，治愈=上浮十字(heal)，AOE=地面光环+半透明圆盘。
 
 ## 方块战线·技能与装备系统（用户会持续加新技能/装备，技能实现在 rpg.js 的 `SKB` 表，装备在 `EQUIPS` 表）
 - 规则：技能书从商店 roll（**指定系100金4本，全池roll 40金4本**），**roll只是出书，真正学到英雄身上时按品质另付学习费**（`BOOK_COST` 绿40/蓝80/紫150金；`applyItem` 和 `autoLearnPass` 都会扣，钱不够就学不了/自动学习跳过；背包书面上直接标价），进背包后**拖到英雄上学习**，同名书升级（**上限Lv10**），每英雄4技能位。拖到已占用的技能栏/装备栏=覆盖(会提示)；双击装备栏=脱下退回背包。背包最右"出售装备"只卖装备(**技能书不可出售**)，价白8/绿18/蓝40/紫80——各档roll回本率58%/48%/40%。蓝=稀有、绿=普通、紫=史诗。被动直接生效，主动自动释放（各自CD/蓝耗）。系数吃英雄力/敏/智属性。特效约定：**AOE显示范围圈，指定单体显示弹道线**。**买新技能书会清掉上次没用完的旧书**（不累积）。
@@ -179,12 +197,15 @@
 - 开箱：**15%（`GOLD_DROP`）出金色装备**（`pool:'gold'`），否则出精英池（`pool:'elite'`）：精英战刃(攻30力12)/幽影斗篷(敏22攻速25)/秘法王冠(智22CD-10%)/巨力腰带(力18血120)/守护护符(甲8魔抗15%)/**幽冥刃(紫,攻40+普攻削敌20护甲·唯一特效)**。
 - 装备已支持 `int`/`mres`/`crit`/`sunder`/`summon`/`titan` 属性（都在 calc 的装备循环里）。破甲实现：`h.sunder`（取最高不叠加）→ 普攻给怪挂 `m.sunderT=6s`，物理伤害走 `mobArmor(m)` 而不是 `m.armor`。
 
-## 方块战线·场景背景
-- `buildBG()` 在 resize 时把背景**离屏预渲染**成 `bgCv`，draw 里一次 drawImage（省性能，别改成每帧重画）。
-- ⚠️ **整张地图都不画背景美术**，全是纯色 `#0d1420`：
+## 方块战线·场景背景（3D）
+- 场景在 `rpg3d.js` 的 `init()` 里一次搭好（地面 / 战斗区台面 / 网格线 / 出兵色块 / 红色分界线 / 选中框），**都是静态 mesh，不要改成每帧重建**。
+- ⚠️ **整张地图都不画背景美术**，地面就是纯色（地面 `#0d1420`、战斗区台面 `#1c2740`），立体感全靠**光照 + 阴影**：
   - 战斗区做过异世界荒原（双月/浮空岛/尖塔/裂谷），用户觉得丑且违和，已去掉。
   - 左侧3列出兵区做过村庄（暖光小屋+树+村旗+草地+栅栏），用户也要求去掉。
-  - **两边都别再加回去**。出兵格的职业色块（蓝/绿/红）画在 `draw()` 里，属于功能性UI，保留。
+  - **两边都别再加回去**。出兵格的职业色块（蓝/绿/红）是功能性UI，保留。
+- **相机是正交（OrthographicCamera）不是透视**：战场 16×3 太宽，透视会把两端格子拉变形；正交下所有格子等大、战线清楚。俯角 `TILT=55°`。`resize()` 里按 stage 宽高比算正交范围，横向必装下 COLS+0.5。
+- 光照：半球光(天蓝/地暗) + 主平行光(带 2048×1024 阴影贴图) + 一盏补光。
+- **低端机自动降级**：`draw()` 末尾统计帧时，连续 120 帧平均 >17ms 就自动关阴影（`shadowOn`）。
 
 ## 内容边界
 - 用户多次想内置露骨/色情模型（限制级文件夹、"俯卧翘臀"等），**已拒绝并坚持**。合规模型正常协助。

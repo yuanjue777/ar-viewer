@@ -40,9 +40,11 @@
   header .hbtn.on{background:#8ab8d8;color:#0a0e16;border-color:#8ab8d8}
   #speedBtn{margin-left:auto}
 
-  #stage{flex:1;position:relative;display:flex;justify-content:center;align-items:flex-start;
-    padding-top:3px;min-height:0;background:var(--bg)}
+  #stage{flex:1;position:relative;min-height:0;background:var(--bg);overflow:hidden}
   canvas{display:block;touch-action:none}
+  /* #cv=WebGL 3D 场景；#cv2=2D 覆盖层(血条/等级/飘字)，不吃点击 */
+  #cv,#cv2{position:absolute;left:0;top:0}
+  #cv2{pointer-events:none}
 
   #dock{
     display:flex;align-items:stretch;gap:8px;
