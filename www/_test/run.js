@@ -74,6 +74,9 @@ const SEED=`
     await p.evaluate(()=>{const el=document.querySelector('#invItems .book');
       el.dispatchEvent(new PointerEvent('pointerdown',{clientX:100,clientY:400,bubbles:true}));
       window.dispatchEvent(new PointerEvent('pointerup',{clientX:100,clientY:400,bubbles:true}));});
+    await p.waitForTimeout(400);
+    console.log('点书后信息区有详情+学习按钮:',await p.evaluate(()=>!!document.querySelector('#info [data-give]')));
+    await p.evaluate(()=>document.querySelector('#info [data-give]').click());
     await p.waitForTimeout(1300);
     await shot('k3_give');
     const before=await p.evaluate(()=>Object.keys(heroes[0].skills).length);

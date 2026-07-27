@@ -1209,7 +1209,8 @@ function renderInfo(){
       const d=SKB[it.name];
       info.innerHTML=`<div class="card"><b style="color:${CATS[d.cat].color}">${it.name}</b>
         <span style="color:${QC[d.q]}">[${QN[d.q]}]</span>
-        <span>${CATS[d.cat].label}系技能书</span><br><span>${d.desc}</span><br><span>点这本书 → 选英雄卡片学习，<b style="color:var(--gold)">学习费 ${bookCost(it.name)}金</b>，同名升级（上限Lv${MAX_SKILL_LV}）</span></div>`;
+        <span>${CATS[d.cat].label}系技能书</span><br><span>${d.desc}</span><br><span>同名升级（上限Lv${MAX_SKILL_LV}）</span></div>
+        <button class="btn" data-give="${invSel}">学习 ▸ 选英雄<br><span class="sub">学习费 <span class="cost">${bookCost(it.name)}金</span></span></button>`;
     }else{
       const d=eqDef(it),q=qOf(it);
       info.innerHTML=`<div class="card"><b style="color:${q.c}">${d.n}</b> <span style="color:${q.c}">[${q.n}]</span><br>
@@ -1323,7 +1324,7 @@ function shopHTML(){
       Object.entries(CATS).map(([cat,c])=>
         `<button class="btn grow" data-pack="${cat}" data-cost="${PACK_COST}" data-lock="0" ${gold>=PACK_COST?'':'disabled'}>
           <b style="color:${c.color}">${c.label}</b> <span class="cost">${PACK_COST}金</span>
-          <span class="sub">${Object.keys(SKB).filter(n=>SKB[n].cat===cat).join('/')}</span></button>`).join('')+
+          <span class="sub">随机${PACK_N}本${c.label}系技能书</span></button>`).join('')+
       `<button class="btn grow" data-pack="roll" data-cost="${ROLL_COST}" data-lock="0" ${gold>=ROLL_COST?'':'disabled'}>
         <b style="color:#f0c46a">ROLL</b> <span class="cost">${ROLL_COST}金</span>
         <span class="sub">全池·最便宜（新书替换旧书）</span></button>`;
@@ -1456,6 +1457,7 @@ function renderInv(){
       el.style.color=q.c;
       el.innerHTML=`${d.s}<small>${q.n}</small>`;
     }
+    if(i===invSel)el.style.boxShadow='0 0 0 2px #fff8, 0 0 8px #fff6';
     invEl.appendChild(el);
   });
 }
@@ -1523,9 +1525,9 @@ window.addEventListener('pointerup',ev=>{
   ghost.style.display='none';
   const {idx,moved}=drag;drag=null;
   if(!moved){
-    // 单击 = 弹出英雄卡片选给谁（拖动仍然可用，两种都行）
-    invSel=idx;closeShop();sel=null;renderInfo();
-    openGiveCards(idx);
+    // 单击 = 信息区显示详情（技能书）/ 弹英雄卡片（装备）；拖动仍然可用
+    invSel=idx;closeShop();sel=null;renderInfo();renderInv();
+    if(inv[idx]&&inv[idx].t!=='book')openGiveCards(idx);
     return;
   }
   const it=inv[idx];if(!it)return;
@@ -1577,6 +1579,7 @@ info.addEventListener('click',ev=>{
     return;
   }
   const b=ev.target.closest('button');if(!b||b.disabled)return;
+  if(b.dataset.give){openGiveCards(+b.dataset.give);return;}
   if(b.dataset.pack){buyPack(b.dataset.pack);return;}
   if(b.dataset.eqroll){buyEquip(b.dataset.eqroll);return;}
   if(b.dataset.shop){
