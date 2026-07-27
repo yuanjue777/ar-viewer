@@ -9,6 +9,7 @@
  *   shot   布阵阶段 + 中期战斗，各截一张（看布局/模型/特效）
  *   cards  招募卡→转职卡→技能书授予，全流程点一遍并断言
  *   sim    波次平衡快跑（逻辑时钟加速，16秒真实≈700秒逻辑），打印每波掉命
+ *   probe  数值体检：只打印数字不截图（改完数值/转职/装备先跑这个，最省 token）
  *   crop   只截某块区域放大看（--clip=x,y,w,h）
  *
  * 参数：--out=<目录，默认/tmp/rpgtest>  --wide=<视口宽,默认900>  --tall=<高,默认420>
@@ -122,6 +123,50 @@ const SEED=`
     console.log('波次  命  场上怪  存活英雄');
     for(const m of r.marks)console.log(`  w${String(m.wave).padEnd(3)} ${String(m.lives).padEnd(4)} ${String(m.mobs).padEnd(7)} ${m.alive}`);
     console.log('结束:',JSON.stringify(r.end));
+
+  }else if(scene==='probe'){
+    /* 数值体检：**只打印数字不截图**（文字比图便宜太多，改完数值先跑这个） */
+    await p.evaluate(()=>document.querySelectorAll('#cardRow .chcard')[0].click());
+    await p.waitForTimeout(300);
+    const r=await p.evaluate(()=>{
+      const O={};
+      gold=99999;wood=99999;heroes.length=0;
+      heroes.push(makeHero('archer',ROW0,1),makeHero('mage',ROW0+1,0),makeHero('warrior',ROW0+2,2));
+      O['基础BAT 法/游/战']=[CLASSES.mage.bat,CLASSES.archer.bat,CLASSES.warrior.bat];
+      // 九条转职支线：转职后的关键派生值
+      const bra=[];
+      for(const h of heroes){
+        h.lv=8;h.tier=1;h.specLv=4;
+        ADV[h.cls].forEach((br,i)=>{
+          h.branch=i;calc(h);
+          bra.push(`${br.name}: atk${h.atk} bat${h.bat} 甲${h.armor} cdr${(h.cdr*100)|0}% 伤害×${(h.dmgMul||1).toFixed(2)}`);
+        });
+        h.tier=0;calc(h);
+      }
+      O['九支线']=bra;
+      // 装备：品质定价 + 雷鸣弓唯一
+      O['装备费 白/绿/蓝/紫/金']=['sword1','hammer','thunderbow','dragonlance','titan']
+        .map(id=>equipCost({t:'eq',id}));
+      const m=heroes[1];m.tier=0;m.equips=[{t:'eq',id:'thunderbow'}];calc(m);const b1=m.bat;
+      m.equips=[{t:'eq',id:'thunderbow'},{t:'eq',id:'thunderbow'}];calc(m);
+      O['雷鸣弓唯一(1把/2把)']=[b1,m.bat];m.equips=[];calc(m);
+      // 穿装备扣钱
+      inv.length=0;inv.push({t:'eq',id:'thunderbow'});
+      const g0=gold;applyItem(0,heroes[0]);
+      O['穿装备扣金']=g0-gold;
+      // 经济曲线：交叉点（招人更划算 ⇔ L > W×√(b/a)）
+      O['金矿 升级/工人']=[[1,2,3].map(mineCost),[1,2,3,4].map(mineWkCost)];
+      O['伐木场 升级/工人']=[[1,2,3].map(millCost),[1,2,3,4].map(millWkCost)];
+      // 召唤物移速应等于英雄推进速度
+      O['召唤物移速==HERO_SPD']=Object.values(MINIONS).every(d=>d.spd===HERO_SPD);
+      // 背包排布：左4格书 + 竖线 + 装备
+      inv.length=0;inv.push({t:'book',name:'火球术'},{t:'eq',id:'sword1'});renderInv();
+      const kids=[...document.getElementById('invItems').children].map(e=>e.className);
+      O['背包排布']=kids.join(',');
+      O['帧率徽标已删']=!document.getElementById('fps');
+      return O;
+    });
+    for(const k in r)console.log(k+':',JSON.stringify(r[k]));
 
   }else{
     /* shot / crop */

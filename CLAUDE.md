@@ -8,8 +8,8 @@
   1. **禁止整文件 Read** `rpg.js` / `rpg3d.js`；**`www/vendor/three.min.js` 一次都别开**（706KB 压缩代码，读一次几十万 token）。
   2. **先 grep 拿到原文，再改**。用 `grep -n "锚点" www/rpg.js` 或 `sed -n 'a,bp'` 只取要改的那几行。⚠️ **别凭记忆写 old_string**——空格和注释对不上就会替换失败，然后又得重新 grep 一遍，等于白花两次。
   3. **批量改用一个 python 脚本一次做完**（`python3 - <<'PYEOF'` + 一串 `(old,new)` + 每条 `assert old in s`）。assert 会在写文件前拦住不匹配的，比逐个 Edit 省往返。
-  4. **验证走固化脚本，别每次重写 playwright**：`sh www/_test/go.sh [shot|cards|sim]`（见下面"本地验证"）。
-  5. **截图要裁剪**：看某个局部就传 `--clip=x,y,w,h`，别截全屏再放大（等于看两张图）。
+  4. **验证走固化脚本，别每次重写 playwright**：`sh www/_test/go.sh [shot|cards|sim|probe]`（见下面"本地验证"）。
+  5. **能用数字验证就别截图**：改数值/技能/转职/装备后先跑 `go.sh probe`，它只打印一屏数字；截图是最贵的一种输出，只在"看布局/看模型"时才用，而且**一定带 `--clip=x,y,w,h`**。
   6. 回复只说改了什么，别贴大段代码。用户会攒一批需求一起说，**一次做完再回**。
   7. **改完顺手更新本文件**里对应的那几行，下次就不用重新读代码去推。
 - **不要每次改完就 git push**，用户明确要求推送时才推。注意：云端容器是一次性的，会话结束未推送的改动会丢——长会话结束前主动提醒用户"要不要推送"。
@@ -151,6 +151,7 @@
   |---|---|
   | `sh www/_test/go.sh shot` | 布阵/战斗/精英试炼各截一张 + **底栏 UI 单独截一条**（`s3_bottom.png`，商店2×2+背包）→ `/tmp/rpgtest/s0_setup.png` `s1_fight.png` `s2_trial.png` `s3_bottom.png`，末尾打印 FPS 和报错 |
   | `sh www/_test/go.sh cards` | 招募卡→转职卡→**补满3英雄**→技能书授予→装备授予全流程点一遍，打印断言（英雄数/金币/tier/侧栏数/技能数/装备数）+ 四张截图 |
+  | `sh www/_test/go.sh probe` | **数值体检（最省，改完数值先跑这个）**：只打印数字不截图——基础BAT / 九条转职支线的 atk·bat·甲·cdr·伤害倍率 / 装备品质定价 / 雷鸣弓唯一性 / 穿装备扣金 / 金矿伐木场价格曲线 / 召唤物移速 / 背包排布 |
   | `sh www/_test/go.sh sim` | **平衡快跑**：裸跑 3 英雄，用逻辑时钟加速（16秒真实≈1500秒逻辑，能跑完25波），打印每波的命/场上怪/存活英雄 |
   | `sh www/_test/go.sh shot --clip=250,130,340,110` | 只截某块区域放大看（省得截全屏再裁） |
   - 截图落在 `/tmp/rpgtest/`，直接用 Read 工具看。改 `run.js` 顶部的 `SEED` 可以调测试用的开局（钱/等级/预置技能）。
@@ -321,7 +322,21 @@
 - **锁帧开关 `fpsCap` 还留着**（0=跟随屏幕，改成 60 就锁 60），实现是"时间没到就 return，不更新 `last`"，所以 dt 不会丢。
 - ⚠️ **新加动画一律用 `gt` 或 `dt`，不要写 `rotation.y+=0.06` 这种按帧递增**——120Hz 下会转两倍快。（rpg3d.js 里原有的 3 处已改成 `=gt*速度`：商店旋转件/悬浮书/法师宝珠环。）
 
-## 省 token 复盘（本轮实际踩到的，照着避坑）
+## 省 token 方案（照着做，别自己发挥）
+**一次改动的标准流程**（照这个顺序走，正常 4~6 次工具调用就能收工）：
+1. 查下面的"改什么→去哪里"锚点表 → `grep -n "锚点" www/rpg.js` 定位 → `sed -n 'a,bp'` **只读要改的那一小段**（绝不整文件 Read）。
+2. 所有改动写成**一个** `python3 - <<'PYEOF'` 脚本：`(old,new)` 列表 + 逐条 `assert old in s` + 最后统一写盘。
+   ⚠️ **assert 失败 = 整批都没写盘**，得重跑整批。所以凡是没在这一轮亲眼 grep 过原文的替换，**单独拆一批跑**，别和已确认的混在一起赔进去。
+3. `sh www/_test/go.sh probe` 看数字；只有改了布局/模型才追加 `go.sh shot --clip=...`。
+4. 顺手更新本文件对应那几行（尤其锚点文字被改动时）。
+5. 回复只讲结论和数字，不贴代码。
+
+**几条硬规矩**
+- **`www/vendor/three.min.js` 永远不 Read**；`rpg.js`/`rpg3d.js` 永远不整文件 Read。Three.js 的 API 按记忆写。
+- **一次性 playwright 脚本写进 scratchpad**（`/tmp/claude-.../scratchpad/`），别塞进仓库；同一类检查用到第二次，就把它并进 `run.js` 的 `probe` 场景，下次一条命令搞定。
+- **stop-hook 报"提交 Unverified/缺签名"是误报，别循环 amend**：本机没配 `gpg.ssh.allowedSignersFile`，`git log %G?` 只能回 `N`。用 `git cat-file commit HEAD | grep gpgsig` 确认一次有签名就直接回复用户，别反复 `--amend --reset-author`（每次都白花一轮）。
+
+## 历史踩坑（都还成立）
 - **发 Artifact 遇到"没看过最新版"报错时，直接 `force:true` 覆盖**——那个页面只是 `_build_artifact.py` 从本仓库生成的产物，本地 HEAD 就是最新的源；千万别按提示去 WebFetch 那个 850KB 单文件（一次几十万 token，且毫无信息量）。本会话发过一次之后，后面同路径直接重发就保持同一 URL。
 - **改了交互就顺手改 `www/_test/run.js`**：断言/点击路径过期会白跑一轮（本轮"点书→弹卡片"改过两次，run.js 跟着改了两次才不浪费）。
 - **布局/相机这类改动先把数算出来写进注释**（正交半高 = `yc·cosT + (ROWS/2)·sinT` 之类），别靠"改一点→截图→再改"来试，那是最烧 token 的循环。

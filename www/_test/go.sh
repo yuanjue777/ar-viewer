@@ -1,6 +1,6 @@
 #!/bin/sh
 # 一键：语法检查 → build → 跑场景
-# 用法: sh www/_test/go.sh [shot|cards|sim] [额外参数...]
+# 用法: sh www/_test/go.sh [shot|cards|sim|probe] [额外参数...]
 # 截图输出在 $OUT（默认 /tmp/rpgtest），用 Read 工具直接看 s0_setup.png 等
 set -e
 OUT=${OUT:-/tmp/rpgtest}
