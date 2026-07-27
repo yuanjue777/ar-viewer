@@ -839,8 +839,8 @@ function draw(){
     const p=.5+.5*sin(gt*3+u.k.length);
     u.halo.material.opacity=on?.3+.22*p:.13;
     u.halo.material.color.set(on?0xffd24f:0x8ab8d8);
-    if(u.spin)u.spin.rotation.y+=.06;
-    if(u.bob){u.bob.position.y=.72+.05*sin(gt*2.2);u.bob.rotation.y+=.012;}
+    if(u.spin)u.spin.rotation.y=gt*3.6;
+    if(u.bob){u.bob.position.y=.72+.05*sin(gt*2.2);u.bob.rotation.y=gt*.72;}
     if(u.pulse)u.pulse.scale.setScalar(.85+.3*p);
     g.position.y=on?.05+.03*p:0;
   }
@@ -910,7 +910,7 @@ function draw(){
     }
     if(g.userData.orb)g.userData.orb.scale.setScalar(1+.22*sin(gt*4)+p*.6);
     if(g.userData.orbit){                                // 转职法师：宝珠环绕光环
-      g.userData.orbit.rotation.z+=.05;
+      g.userData.orbit.rotation.z=gt*3;
       g.userData.orbit.rotation.y=gt*.9;
     }
     /* 转职：脚下金环 */

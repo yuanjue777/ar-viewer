@@ -228,3 +228,14 @@
     .chcard canvas{height:108px}
     #cardTitle{font-size:13px}
   }
+
+  /* 帧率徽标：显示实测 FPS + 屏幕刷新率；点一下切换 自动/60 上限 */
+  #fps{
+    position:absolute;left:6px;top:6px;z-index:6;
+    padding:2px 7px;border-radius:7px;
+    font:600 11px/1.5 ui-monospace,Menlo,Consolas,monospace;
+    color:#9fe6c0;background:rgba(6,10,18,.62);border:1px solid rgba(110,231,160,.28);
+    letter-spacing:.3px;white-space:nowrap;user-select:none;cursor:pointer;
+  }
+  #fps.low{color:#ffb36b;border-color:rgba(255,179,107,.34)}
+  #fps.cap{color:#8fb6ff;border-color:rgba(143,182,255,.34)}

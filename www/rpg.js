@@ -1652,13 +1652,33 @@ document.getElementById('speedBtn').addEventListener('click',ev=>{
 document.getElementById('startBtn').addEventListener('click',begin);
 
 /* ================= 主循环 ================= */
+/* 帧率：rAF 本身就跟屏幕刷新走（iPhone ProMotion 上可到 120Hz）。
+   这里只做两件事：① 实测 FPS 并探测屏幕刷新率显示在左上角；
+   ② 点徽标可把上限锁到 60（掉帧抖动时更稳、也更省电）。 */
+let fpsCap=0;                 // 0=跟随屏幕，60=锁 60
+let fpsAcc=0,fpsN=0,fpsShow=0,scrHz=0;
+const fpsEl=document.getElementById('fps');
+fpsEl.addEventListener('click',()=>{fpsCap=fpsCap?0:60;});
+function fpsTick(dt){
+  fpsAcc+=dt;fpsN++;
+  if(fpsAcc>=.5){
+    fpsShow=Math.round(fpsN/fpsAcc);fpsAcc=0;fpsN=0;
+    /* 屏幕刷新率 = 历史最高实测帧率，向标准档位取整 */
+    if(fpsShow>scrHz)scrHz=fpsShow;
+    const hz=scrHz>=100?120:scrHz>=76?90:scrHz>=46?60:scrHz>=25?30:scrHz;
+    fpsEl.textContent=fpsShow+' FPS · '+(fpsCap?'限'+fpsCap:'屏'+hz+'Hz');
+    fpsEl.className=fpsCap?'cap':(fpsShow<hz*.75?'low':'');
+  }
+}
 let last=performance.now();
 function loop(now){
+  requestAnimationFrame(loop);
+  if(fpsCap&&now-last<1000/fpsCap-1.5)return;   // 锁帧：跳过这一帧，dt 不丢
   const dt=Math.min((now-last)/1000,.05);last=now;
   gt+=dt;
   if(running&&!over)update(dt*speed);
   R3.draw();
-  requestAnimationFrame(loop);
+  fpsTick(dt);
 }
 reset();resize();
 requestAnimationFrame(loop);
