@@ -174,9 +174,12 @@ const MOBS={
 const INCOME_MAX=10;
 function mineCost(lv){return 45+30*(lv-1);}
 function millCost(lv){return 35+25*(lv-1);}
-const WAVE_EVERY=35;
+/* 波次节奏：出怪后不限时（只记录战斗用时），清场后进入 REST_TIME 秒备战，倒计时结束才出下一波 */
+const REST_TIME=25;
+/* 整波入场的阵型（按波轮换）：雁形/锋矢/横阵/斜阵/方阵 */
+const FORMS=['goose','wedge','line','echelon','block'];
 /* 波次类型：逢5(5/15/25)=精英波，逢10(10/20)=Boss关（只有Boss、数值额外拔高） */
-const BOSS_WAVE_MUL=2.5, ELITE_RS=1.2;
+const BOSS_WAVE_MUL=3.0, ELITE_RS=1.2;
 function isBossWave(w){return w%10===0;}
 function isEliteWave(w){return w%10===5;}
 /* 怪物AI：进仇恨半径就直接扑向最近的英雄/召唤物，进攻击范围(MOBS.atkR)停下开打 */
@@ -209,7 +212,7 @@ const TRIALS={
 const TRIAL_KEYS=['gold','wood','xp','elite'];
 
 /* ================= 状态 ================= */
-let gold,wood,lives,wave,queue,spawnT,incomeT,waveT,cleared,hudAcc;
+let gold,wood,lives,wave,queue,spawnT,incomeT,waveT,battleT,resting,cleared,hudAcc;
 let mineLv,millLv;
 let heroes,mobs,shots,fx,nums,bears,inv,hails,storms,quakes,chests,trialCd;
 let sel=null,invSel=null,speed=1,running=false,started=false,over=false,openShop=null;
@@ -291,7 +294,7 @@ function dispName(h){return h.tier?advOf(h).name:CLASSES[h.cls].name;}
 /* ================= 流程 ================= */
 function reset(){
   gold=350;wood=0;lives=10;wave=0;queue=[];spawnT=0;incomeT=0;
-  waveT=WAVE_EVERY;cleared=true;hudAcc=0;
+  waveT=0;battleT=0;resting=false;cleared=true;hudAcc=0;
   mineLv=1;millLv=1;
   heroes=[];mobs=[];shots=[];fx=[];nums=[];bears=[];inv=[];hails=[];storms=[];quakes=[];chests=[];
   trialCd={};for(const k of TRIAL_KEYS)trialCd[k]=0;
@@ -326,9 +329,24 @@ function waveComp(w){
   if(fin)list.push({t:'boss'},{t:'boss'},{t:'boss'});
   return list;
 }
+/* 阵型槽位：lane=第几行，dx=往右退多远（dx 越小越靠前、越先接敌） */
+function formSlots(n,kind){
+  const mid=(ROWS-1)/2, out=[];
+  for(let i=0;i<n;i++){
+    const lane=i%ROWS, depth=Math.floor(i/ROWS), off=Math.abs(lane-mid);
+    let dx=depth*.9;
+    if(kind==='goose')dx+=off*.95;              // 雁形阵：中间突前、两翼后掠
+    else if(kind==='wedge')dx+=(mid-off)*.95;   // 锋矢阵：两翼在前、中间收后
+    else if(kind==='line')dx+=depth*.55;        // 横阵：一排排整齐推进
+    else if(kind==='echelon')dx+=lane*.8;       // 斜阵：整体斜着压过来
+    out.push({lane,dx:dx+Math.random()*.18});
+  }
+  return out;
+}
 function startWave(){
   if(wave>=TOTAL_WAVES)return;
   wave++;
+  resting=false;waveT=0;battleT=0;
   // 整波一起入场（不再一只只放）：排成纵深队形从右边压上来
   for(const h of heroes){if(h.titanS){h.titanS=0;calc(h);}}   // 泰坦层数每波重置
   /* 阵亡英雄在下一波开始时复活。
@@ -343,10 +361,14 @@ function startWave(){
     }
   }
   const list=waveComp(wave);
-  for(let i=0;i<list.length;i++){
-    const e=list[i];
-    spawnMob(e.t,{dx:(i%8)*.55+Math.floor(i/8)*.85,elite:e.elite,mul:e.mul,rs:e.rs});
-  }
+  const slots=formSlots(list.length,FORMS[(wave-1)%FORMS.length]);
+  slots.sort((a,b)=>a.dx-b.dx);
+  // 近战在前、攻击距离远的在后：按 atkR 升序去抢靠前(dx小)的槽位
+  const order=list.map((e,i)=>i).sort((a,b)=>(MOBS[list[a].t].atkR-MOBS[list[b].t].atkR)||(a-b));
+  order.forEach((li,si)=>{
+    const e=list[li], sl=slots[si];
+    spawnMob(e.t,{dx:sl.dx,lane:sl.lane,elite:e.elite,mul:e.mul,rs:e.rs});
+  });
   if(isBossWave(wave))showToast(`<b style="color:#ff5d5d">第 ${wave} 波 · BOSS关</b>　只有Boss，但数值极高`);
   else if(isEliteWave(wave))showToast(`<b style="color:#f0c46a">第 ${wave} 波 · 精英波</b>　混入精英怪`);
   updateHUD();renderInfo();
@@ -359,10 +381,13 @@ function spawnMob(type,opt){
   let mul=(1+0.12*(wave-1))*Math.pow(1.045,wave-1);
   if(wave<=7)mul*=[.4,.48,.52,.6,.66,.8,.9][wave-1];   // 新手期折扣，第8波起衔接原曲线
   if(wave>15)mul*=Math.pow(1.06,wave-15);
+  if(wave>19)mul*=Math.pow(1.07,wave-19);   // 20~25波再加一档，收尾更有压迫感
   // 不再固定在格子正中：在所选行附近随机散开
-  const row=Math.floor(Math.random()*ROWS);
-  // 散开幅度做大（原来±0.35），整波看起来是一片压上来而不是三条直线
-  const y=Math.max(-.32,Math.min(ROWS-1+.32,row+(Math.random()*1.3-.65)));
+  const hasLane=opt.lane!=null;
+  const row=hasLane?opt.lane:Math.floor(Math.random()*ROWS);
+  // 有阵型时只轻微抖动（看得出队形），没阵型(试炼)时大幅散开
+  const j=hasLane?.5:1.3;
+  const y=Math.max(-.32,Math.min(ROWS-1+.32,row+(Math.random()*j-j/2)));
   mul*=opt.mul||1;
   mobs.push({type,row,y,x:COLS+.5+Math.random()*.4+(opt.dx||0),
     hp:b.hp*mul,maxHp:b.hp*mul,spd:b.spd,atk:b.atk*mul,r:b.r*(opt.rs||1),atkR:b.atkR,
@@ -373,11 +398,12 @@ function spawnMob(type,opt){
 }
 /* 四大试炼：点图标开打，怪即刻入场；奖励在击杀时结算（见 damage） */
 function trialReady(k){
-  return started&&!over&&trialCd[k]<=0&&wave>=TRIALS[k].minWave;
+  return started&&!over&&!resting&&trialCd[k]<=0&&wave>=TRIALS[k].minWave;
 }
 function startTrial(k){
   const T=TRIALS[k];
   if(!started||over){showToast('先点右上角 <b>▶ 启动</b> 才能开启试炼');return;}
+  if(resting){showToast('备战时间内不能开试炼<br>等倒计时结束，或点 <b style="color:var(--gold)">⏩ 下一波</b>');return;}
   if(wave<T.minWave){showToast(`<b style="color:${T.color}">${T.n}</b> 第 ${T.minWave} 波后开放`);return;}
   if(trialCd[k]>0){showToast(`<b style="color:${T.color}">${T.n}</b> 冷却中 ${Math.ceil(trialCd[k])}s`);return;}
   trialCd[k]=T.cd;
@@ -496,10 +522,11 @@ function update(dt){
       incomeT-=1;
       if(mineLv||millLv){gold+=mineLv;wood+=millLv;updateHUD();refreshAfford();}
     }
-    if(wave<TOTAL_WAVES){
+    // 出怪后不限时（只累计战斗用时）；清场后进入备战倒计时，到点自动开下一波
+    if(resting){
       waveT-=dt;
-      if(waveT<=0){waveT=WAVE_EVERY;startWave();}
-    }
+      if(waveT<=0)startWave();
+    }else if(wave>0)battleT+=dt;
   }
   hudAcc+=dt;
   if(hudAcc>=.25){
@@ -774,6 +801,8 @@ function update(dt){
     for(const h of heroes){h.alive=true;h.hp=h.maxHp;h.mp=h.maxMp;h.x=h.col+.5;}
     updateHUD();
     if(wave>=TOTAL_WAVES){endGame(true);return;}
+    resting=true;waveT=REST_TIME;
+    showToast(`第 ${wave} 波清空（用时 ${Math.round(battleT)}s）<br>备战 <b style="color:#8ab8d8">${REST_TIME}s</b> 后出下一波，可点右上角 <b style="color:var(--gold)">⏩</b> 提前开波换金币`);
     renderInfo();
   }
 }
@@ -1026,7 +1055,12 @@ function showToast(msg){
 function updateHUD(){
   uiMoney.textContent=Math.floor(gold);uiWood.textContent=Math.floor(wood);
   uiLife.textContent=lives;
-  uiWave.textContent=wave+'/'+TOTAL_WAVES+(running&&started&&!over&&wave<TOTAL_WAVES?' · '+Math.ceil(waveT)+'s':'');
+  uiWave.textContent=wave+'/'+TOTAL_WAVES+
+    (!started||over?'':resting?' · 备战'+Math.ceil(waveT)+'s':(wave?' · 战斗'+Math.floor(battleT)+'s':''));
+  const nb=document.getElementById('nextBtn');
+  const canNext=started&&!over&&resting&&wave<TOTAL_WAVES;
+  nb.style.display=canNext?'':'none';
+  if(canNext)nb.textContent='⏩ 下一波 +'+nextBonus()+'金';
   renderTrials();refreshHire();
   // 英雄面板的HP/MP实时刷新（不重建DOM，避免打断点击）
   const hv=document.getElementById('hpVal'),mv=document.getElementById('mpVal'),h=selHero();
@@ -1418,7 +1452,7 @@ function renderTrials(){
     b.classList.toggle('ready',!locked&&cd<=0&&started&&!over);
     b.querySelector('.cdmask').style.setProperty('--p',(cd/T.cd*360)+'deg');
     b.querySelector('.lv').textContent=
-      locked?`第${T.minWave}波开`:(cd>0?Math.ceil(cd)+'s':'就绪');
+      locked?`第${T.minWave}波开`:(cd>0?Math.ceil(cd)+'s':(resting?'备战中':'就绪'));
   }
 }
 
@@ -1675,8 +1709,17 @@ document.getElementById('launchBtn').addEventListener('click',ev=>{
   if(started)return;
   started=true;
   ev.currentTarget.style.display='none';
-  startWave();waveT=WAVE_EVERY;
+  startWave();
   renderInfo();
+});
+/* 提前开波奖励 = 剩余备战秒数 × 波数 × 2 */
+function nextBonus(){return Math.max(0,Math.ceil(waveT))*wave*2;}
+document.getElementById('nextBtn').addEventListener('click',()=>{
+  if(!started||over||!resting||wave>=TOTAL_WAVES)return;
+  const bonus=nextBonus();
+  gold+=bonus;
+  showToast(`提前开波，省下的时间换成 <b style="color:var(--gold)">+${bonus}金</b>`);
+  startWave();updateHUD();refreshAfford();
 });
 document.getElementById('speedBtn').addEventListener('click',ev=>{
   speed=speed===1?2:1;
