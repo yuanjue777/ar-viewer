@@ -1353,7 +1353,7 @@ function closeShop(){
 }
 function shopHTML(){
   if(openShop==='skill'){
-    return `<div class="card shopHead"><b>技能商店</b><br><span>每次${PACK_N}本进背包<br>学习时按品质另付：绿${BOOK_COST.qgreen}/蓝${BOOK_COST.qblue}/紫${BOOK_COST.qpurple}金</span></div>`+
+    return `<div class="card shopHead"><b>技能商店</b></div>`+
       Object.entries(CATS).map(([cat,c])=>
         `<button class="btn grow" data-pack="${cat}" data-cost="${PACK_COST}" data-lock="0" ${gold>=PACK_COST?'':'disabled'}>
           <b style="color:${c.color}">${c.label}</b> <span class="cost">${PACK_COST}金</span>
@@ -1363,7 +1363,7 @@ function shopHTML(){
         <span class="sub">全池·最便宜（新书替换旧书）</span></button>`;
   }
   if(openShop==='item'){
-    return `<div class="card shopHead"><b>装备商店</b><br><span>每档roll4件<br>越贵越出高品质</span></div>`+
+    return `<div class="card shopHead"><b>装备商店</b></div>`+
       Object.entries(EQ_TIERS).map(([k,t])=>
         `<button class="btn grow" data-eqroll="${k}" data-cost="${t.cost}" data-lock="0" ${gold>=t.cost?'':'disabled'}>
           <b>${t.n}</b> <span class="cost">${t.cost}金</span>
@@ -1371,7 +1371,7 @@ function shopHTML(){
   }
   const isMine=openShop==='mine';
   const lv=isMine?mineLv:millLv, cost=isMine?mineCost(lv):millCost(lv);
-  const head=`<div class="card shopHead"><b>${isMine?'金矿':'伐木场'} Lv${lv}/${INCOME_MAX}</b><br><span>每秒 +${lv} ${isMine?'金币':'木头'}</span></div>`;
+  const head=`<div class="card shopHead"><b>${isMine?'金矿':'伐木场'} Lv${lv}/${INCOME_MAX}</b></div>`;
   if(lv>=INCOME_MAX)
     return head+`<button class="btn grow" disabled><b>已满级</b><span class="sub">每秒 +${lv} ${isMine?'金币':'木头'}</span></button>`;
   return head+

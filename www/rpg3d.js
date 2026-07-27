@@ -493,9 +493,9 @@ function layoutShops(){
     shopGroups[i].position.x=px;shopGroups[i].position.z=pz;
   }
   if(yard){                                        // 广场从商店左侧一直铺到战斗区边上，中间不留空地
-    const x0=SHOP_X0-1.35, x1=-.26, w=x1-x0, d=ROWS+.1;
+    const x0=SHOP_X0-1.35, x1=-.26, w=x1-x0, d=BZ1-BZ0;
     yard.scale.set(w,d,1);
-    yard.position.set((x0+x1)/2,.004,ROWS/2);
+    yard.position.set((x0+x1)/2,.004,(BZ0+BZ1)/2);
     yard.material.map.repeat.set(w/2.1,d/2.1);
   }
 }
@@ -558,6 +558,7 @@ function buildShop(kind,glowTex){
 /* ================= 传送门（怪从这里涌出来） ================= */
 /* ⚠️ rpg3d.js 比 rpg.js 先加载，模块顶层拿不到 COLS/ROWS，只能在 init 时赋值 */
 let PORTAL_X=0, portalG=null, portalVeil=[];
+let BZ0=-1.3, BZ1=0;                 // 石板路纵向范围（init 里按 ROWS 定）
 function buildPortal(glowTex){
   PORTAL_X=COLS+.15;
   const g=new T.Group();
@@ -598,7 +599,7 @@ function buildPortal(glowTex){
 
 /* ================= 地图装饰（树/石头/草簇，只摆在战场外围） ================= */
 function scatterDecor(){
-  const inBattle=(x,z)=>x>-.7&&x<PORTAL_X+1.4&&z>-.45&&z<ROWS+.2;
+  const inBattle=(x,z)=>x>-.7&&x<PORTAL_X+1.4&&z>BZ0-.3&&z<BZ1+.3;
   /* 商店排会随 shopShift 往左挪，这里按最大挪动量留出空地，别让树长到广场里 */
   const inShops =(x,z)=>x>SHOP_X0B-SHIFT_MAX-1.8&&x<SHOP_X0B+SHOP_DX+1.4&&z>-.9&&z<ROWS+.9;
   let n=0,guard=0;
@@ -658,14 +659,16 @@ function init(){
   /* 战斗区：石板路台面（边缘有厚度，和草地区分开）
      右边一直铺到传送门脚下（BW>COLS），不然屏幕右侧会留一条空草地 */
   const BW=COLS+.95;
-  const board=new T.Mesh(new T.BoxGeometry(BW,.14,ROWS),
+  BZ0=-1.3;BZ1=ROWS+1.3;                          // 纵向也多铺出去，屏幕上下不露草地
+  const BD=BZ1-BZ0, BZC=(BZ0+BZ1)/2;
+  const board=new T.Mesh(new T.BoxGeometry(BW,.14,BD),
     new T.MeshLambertMaterial({color:0x222c3e}));
-  board.position.set(BW/2,-.07,ROWS/2);board.receiveShadow=true;
+  board.position.set(BW/2,-.07,BZC);board.receiveShadow=true;
   scene.add(board);
-  const road=new T.Mesh(new T.PlaneGeometry(BW,ROWS),
+  const road=new T.Mesh(new T.PlaneGeometry(BW,BD),
     new T.MeshLambertMaterial({map:texStone(),color:0xffffff}));
-  road.material.map.repeat.set(BW/1.6,ROWS/1.6);
-  road.rotation.x=-PI/2;road.position.set(BW/2,.005,ROWS/2);road.receiveShadow=true;
+  road.material.map.repeat.set(BW/1.6,BD/1.6);
+  road.rotation.x=-PI/2;road.position.set(BW/2,.005,BZC);road.receiveShadow=true;
   scene.add(road);
 
   /* 左侧商店广场：碎石地，宽度跟着 shopShift 变（layoutShops 里设），把左边空草地填掉 */
@@ -745,23 +748,22 @@ function resize(){
   ren.setPixelRatio(PR);ren.setSize(W,H,false);
 
   const asp=W/H;
-  /* 纵向要装下：战场上沿(留点草地) → 商店建筑下沿，外加单位高度。
-     相机空间的垂直坐标 v(y,z) = (y-.3)*cos(TILT) - (z-tz)*sin(TILT) */
-  /* 纵向装下整个战场(含最上排单位的身高)，横向还要装下左侧那排商店建筑 */
-  const zTop=-.3, zBot=ROWS+.3, tz=(zTop+zBot)/2;
-  const v=(y,z)=>(y-.3)*cos(TILT)-(z-tz)*sin(TILT);
+  /* 纵向：正好装下 5 行本身（下沿贴着第5行地面，上沿只多留 HEAD 给顶行单位的头顶/血条），
+     多出来的那一点点由纵向多铺的石板盖住，所以屏幕上下不会露草地。
+     相机看向 y=yc，使得上下两边各自贴边：v(y,z)=(y-yc)*cos(TILT)-(z-tz)*sin(TILT) */
+  const tz=ROWS/2, HEAD=.62, yc=HEAD/2;
   const xR=PORTAL_X+.8, xLB=SHOP_X0B-1.45;
   const needW=(xR-xLB)/2;
-  const needH=max(abs(v(1,zTop)),abs(v(0,zBot)))+.06;
+  const needH=yc*cos(TILT)+tz*sin(TILT)+.02;
   const hh=max(needH,needW/asp), hw=max(needW,hh*asp);
   cam.left=-hw;cam.right=hw;cam.top=hh;cam.bottom=-hh;
-  /* 屏幕特别扁时横向会富余：把富余的宽度让给左边（商店整排往左挪、广场变宽），
-     右边始终贴着传送门，这样两侧都不会留大片空地 */
+  /* 屏幕特别扁时横向会富余：先让商店整排往左挪(广场跟着变宽)，
+     剩下的富余全部留给左边——相机右沿死死贴着传送门，右侧不留空地 */
   shopShift=min(SHIFT_MAX,max(0,(hw-needW)*2));
   layoutShops();
-  const tx=(xLB-shopShift+xR)/2;
-  cam.position.set(tx,CAM_D*sin(TILT),tz+CAM_D*cos(TILT));
-  cam.lookAt(tx,.3,tz);
+  const tx=xR-hw;
+  cam.position.set(tx,yc+CAM_D*sin(TILT),tz+CAM_D*cos(TILT));
+  cam.lookAt(tx,yc,tz);
   cam.updateProjectionMatrix();
 }
 
