@@ -241,6 +241,10 @@ let autoLearnAll=false,autoTrial=false,autoNext=false,autoTrialT=0;
 let heroes,mobs,shots,fx,nums,bears,inv,hails,storms,quakes,chests,trialCd;
 let sel=null,invSel=null,speed=1,running=false,started=false,over=false,openShop=null;
 const ANIM_T=.22;   // 攻击动作时长（rpg3d.js 的挥砍/拉弓动作用它算进度）
+/* 各转职支线的攻击节奏（渲染层按 h.animT 算动作进度）：
+   弩手慢而重、精灵游侠快、火枪/强盗短促、狂战士双斧稍长 */
+const ANIM_BR={xbow:.44,elf:.12,musket:.17,bandit:.15,berserker:.28};
+function animT(h){const a=h.tier?ADV[h.cls][h.branch]:null;return (a&&ANIM_BR[a.key])||ANIM_T;}
 let gt=0;           // 全局时间（呼吸/脉动/走路相位）
 
 /* ================= 画布 =================
@@ -878,7 +882,7 @@ function effInterval(h){
 }
 function attack(h,hx,hy,m,mul,color){
   mul=mul||1;
-  h.anim=ANIM_T;
+  h.animT=animT(h);h.anim=h.animT;
   const adv=advOf(h), akey=adv?adv.key:'', asp=h.specLv||1;
   let dmg=effAtk(h)*mul*(h.dmgMul||1),c=color;   // dmgMul = 弩手·重弩的最终伤害加成
   if(akey==='bandit'){                            // 强盗·掠夺：每次普攻偷金币
@@ -907,15 +911,20 @@ function attack(h,hx,hy,m,mul,color){
     if(poison)magDamage(m,poison,'#7ce87c');
     if(cleave)cleaveAround(m,dmg,cleave);
     magDamage(m,h.agi*(.15+.05*asp),'#ffd08a');   // 天赋：平A附加敏捷伤害
-    fx.push({type:'bolt',x1:hx,y1:hy,x2:m.x,y2:m.y+.5,t:.12,max:.12,color:'#ffd08a'});
+    fx.push({type:'bolt',x1:hx,y1:hy,x2:m.x,y2:m.y+.5,t:.08,max:.08,color:'#ffd08a'});
   }else{
     shots.push({x:hx,y:hy,target:m,tx:m.x,ty:m.y+.5,a:Math.atan2((m.y+.5)-hy,m.x-hx),
-      kind:h.cls==='mage'?'orb':'arrow',
+      kind:h.cls==='mage'?'orb':(akey==='xbow'?'quarrel':'arrow'),
+      heavy:akey==='xbow'?1:0,
       dmg,cleave,splash:h.splash,poison,color:c||CLASSES[h.cls].color});
   }
 }
 function shotHit(s,m){
   physDamage(m,s.dmg,s.color==='#7fe8ff'?'#7fe8ff':(s.color==='#ffd24f'?'#ffd24f':undefined));
+  if(s.heavy){                       // 弩手·重弩：单发命中的冲击感
+    fx.push({type:'ring',x:m.x,y:m.y+.5,rr:.9,t:.24,max:.24,color:'#ffd08a'});
+    fx.push({type:'slash',x:m.x-.05,y:m.y+.5,rr:.34,a:s.a||0,t:.18,max:.18,color:'#fff0c4'});
+  }
   if(s.target===m){
     if(s.poison)magDamage(m,s.poison,'#7ce87c');
     if(s.cleave)cleaveAround(m,s.dmg,s.cleave);
@@ -1240,7 +1249,7 @@ function openAdvCards(h){
 /* 卡片右侧：该英雄当前的技能栏(1×4) */
 function sideSkills(h,nm){
   const names=Object.keys(h.skills);
-  let out=`<div class="st">技能栏 ${names.length}/${MAX_SLOTS}</div>`;
+  let out='';
   for(let i=0;i<MAX_SLOTS;i++){
     const n=names[i];
     if(!n){out+='<div class="row em">空</div>';continue;}
@@ -1252,7 +1261,7 @@ function sideSkills(h,nm){
 }
 /* 卡片右侧：该英雄当前的装备栏（6行，带属性） */
 function sideEquips(h){
-  let out=`<div class="st">装备栏 ${h.equips.length}/${MAX_EQUIP}</div>`;
+  let out='';
   for(let i=0;i<MAX_EQUIP;i++){
     const e=h.equips[i];
     if(!e){out+='<div class="row em">空</div>';continue;}

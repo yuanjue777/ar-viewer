@@ -10,6 +10,7 @@
  *   cards  招募卡→转职卡→技能书授予，全流程点一遍并断言
  *   sim    波次平衡快跑（逻辑时钟加速，16秒真实≈700秒逻辑），打印每波掉命
  *   probe  数值体检：只打印数字不截图（改完数值/转职/装备先跑这个，最省 token）
+ *   models 九条转职支线的模型与攻击动作，各截「静止/出手」两张（m0_* m1_* m2_*）
  *   crop   只截某块区域放大看（--clip=x,y,w,h）
  *
  * 参数：--out=<目录，默认/tmp/rpgtest>  --wide=<视口宽,默认900>  --tall=<高,默认420>
@@ -43,7 +44,7 @@ const SEED=`
 (async()=>{
   const b=await chromium.launch({executablePath:CHROME,
     args:['--use-gl=swiftshader','--enable-unsafe-swiftshader','--disable-gpu-sandbox']});
-  const p=await b.newPage({viewport:{width:W,height:H},deviceScaleFactor:scene==='sim'?1:2});
+  const p=await b.newPage({viewport:{width:W,height:H},deviceScaleFactor:scene==='sim'?1:(scene==='models'?4:2)});
   const errs=[];
   p.on('pageerror',e=>errs.push('PAGEERROR: '+e.message));
   p.on('console',m=>{if(m.type()==='error')errs.push('CONSOLE: '+m.text())});
@@ -167,6 +168,35 @@ const SEED=`
       return O;
     });
     for(const k in r)console.log(k+':',JSON.stringify(r[k]));
+
+  }else if(scene==='models'){
+    /* 九条转职支线的模型 + 攻击动作：每个 branch 截一张（英雄本阵区域放大） */
+    await p.evaluate(()=>{const c=document.querySelectorAll('#cardRow .chcard');if(c.length)c[0].click();});
+    await p.waitForTimeout(300);
+    await p.evaluate(SEED);
+    /* ① 转职卡片层：一张图看清一个职业的三条支线模型（3D 预览最大） */
+    for(let i=0;i<3;i++){
+      await p.evaluate(k=>{heroes.forEach(h=>{h.tier=0;h.branch=0;h.lv=8;calc(h);});
+        closeCards();openAdvCards(heroes[k]);},i);
+      await p.waitForTimeout(700);
+      await shot('mc'+i+'_'+['warrior','archer','mage'][i]);
+      console.log('转职卡',i,await p.evaluate(()=>[...document.querySelectorAll('#cardRow .chcard')].map(e=>e.textContent.slice(0,6)).join('/')));
+    }
+    await p.evaluate(()=>closeCards());
+    /* ② 战场上的攻击动作：静止 / 出手各一张（贴脸放大） */
+    const CLIP={x:182,y:118,width:118,height:126};
+    for(let b=0;b<3;b++){
+      await p.evaluate(br=>{
+        heroes.forEach(h=>{h.tier=1;h.branch=br;h.specLv=3;calc(h);h.hp=h.maxHp;h.mp=h.maxMp;h.anim=0;});
+        renderInfo();
+      },b);
+      await p.waitForTimeout(500);
+      await shot('m'+b+'_idle',CLIP);
+      await p.evaluate(()=>heroes.forEach(h=>{h.animT=animT(h);h.anim=h.animT*.8;}));
+      await p.waitForTimeout(60);
+      await shot('m'+b+'_atk',CLIP);
+      console.log('branch',b,'=',await p.evaluate(()=>heroes.map(h=>ADV[h.cls][h.branch].name+'/animT='+animT(h)).join(' | ')));
+    }
 
   }else{
     /* shot / crop */
