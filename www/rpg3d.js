@@ -389,6 +389,24 @@ function texStone(){
     }
   },[COLS/1.6,ROWS/1.6]);
 }
+/* 商店广场：暖色土/碎石地（比战斗区石板亮，和草地、石板都分得开） */
+function texDirt(){
+  return makeTex(256,(x,S)=>{
+    x.fillStyle='#59492f';x.fillRect(0,0,S,S);
+    for(let i=0;i<40;i++){                         // 土色斑块
+      const px=srand()*S,py=srand()*S,r=12+srand()*30;
+      const g=x.createRadialGradient(px,py,0,px,py,r);
+      g.addColorStop(0,srand()>.5?'#6b5838':'#48391f');
+      g.addColorStop(1,'rgba(0,0,0,0)');
+      x.fillStyle=g;x.beginPath();x.arc(px,py,r,0,7);x.fill();
+    }
+    for(let i=0;i<900;i++){                        // 碎石
+      const v=srand(),s=1+(v>.85?2:0);
+      x.fillStyle=v>.8?'#8a7b60':v>.5?'#6d5c3d':'#3d3120';
+      x.fillRect(srand()*S,srand()*S,s,s);
+    }
+  },[1,1]);
+}
 /* 法阵符文环（白色，靠材质染成职业色） */
 function texRune(){
   return makeTex(256,(x,S)=>{
@@ -460,10 +478,27 @@ const SHOPS=[
   {k:'mill', name:'伐木场'},
 ];
 /* 2×2 摆在战场左侧：左列=技能/装备，右列=金矿/伐木场（SHOPS 顺序 skill,item,mine,mill）*/
-const SHOP_X0=-2.85, SHOP_DX=1.4, SHOP_Z0=1.15, SHOP_DZ=1.95, SHOP_R=.66;
+const SHOP_X0B=-3.75, SHOP_DX=1.95, SHOP_Z0=1.32, SHOP_DZ=2.36, SHOP_R=.9;
+/* 宽屏时横向会多出空间：整排商店往左挪(shopShift)，广场跟着变宽，左边就不空了（resize 里算） */
+let SHOP_X0=SHOP_X0B, shopShift=0;
+const SHIFT_MAX=2.6;                               // 最多往左挪这么多
 const shopPos=i=>[SHOP_X0+(i>1?SHOP_DX:0), SHOP_Z0+(i%2)*SHOP_DZ];
-const SHOP_S=1.05;                                 // 建筑整体缩放
-let shopGroups=[],circles=[];
+const SHOP_S=1.6;                                  // 建筑整体缩放
+let shopGroups=[],circles=[],yard=null;
+/* 把商店排 + 脚下广场按当前 shopShift 摆好（init 和 resize 都调） */
+function layoutShops(){
+  SHOP_X0=SHOP_X0B-shopShift;
+  for(let i=0;i<shopGroups.length;i++){
+    const [px,pz]=shopPos(i);
+    shopGroups[i].position.x=px;shopGroups[i].position.z=pz;
+  }
+  if(yard){                                        // 广场从商店左侧一直铺到战斗区边上，中间不留空地
+    const x0=SHOP_X0-1.35, x1=-.26, w=x1-x0, d=ROWS+.1;
+    yard.scale.set(w,d,1);
+    yard.position.set((x0+x1)/2,.004,ROWS/2);
+    yard.material.map.repeat.set(w/2.1,d/2.1);
+  }
+}
 function shopAt(x,z){                              // 供 rpg.js 判断点击
   for(let i=0;i<SHOPS.length;i++){
     const [px,pz]=shopPos(i);
@@ -564,7 +599,8 @@ function buildPortal(glowTex){
 /* ================= 地图装饰（树/石头/草簇，只摆在战场外围） ================= */
 function scatterDecor(){
   const inBattle=(x,z)=>x>-.7&&x<PORTAL_X+1.4&&z>-.45&&z<ROWS+.2;
-  const inShops =(x,z)=>x>SHOP_X0-1&&x<SHOP_X0+SHOP_DX+1&&z>-.4&&z<ROWS+.6;
+  /* 商店排会随 shopShift 往左挪，这里按最大挪动量留出空地，别让树长到广场里 */
+  const inShops =(x,z)=>x>SHOP_X0B-SHIFT_MAX-1.8&&x<SHOP_X0B+SHOP_DX+1.4&&z>-.9&&z<ROWS+.9;
   let n=0,guard=0;
   while(n<52&&guard++<900){
     const x=-5+srand()*(COLS+10), z=-3+srand()*(ROWS+6);
@@ -606,7 +642,7 @@ function init(){
   dirLight.shadow.mapSize.set(2048,1024);
   dirLight.shadow.bias=-.0012;
   const sc=dirLight.shadow.camera;
-  sc.left=-COLS*.62;sc.right=COLS*.62;sc.top=ROWS*2.4;sc.bottom=-ROWS*2.4;sc.near=1;sc.far=34;
+  sc.left=-COLS*.95;sc.right=COLS*.72;             // 左边要罩住挪出去的商店排sc.top=ROWS*2.4;sc.bottom=-ROWS*2.4;sc.near=1;sc.far=34;
   scene.add(dirLight);scene.add(dirLight.target);
   dirLight.target.position.set(COLS/2,0,ROWS/2);
   const fill=new T.DirectionalLight(0x5f7fb8,.5);fill.position.set(6,4,6);scene.add(fill);
@@ -619,15 +655,24 @@ function init(){
   ground.rotation.x=-PI/2;ground.position.set(COLS/2,0,ROWS/2);ground.receiveShadow=true;
   scene.add(ground);
 
-  /* 战斗区：石板路台面（边缘有厚度，和草地区分开） */
-  const board=new T.Mesh(new T.BoxGeometry(COLS,.14,ROWS),
+  /* 战斗区：石板路台面（边缘有厚度，和草地区分开）
+     右边一直铺到传送门脚下（BW>COLS），不然屏幕右侧会留一条空草地 */
+  const BW=COLS+.95;
+  const board=new T.Mesh(new T.BoxGeometry(BW,.14,ROWS),
     new T.MeshLambertMaterial({color:0x222c3e}));
-  board.position.set(COLS/2,-.07,ROWS/2);board.receiveShadow=true;
+  board.position.set(BW/2,-.07,ROWS/2);board.receiveShadow=true;
   scene.add(board);
-  const road=new T.Mesh(new T.PlaneGeometry(COLS,ROWS),
-    new T.MeshLambertMaterial({map:texStone()}));
-  road.rotation.x=-PI/2;road.position.set(COLS/2,.005,ROWS/2);road.receiveShadow=true;
+  const road=new T.Mesh(new T.PlaneGeometry(BW,ROWS),
+    new T.MeshLambertMaterial({map:texStone(),color:0xffffff}));
+  road.material.map.repeat.set(BW/1.6,ROWS/1.6);
+  road.rotation.x=-PI/2;road.position.set(BW/2,.005,ROWS/2);road.receiveShadow=true;
   scene.add(road);
+
+  /* 左侧商店广场：碎石地，宽度跟着 shopShift 变（layoutShops 里设），把左边空草地填掉 */
+  yard=new T.Mesh(new T.PlaneGeometry(1,1),
+    new T.MeshLambertMaterial({map:texDirt()}));
+  yard.rotation.x=-PI/2;yard.receiveShadow=true;
+  scene.add(yard);
 
   /* 左侧出兵位：不再是色块，改成职业色法阵光圈 */
   for(let c=0;c<HCOLS;c++){
@@ -651,12 +696,11 @@ function init(){
   /* 商店建筑：原来 dock 上那一行，摆到战斗区下方的草地上 */
   for(let i=0;i<SHOPS.length;i++){
     const g=buildShop(SHOPS[i].k,glowTex);
-    const [px,pz]=shopPos(i);
-    g.position.set(px,0,pz);
     g.scale.setScalar(SHOP_S);
     g.userData.k=SHOPS[i].k;
     shopGroups.push(g);scene.add(g);
   }
+  layoutShops();
   buildPortal(glowTex);
   scatterDecor();
   /* 网格线 */
@@ -706,12 +750,16 @@ function resize(){
   /* 纵向装下整个战场(含最上排单位的身高)，横向还要装下左侧那排商店建筑 */
   const zTop=-.3, zBot=ROWS+.3, tz=(zTop+zBot)/2;
   const v=(y,z)=>(y-.3)*cos(TILT)-(z-tz)*sin(TILT);
-  const xL=SHOP_X0-.85, xR=PORTAL_X+.8;
-  const needW=(xR-xL)/2;
+  const xR=PORTAL_X+.8, xLB=SHOP_X0B-1.45;
+  const needW=(xR-xLB)/2;
   const needH=max(abs(v(1,zTop)),abs(v(0,zBot)))+.06;
   const hh=max(needH,needW/asp), hw=max(needW,hh*asp);
   cam.left=-hw;cam.right=hw;cam.top=hh;cam.bottom=-hh;
-  const tx=(xL+xR)/2;
+  /* 屏幕特别扁时横向会富余：把富余的宽度让给左边（商店整排往左挪、广场变宽），
+     右边始终贴着传送门，这样两侧都不会留大片空地 */
+  shopShift=min(SHIFT_MAX,max(0,(hw-needW)*2));
+  layoutShops();
+  const tx=(xLB-shopShift+xR)/2;
   cam.position.set(tx,CAM_D*sin(TILT),tz+CAM_D*cos(TILT));
   cam.lookAt(tx,.3,tz);
   cam.updateProjectionMatrix();
@@ -799,7 +847,7 @@ function draw(){
   /* 建筑名牌（覆盖层，跟着建筑走） */
   for(let i=0;i<SHOPS.length;i++){
     const [sx,sz]=shopPos(i);
-    const u=ppu(sx,.9,sz), sp=proj(sx,0,sz+.62);
+    const u=ppu(sx,.9,sz), sp=proj(sx,0,sz+.86);   // 建筑放大后名牌要往下挪，别压在墙上
     const on=openShop===SHOPS[i].k;
     const fs=max(11,.23*u);
     octx.textAlign='center';                     // 名牌画在建筑正下方（2×2 时上方总是别的建筑）

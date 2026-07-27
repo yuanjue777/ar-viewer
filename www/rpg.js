@@ -1395,7 +1395,14 @@ function buyPack(cat){
   gold-=cost;
   inv=inv.filter(it=>it.t!=='book');   // 上次没用完的技能书不保留
   const pool=cat==='roll'?Object.keys(SKB):Object.keys(SKB).filter(n=>SKB[n].cat===cat);
-  for(let i=0;i<PACK_N;i++)inv.push({t:'book',name:pickBook(pool)});
+  /* 同一次刷新不出重复技能书：抽一本就从本次候选池里拿掉（池子不够 PACK_N 本才重新填） */
+  let left=pool.slice();
+  for(let i=0;i<PACK_N;i++){
+    if(!left.length)left=pool.slice();
+    const n=pickBook(left);
+    left.splice(left.indexOf(n),1);
+    inv.push({t:'book',name:n});
+  }
   if(invSel!=null&&(!inv[invSel]||inv[invSel].t!=='book'))invSel=null;
   autoLearnPass();
   updateHUD();renderInfo();renderInv();
