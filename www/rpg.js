@@ -180,7 +180,7 @@ const BOSS_WAVE_MUL=2.5, ELITE_RS=1.2;
 function isBossWave(w){return w%10===0;}
 function isEliteWave(w){return w%10===5;}
 /* 怪物AI：仇恨范围>攻击范围（攻击距离见 MOBS.atkR），仇恨内只做轻微纵向贴靠 */
-const AGGRO_R=3.2, VEER_SPD=1.05;   // 仇恨内纵向贴靠速度（大一点=包围感更强）
+const AGGRO_R=4.6;   // 仇恨半径：进这个圈就扑向英雄。5行后调大过，否则上下两行的怪来不及被吸引
 /* 召唤物不再有活动上限：召出来就一路向右压，波次结束随波消散 */
 /* ===== 召唤物（bears 数组统一管理，kind 决定属性/外观）=====
    hp/atk = 基础 + 智力×系数×技能等级；rng=攻击距离 ivl=攻击间隔 splash=溅射半径 */
@@ -331,6 +331,17 @@ function startWave(){
   wave++;
   // 整波一起入场（不再一只只放）：排成纵深队形从右边压上来
   for(const h of heroes){if(h.titanS){h.titanS=0;calc(h);}}   // 泰坦层数每波重置
+  /* 阵亡英雄在下一波开始时复活。
+     ⚠️ 别删：英雄原来只在"清场"时复活，可一旦全灭场上就永远清不掉，
+     英雄再也不复活、命一路掉到0，玩家没有任何翻盘机会。5行+追击AI之后
+     英雄承压大增，全灭很常见，所以改成按波复活——惩罚是这一波漏光扣命，
+     而不是直接判死。 */
+  for(const h of heroes){
+    if(!h.alive){
+      h.alive=true;h.hp=h.maxHp;h.mp=h.maxMp;h.x=h.col+.5;
+      levelFx(h.x,h.row+.5);
+    }
+  }
   const list=waveComp(wave);
   for(let i=0;i<list.length;i++){
     const e=list[i];
@@ -496,7 +507,8 @@ function update(dt){
     // 主属光环按距离生效，英雄会推进，所以定期重算一次属性
     if(heroes.some(h=>h.skills['主属光环']))for(const h of heroes){const rt=h.hp/h.maxHp;calc(h);h.hp=h.maxHp*rt;}
   }
-  /* 怪物：沿自己的路线向左推进，仇恨范围内会稍微靠向目标，进入攻击范围就停下开打 */
+  /* 怪物：视野外向左推进；**进入仇恨范围就直接扑向最近的英雄/召唤物**（不是擦着走过去），
+     进攻击范围停下开打。所以只要英雄不死，上下两行的怪也会被拉过来，理论上不漏。 */
   for(const m of mobs){
     if(m.slowT>0)m.slowT-=dt;
     if(m.frost>0)m.frost-=dt;        // 冰霜覆层显示时长
@@ -523,8 +535,14 @@ function update(dt){
       if(m.cd<=0){m.cd=1;hitUnit(tgt,m);}
       continue;
     }
-    // 各走各的，不排队等同伴
-    m.x-=spd*dt;
+    // 仇恨内=追击目标；仇恨外=继续向左推进（各走各的，不排队等同伴）
+    if(tgt&&td<=AGGRO_R){
+      const dx=tgt.x-m.x, dy=tgt.row-m.y, L=Math.hypot(dx,dy)||1;
+      m.x+=dx/L*spd*dt;
+      m.y=Math.max(-.32,Math.min(ROWS-1+.32,m.y+dy/L*spd*dt));
+    }else{
+      m.x-=spd*dt;
+    }
     if(m.x< -0.5){m.dead=true;lives-=m.lives;if(lives<=0){lives=0;endGame(false);}updateHUD();}
     // 几乎重叠时纵向轻推开，避免糊成一团（不影响前进）
     for(const o of mobs){
@@ -533,14 +551,6 @@ function update(dt){
         const dir=(m.y-o.y)||(Math.random()-.5);
         m.y=Math.max(-.32,Math.min(ROWS-1+.32,m.y+Math.sign(dir)*.5*dt));
         break;
-      }
-    }
-    // 仇恨范围内：纵向稍微靠一点（不会跑到英雄格子上）
-    if(tgt&&td<=AGGRO_R){
-      const dy=tgt.row-m.y;
-      if(Math.abs(dy)>.02){
-        const step=Math.min(Math.abs(dy),VEER_SPD*dt)*Math.sign(dy);
-        m.y=Math.max(-.32,Math.min(ROWS-1+.32,m.y+step));
       }
     }
     m.row=Math.max(0,Math.min(ROWS-1,Math.round(m.y)));   // 派生所在行

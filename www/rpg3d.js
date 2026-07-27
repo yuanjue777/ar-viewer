@@ -420,6 +420,28 @@ function texRune(){
     x.beginPath();x.arc(c,c,c*.34,0,7);x.stroke();
   });
 }
+/* 传送门能量幕：竖直流光条纹 + 中间亮芯，水平方向可平铺（用来做滚动动画） */
+function texPortal(){
+  return makeTex(256,(x,S)=>{
+    x.clearRect(0,0,S,S);
+    for(let i=0;i<44;i++){
+      const px=srand()*S, w=2+srand()*11, a=.12+srand()*.5;
+      const g=x.createLinearGradient(0,0,0,S);
+      const c=`${(180+srand()*70)|0},${(90+srand()*90)|0},255`;
+      g.addColorStop(0,`rgba(${c},0)`);
+      g.addColorStop(.5,`rgba(${c},${a})`);
+      g.addColorStop(1,`rgba(${c},0)`);
+      x.fillStyle=g;x.fillRect(px,0,w,S);
+      if(px+w>S)x.fillRect(px-S,0,w,S);          // 跨边界补一笔，保证无缝
+    }
+    const cg=x.createLinearGradient(0,0,0,S);    // 中间亮芯
+    cg.addColorStop(0,'rgba(120,60,200,0)');
+    cg.addColorStop(.5,'rgba(232,196,255,.5)');
+    cg.addColorStop(1,'rgba(120,60,200,0)');
+    x.fillStyle=cg;x.fillRect(0,0,S,S);
+  });
+}
+
 /* 径向柔光（法阵中心、建筑光晕） */
 function texGlow(){
   return makeTex(64,(x,S)=>{
@@ -437,12 +459,15 @@ const SHOPS=[
   {k:'mine', name:'金矿'},
   {k:'mill', name:'伐木场'},
 ];
-const SHOP_X=-1.45, SHOP_Z0=.55, SHOP_DZ=1.32, SHOP_R=.66;   // 竖排在战场左侧
+/* 2×2 摆在战场左侧：左列=技能/装备，右列=金矿/伐木场（SHOPS 顺序 skill,item,mine,mill）*/
+const SHOP_X0=-2.85, SHOP_DX=1.4, SHOP_Z0=1.15, SHOP_DZ=1.95, SHOP_R=.66;
+const shopPos=i=>[SHOP_X0+(i>1?SHOP_DX:0), SHOP_Z0+(i%2)*SHOP_DZ];
 const SHOP_S=1.05;                                 // 建筑整体缩放
 let shopGroups=[],circles=[];
 function shopAt(x,z){                              // 供 rpg.js 判断点击
   for(let i=0;i<SHOPS.length;i++){
-    if(abs(x-SHOP_X)<SHOP_R&&abs(z-(SHOP_Z0+i*SHOP_DZ))<SHOP_R)return SHOPS[i].k;
+    const [px,pz]=shopPos(i);
+    if(abs(x-px)<SHOP_R&&abs(z-pz)<SHOP_R)return SHOPS[i].k;
   }
   return null;
 }
@@ -495,10 +520,51 @@ function buildShop(kind,glowTex){
   return g;
 }
 
+/* ================= 传送门（怪从这里涌出来） ================= */
+/* ⚠️ rpg3d.js 比 rpg.js 先加载，模块顶层拿不到 COLS/ROWS，只能在 init 时赋值 */
+let PORTAL_X=0, portalG=null, portalVeil=[];
+function buildPortal(glowTex){
+  PORTAL_X=COLS+.15;
+  const g=new T.Group();
+  g.position.set(PORTAL_X,0,ROWS/2);
+  const W=ROWS+.3, H=2.0;
+  const tex=texPortal();
+  /* 两层能量幕反向滚动，叠出流动感（加性混合，够亮） */
+  for(let i=0;i<2;i++){
+    const t2=tex.clone();t2.needsUpdate=true;
+    t2.wrapS=t2.wrapT=T.RepeatWrapping;t2.repeat.set(2.2,1);
+    const m=new T.Mesh(new T.PlaneGeometry(W,H),
+      new T.MeshBasicMaterial({map:t2,transparent:true,depthWrite:false,
+        blending:T.AdditiveBlending,side:T.DoubleSide,opacity:i?.72:1}));
+    m.rotation.y=-PI/2;m.position.y=H/2;
+    g.add(m);portalVeil.push({m,tex:t2,dir:i?-1:1});
+  }
+  /* 门框：两根石柱 + 顶部横梁 */
+  for(const z of [-W/2,W/2]){
+    const p1=new T.Mesh(g_cyl(.13,.17,H+.25,8),new T.MeshLambertMaterial({color:0x4a3f66}));
+    p1.position.set(0,(H+.25)/2,z);p1.castShadow=true;g.add(p1);
+    const cap=new T.Mesh(g_sph(.22,10),new T.MeshBasicMaterial({color:0xd9b6ff}));
+    cap.position.set(0,H+.3,z);g.add(cap);
+  }
+  const bar=new T.Mesh(g_box(.22,.2,W+.3),new T.MeshLambertMaterial({color:0x4a3f66}));
+  bar.position.y=H+.1;bar.castShadow=true;g.add(bar);
+  /* 地面光带 */
+  const gl=new T.Mesh(new T.PlaneGeometry(2.2,W+.4),
+    new T.MeshBasicMaterial({map:glowTex,transparent:true,opacity:.3,
+      depthWrite:false,blending:T.AdditiveBlending,color:0xb070ff}));
+  gl.rotation.x=-PI/2;gl.position.y=.02;g.add(gl);
+  const bg=new T.Mesh(new T.PlaneGeometry(W,H),      // 幕后一层底色，衬出门的轮廓
+    new T.MeshBasicMaterial({color:0x2a1140,transparent:true,opacity:.72,
+      depthWrite:false,side:T.DoubleSide}));
+  bg.rotation.y=-PI/2;bg.position.set(.04,H/2,0);g.add(bg);
+  portalG=g;g.userData.glow=gl;
+  scene.add(g);
+}
+
 /* ================= 地图装饰（树/石头/草簇，只摆在战场外围） ================= */
 function scatterDecor(){
-  const inBattle=(x,z)=>x>-.7&&x<COLS+2.2&&z>-.45&&z<ROWS+.2;
-  const inShops =(x,z)=>x>SHOP_X-1&&x<SHOP_X+1&&z>-.4&&z<ROWS+.6;
+  const inBattle=(x,z)=>x>-.7&&x<PORTAL_X+1.4&&z>-.45&&z<ROWS+.2;
+  const inShops =(x,z)=>x>SHOP_X0-1&&x<SHOP_X0+SHOP_DX+1&&z>-.4&&z<ROWS+.6;
   let n=0,guard=0;
   while(n<52&&guard++<900){
     const x=-5+srand()*(COLS+10), z=-3+srand()*(ROWS+6);
@@ -585,11 +651,13 @@ function init(){
   /* 商店建筑：原来 dock 上那一行，摆到战斗区下方的草地上 */
   for(let i=0;i<SHOPS.length;i++){
     const g=buildShop(SHOPS[i].k,glowTex);
-    g.position.set(SHOP_X,0,SHOP_Z0+i*SHOP_DZ);
+    const [px,pz]=shopPos(i);
+    g.position.set(px,0,pz);
     g.scale.setScalar(SHOP_S);
     g.userData.k=SHOPS[i].k;
     shopGroups.push(g);scene.add(g);
   }
+  buildPortal(glowTex);
   scatterDecor();
   /* 网格线 */
   const pts=[];
@@ -638,7 +706,7 @@ function resize(){
   /* 纵向装下整个战场(含最上排单位的身高)，横向还要装下左侧那排商店建筑 */
   const zTop=-.3, zBot=ROWS+.3, tz=(zTop+zBot)/2;
   const v=(y,z)=>(y-.3)*cos(TILT)-(z-tz)*sin(TILT);
-  const xL=SHOP_X-.85, xR=COLS+.5;
+  const xL=SHOP_X0-.85, xR=PORTAL_X+.8;
   const needW=(xR-xL)/2;
   const needH=max(abs(v(1,zTop)),abs(v(0,zBot)))+.06;
   const hh=max(needH,needW/asp), hw=max(needW,hh*asp);
@@ -706,6 +774,17 @@ function draw(){
     u.ring.scale.setScalar(taken?1+.035*p:1);
   }
 
+  /* --- 传送门：能量幕反向滚动，有怪时更亮 --- */
+  if(portalG){
+    const hot=mobs.length?1:.45;
+    for(const v of portalVeil){
+      v.tex.offset.x-=v.dir*.0022;
+      v.tex.offset.y=sin(gt*.6*v.dir)*.05;
+      v.m.material.opacity=(v.dir>0?1:.72)*hot*(.85+.15*sin(gt*2.4+v.dir));
+    }
+    portalG.userData.glow.material.opacity=.3*hot*(.8+.2*sin(gt*3));
+  }
+
   /* --- 商店建筑：待机动画 + 打开中的高亮 --- */
   for(const g of shopGroups){
     const u=g.userData,on=openShop===u.k;
@@ -719,11 +798,11 @@ function draw(){
   }
   /* 建筑名牌（覆盖层，跟着建筑走） */
   for(let i=0;i<SHOPS.length;i++){
-    const sx=SHOP_X, sz=SHOP_Z0+i*SHOP_DZ;
-    const u=ppu(sx,.9,sz), sp=proj(sx+.62,.62*SHOP_S,sz);
+    const [sx,sz]=shopPos(i);
+    const u=ppu(sx,.9,sz), sp=proj(sx,0,sz+.62);
     const on=openShop===SHOPS[i].k;
     const fs=max(11,.23*u);
-    octx.textAlign='left';                       // 名牌画在建筑右侧，竖排才不会上下压在一起
+    octx.textAlign='center';                     // 名牌画在建筑正下方（2×2 时上方总是别的建筑）
     octx.font='700 '+fs.toFixed(1)+'px -apple-system,sans-serif';
     octx.lineWidth=3.5;octx.strokeStyle='rgba(0,0,0,.75)';
     octx.strokeText(SHOPS[i].name,sp[0],sp[1]);
@@ -739,7 +818,6 @@ function draw(){
       octx.fillText(sub,sp[0],sp[1]+fs*.95);
     }
   }
-  octx.textAlign='center';
 
   /* --- 地面区域效果：火焰风暴 / 大地震颤 --- */
   for(const s of storms){
