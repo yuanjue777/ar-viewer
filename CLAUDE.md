@@ -4,8 +4,14 @@
 - 本文件（CLAUDE.md）以后简称 **md**。用户说"记在 md 里"就是指更新本文件。
 - 用户目前主要**在手机上操作** Claude Code（网页/移动端），回复要适合手机阅读，命令别太长。
 - 开发路线：可能做**电脑端或手机 app**，但**先用网页端测试迭代，验证 OK 后再打包**成 app。不要一上来就走打包流程。
-- **省 token 是硬要求**（用户明确提过消耗太快）：**永远不要整文件 Read `rpg.js` / `rpg3d.js`，更不要 Read `www/vendor/three.min.js`**；先 grep 定位再 Edit 局部替换；回复只说改了什么，别贴大段代码；用户会攒一批需求一起说。
-  - ⚠️ 仓库变大 ≠ token 变多：只有**被 Read 的文件**才花 token。第三方库（three.js）和构建产物永远不用打开，所以体积无所谓。
+- **省 token 是硬要求**（用户明确提过消耗太快）。⚠️ 仓库变大 ≠ token 变多：**只有被 Read 的文件才花 token**，第三方库和构建产物永远不用打开，体积无所谓。按下面这套做：
+  1. **禁止整文件 Read** `rpg.js` / `rpg3d.js`；**`www/vendor/three.min.js` 一次都别开**（706KB 压缩代码，读一次几十万 token）。
+  2. **先 grep 拿到原文，再改**。用 `grep -n "锚点" www/rpg.js` 或 `sed -n 'a,bp'` 只取要改的那几行。⚠️ **别凭记忆写 old_string**——空格和注释对不上就会替换失败，然后又得重新 grep 一遍，等于白花两次。
+  3. **批量改用一个 python 脚本一次做完**（`python3 - <<'PYEOF'` + 一串 `(old,new)` + 每条 `assert old in s`）。assert 会在写文件前拦住不匹配的，比逐个 Edit 省往返。
+  4. **验证走固化脚本，别每次重写 playwright**：`sh www/_test/go.sh [shot|cards|sim]`（见下面"本地验证"）。
+  5. **截图要裁剪**：看某个局部就传 `--clip=x,y,w,h`，别截全屏再放大（等于看两张图）。
+  6. 回复只说改了什么，别贴大段代码。用户会攒一批需求一起说，**一次做完再回**。
+  7. **改完顺手更新本文件**里对应的那几行，下次就不用重新读代码去推。
 - **不要每次改完就 git push**，用户明确要求推送时才推。注意：云端容器是一次性的，会话结束未推送的改动会丢——长会话结束前主动提醒用户"要不要推送"。
 
 ## ⚠️ 硬件约束：坏盘 / 防蓝屏（最重要）
@@ -37,95 +43,114 @@
   - `www/rpg.js`（约1600行）= **纯逻辑**（数值/技能/AI/波次/商店/UI），不含任何绘制代码
   - `www/rpg3d.js`（约1000行）= **纯渲染**（Three.js 3D 场景/模型/特效/血条），逻辑层不用管
   - `www/vendor/three.min.js`（706KB）= Three.js r180 打包产物
-- **改动方式**：**永远不要整文件 Read `rpg.js` 或 `rpg3d.js`**。先查下面两张"改什么→去哪里"表，用 `grep -n "锚点" www/rpg.js` 定位（行号会漂移，锚点不会），再 Edit 局部替换。改完 `node --check`。
+- **改动方式**：查下面的"改什么→去哪里"表拿 grep 锚点 → `grep -n` 定位 → `sed -n` 只读那一小段 → 替换。**表里不再写行号**（改了太多轮，行号全漂了，写上去只会让人 sed 读错位置）；**锚点是稳定的**。改完 `node --check` + `sh www/_test/go.sh`。
 - 🚫 **`www/vendor/three.min.js` 永远不要 Read**（706KB 压缩过的第三方代码，读一次就烧掉几十万 token，而且毫无用处）。要换版本就跑 `python3 www/vendor/_fetch_three.py [版本号]` 重新生成。Three.js 的 API 直接按记忆写。
 - 逻辑↔渲染的**唯一契约**：格子坐标 (x, y) → 世界坐标 (x, 高度, y)（世界X=格子X，**世界Z=格子Y**，世界Y=离地高度）。逻辑层只通过 3 个入口碰渲染：`R3.resize()` / `R3.draw()` / `R3.pick(ev)`（后者把点击换算成格子浮点坐标）。加新单位/新特效**只改 rpg3d.js**，调数值/技能**只改 rpg.js**，两边基本不用同时动。
 
+### 实体字段速查（渲染层要用的，别再去 grep 了）
+| 实体 | 字段 |
+|---|---|
+| 英雄 `heroes[]` | `cls`(mage/archer/warrior) `row` `col` `x`(浮点，老家=col+.5) `lv` `xp` `tier` `branch` `specLv` `alive` `hp/maxHp` `mp/maxMp` `flash` `anim` `endT` `titanS` `sizeMul` `skills{名:lv}` `equips[]` `str/agi/int`(calc 后) |
+| 怪 `mobs[]` | `type`(normal/fast/tank/boss) `x` `y`(行坐标,浮点) `row`(派生) `r` `hp/maxHp` `atk` `atkR` `color` `elite` `trial` `frost` `slowT/slowF` `asT/asF` `sunderT` `dead` `flash` `chest` |
+| 召唤物 `bears[]` | `kind`(bear/fire/water/infernal) `x` `row` `oy` `hp/maxHp` `dead` |
+| 弹道 `shots[]` | `x` `y` `a`(角度) `kind`('orb'或箭) `color` `target` |
+| 特效 `fx[]` | `type` `t/max`(倒计时) `color`，按 type 另有 `x,y` / `x1,y1,x2,y2` / `rr` `sz` `a` `seed` `vx` `ax,ay` |
+| 飘字 `nums[]` | `x` `y` `txt` `color` `t/max` |
+| 宝箱 `chests[]` | `x` `y` `dead` |
+| 区域技能 | `storms[]`(cx,cy,R,delay) `quakes[]`(x0,y0,x1,y1) `hails[]` |
+
 ### 改什么 → 去哪里 · `www/rpg.js`（逻辑，约1600行）
-| 想改的东西 | 去哪里（grep 锚点） | 行号约 |
-|---|---|---|
-| 职业基础属性/射程/成长 | `const CLASSES=` | 7 |
-| 转职支线、专精效果文案 | `const ADV=` / `const SPECS=` | 16 / 30 |
-| 转职等级与花费 | `const ADV_LV=` | 41 |
-| 英雄定价（现 0/100/200） | `const HERO_COSTS=` | 43 |
-| **招募/转职卡片弹层** | `openHireCards` / `openAdvCards` / `refreshHire` | — |
-| **加/改技能（技能表）** | `const SKB=` | 50 |
-| 品质颜色/属性系颜色 | `const QC=` / `const CATS=` | 73 / 83 |
-| 技能书roll价、按品质的学习费 | `const PACK_COST=` / `const BOOK_COST=` | 84 / 86 |
-| 装备出售价 | `const SELL_EQ=` | 89 |
-| **加/改装备**（精英池 `pool:'elite'` / 金色池 `pool:'gold'`） | `const EQUIPS=` / `GOLD_DROP` | 101 / 125 |
-| 装备roll三档权重/价格 | `const EQ_TIERS=` | 128 |
-| 装备属性显示文案 | `function eqDesc` | 142 |
-| **怪物属性/攻击距离/颜色** | `const MOBS=` | 165 |
-| 金矿/伐木场费用与上限 | `mineCost` / `INCOME_MAX` | 173 / 172 |
-| 每波间隔、仇恨半径、**英雄推进速度** | `const WAVE_EVERY` / `AGGRO_R` / `HERO_SPD` | 175–192 |
-| **召唤物属性表** | `const MINIONS=` | 185 |
-| **四大试炼（CD/开放波数/奖励文案）** | `const TRIALS=` | 197 |
-| 画布尺寸（只是转发给 R3.resize） | `function resize` | 221 |
-| 英雄初始字段 | `function makeHero` | 225 |
-| **英雄总属性结算（装备/专精/技能加成）** | `function calc(h)` | 232 |
-| 开局初始金币/木头/命（现为 **350金**/0木/10命） | `function reset` | 290 |
-| **每波怪的构成** | `function waveComp` | 300 |
-| **整波一起刷怪的队形** | `function startWave` | 327 |
-| 怪物生成（含试炼/宝箱标记、新手期折扣） | `function spawnMob` | 341 |
-| **试炼开启逻辑与难度** | `function startTrial` | 364 |
-| 击杀结算/试炼奖励 | `function damage` | 396 |
-| **宝箱掉落与开箱奖励** | `dropChest` / `openChest` | 415 / 419 |
-| 怪物有效护甲（含幽冥刃破甲） | `mobArmor` / `physDamage` | 451 / 452 |
-| 经验与升级 | `function gainXp` | 454 |
-| **主循环** | `function update(dt)` | 478 |
-| ├ 怪物AI/寻敌/推进 | 注释 `/* 怪物：沿自己的路线` | 496 |
-| ├ 熊灵行为 | 注释 `/* 熊灵 */` | 545 |
-| ├ 冰风暴波次 | 注释 `/* 暴风雪冰雹` | 573 |
-| ├ 火焰风暴DoT | 注释 `/* 火焰风暴：延迟` | 601 |
-| ├ 试炼CD计时 | 注释 `/* 试炼CD` | 649 |
-| └ **英雄：回蓝/放技能/推进/选敌/攻击** | 注释 `/* 英雄 */` | 653 |
-| 溅射/血怒/攻速公式 | `cleaveAround` / `berserkRatio` / `effInterval` | 768–784 |
-| 普攻结算（暴击/毒/溅射/弹道） | `function attack` | 791 |
-| 英雄挨打/反伤/格挡/泰坦叠层 | `function hitUnit` | 824 |
-| 技能名→召唤物映射 / 创建召唤物 | `const SUMMONS=` / `function summon` | 855 / 856 |
-| **所有主动技能的实现** | `function castSkill` | 885 |
-| 顶栏数值 + 面板HP/MP/间隔实时刷新 | `function updateHUD` | 1014 |
-| **信息区/英雄面板（属性网格、技能栏、装备栏）** | `function renderInfo` | 1033 |
-| 商店内容（技能/装备/金矿/伐木场），入口是地图建筑 | `shopHTML` / `setShop` | 1182 |
-| 试炼图标CD扫圈刷新 | `function renderTrials` | 1240 |
-| 买技能书 / 自动学习 / 买装备 | `buyPack` / `autoLearnPass` / `buyEquip` | 1258+ |
-| 背包渲染 / 学技能穿装备 | `renderInv` / `applyItem` | — |
-| **点背包物品→选英雄卡片** | `openGiveCards` | — |
-| 拖拽、双击脱装备 | `let drag=null` | 1364 |
-| **点击战场（选英雄/点宝箱/点建筑）+ 英雄拖动换行** | `cv.addEventListener('pointerdown'` / `let hDrag` | — |
-| 启动/倍速按钮 | `launchBtn` / `speedBtn` | 1470 / 1477 |
+| 想改的东西 | 去哪里（grep 锚点） |
+|---|---|
+| 职业基础属性/射程/成长 | `const CLASSES=` |
+| 转职支线、专精效果文案 | `const ADV=` / `const SPECS=` |
+| 转职等级与花费 | `const ADV_LV=` |
+| 英雄定价（现 0/100/200） | `const HERO_COSTS=` |
+| **招募/转职卡片弹层** | `openHireCards` / `openAdvCards` / `refreshHire` |
+| **加/改技能（技能表）** | `const SKB=` |
+| 品质颜色/属性系颜色 | `const QC=` / `const CATS=` |
+| 技能书roll价、按品质的学习费 | `const PACK_COST=` / `const BOOK_COST=` |
+| 装备出售价 | `const SELL_EQ=` |
+| **加/改装备**（精英池 `pool:'elite'` / 金色池 `pool:'gold'`） | `const EQUIPS=` / `GOLD_DROP` |
+| 装备roll三档权重/价格 | `const EQ_TIERS=` |
+| 装备属性显示文案 | `function eqDesc` |
+| **怪物属性/攻击距离/颜色** | `const MOBS=` |
+| 金矿/伐木场费用与上限 | `mineCost` / `INCOME_MAX` |
+| 每波间隔、仇恨半径、**英雄推进速度** | `const WAVE_EVERY` / `AGGRO_R` / `HERO_SPD` |
+| **召唤物属性表** | `const MINIONS=` |
+| **四大试炼（CD/开放波数/奖励文案）** | `const TRIALS=` |
+| 画布尺寸（只是转发给 R3.resize） | `function resize` |
+| 英雄初始字段 | `function makeHero` |
+| **英雄总属性结算（装备/专精/技能加成）** | `function calc(h)` |
+| 开局初始金币/木头/命（现为 **350金**/0木/10命） | `function reset` |
+| **每波怪的构成** | `function waveComp` |
+| **整波一起刷怪的队形** | `function startWave` |
+| 怪物生成（含试炼/宝箱标记、新手期折扣） | `function spawnMob` |
+| **试炼开启逻辑与难度** | `function startTrial` |
+| 击杀结算/试炼奖励 | `function damage` |
+| **宝箱掉落与开箱奖励** | `dropChest` / `openChest` |
+| 怪物有效护甲（含幽冥刃破甲） | `mobArmor` / `physDamage` |
+| 经验与升级 | `function gainXp` |
+| **主循环** | `function update(dt)` |
+| ├ 怪物AI/寻敌/推进 | 注释 `/* 怪物：沿自己的路线` |
+| ├ 熊灵行为 | 注释 `/* 熊灵 */` |
+| ├ 冰风暴波次 | 注释 `/* 暴风雪冰雹` |
+| ├ 火焰风暴DoT | 注释 `/* 火焰风暴：延迟` |
+| ├ 试炼CD计时 | 注释 `/* 试炼CD` |
+| └ **英雄：回蓝/放技能/推进/选敌/攻击** | 注释 `/* 英雄 */` |
+| 溅射/血怒/攻速公式 | `cleaveAround` / `berserkRatio` / `effInterval` |
+| 普攻结算（暴击/毒/溅射/弹道） | `function attack` |
+| 英雄挨打/反伤/格挡/泰坦叠层 | `function hitUnit` |
+| 技能名→召唤物映射 / 创建召唤物 | `const SUMMONS=` / `function summon` |
+| **所有主动技能的实现** | `function castSkill` |
+| 顶栏数值 + 面板HP/MP/间隔实时刷新 | `function updateHUD` |
+| **信息区/英雄面板（属性网格、技能栏、装备栏）** | `function renderInfo` |
+| 商店内容（技能/装备/金矿/伐木场），入口是地图建筑 | `shopHTML` / `setShop` |
+| 试炼图标CD扫圈刷新 | `function renderTrials` |
+| 买技能书 / 自动学习 / 买装备 | `buyPack` / `autoLearnPass` / `buyEquip` |
+| 背包渲染 / 学技能穿装备 | `renderInv` / `applyItem` |
+| **点背包物品→选英雄卡片** | `openGiveCards` |
+| 拖拽、双击脱装备 | `let drag=null` |
+| **点击战场（选英雄/点宝箱/点建筑）+ 英雄拖动换行** | `cv.addEventListener('pointerdown'` / `let hDrag` |
+| 启动/倍速按钮 | `launchBtn` / `speedBtn` |
 
 ### 改什么 → 去哪里 · `www/rpg3d.js`（3D 渲染，约1000行）
-| 想改的东西 | 去哪里（grep 锚点） | 行号约 |
-|---|---|---|
-| **相机俯角/投影方式** | `const TILT=` | — |
-| 几何缓存小工具（box/球/锥/环…） | `const GEO=` | — |
-| 受击闪白/死亡变灰/冰霜染色 | `function tint` | — |
-| 对象池（复用 mesh，别每帧 new） | `function bind` / `take` | — |
-| 两点之间拉光束（闪电/射线用） | `function beam` | — |
-| **英雄模型（法师/游侠/战士外观）** | `function buildHero` | — |
-| **怪物模型（普通/快速/坦克/Boss）** | `function buildMob` | — |
-| **召唤物模型（熊/火/水/地狱火）** | `function buildMinion` | — |
-| 宝箱模型 | `function buildChest` | — |
-| 弹道模型（箭矢/奥术弹） | `function buildShot` | — |
-| **程序化贴图（草地/石板/土地/符文/柔光）** | `function texGrass` / `texStone` / `texDirt` / `texRune` | — |
-| **商店广场（左侧碎石地，宽度动态）** | `let yard` / `function layoutShops` | — |
-| **商店建筑模型 + 位置/点击半径**（竖排在左侧） | `function buildShop` / `const SHOPS=` / `SHOP_X` | — |
-| **战场右侧传送门**（能量幕/门柱/地面光带） | `function buildPortal` / `texPortal` | — |
-| 地图装饰（树/石头/草簇的散布） | `function scatterDecor` | — |
-| **场景搭建：光照/阴影/草地/石板路/法阵光圈/商店建筑** | `function init` | — |
-| **相机装框（正交范围计算）** | `function resize` | — |
-| 世界坐标→屏幕坐标（覆盖层用） | `function proj` / `ppu` | — |
-| **点击拾取（屏幕→格子坐标）** | `function pick` | — |
-| **每帧渲染主函数**（地面效果/英雄/召唤物/怪物/宝箱/弹道/血条/飘字） | `function draw` | — |
-| **所有 fx 特效的 3D 实现**（aoe/line/bolt/zap/slash/fall/flame/sword/rock/heal/spark） | `function drawFx` | — |
-| **角色卡片里的 3D 预览**（独立小 renderer） | `function cardInit` / `cardShow` / `cardTick` | — |
+| 想改的东西 | 去哪里（grep 锚点） |
+|---|---|
+| **相机俯角/投影方式** | `const TILT=` |
+| 几何缓存小工具（box/球/锥/环…） | `const GEO=` |
+| 受击闪白/死亡变灰/冰霜染色 | `function tint` |
+| 对象池（复用 mesh，别每帧 new） | `function bind` / `take` |
+| 两点之间拉光束（闪电/射线用） | `function beam` |
+| **英雄模型（法师/游侠/战士外观）** | `function buildHero` |
+| **怪物模型（普通/快速/坦克/Boss）** | `function buildMob` |
+| **召唤物模型（熊/火/水/地狱火）** | `function buildMinion` |
+| 宝箱模型 | `function buildChest` |
+| 弹道模型（箭矢/奥术弹） | `function buildShot` |
+| **程序化贴图（草地/石板/土地/符文/柔光）** | `function texGrass` / `texStone` / `texDirt` / `texRune` |
+| **商店广场（左侧碎石地，宽度动态）** | `yard=null` / `function layoutShops` |
+| **商店建筑模型 + 位置/点击半径**（竖排在左侧） | `function buildShop` / `const SHOPS=` / `SHOP_X` |
+| **战场右侧传送门**（能量幕/门柱/地面光带） | `function buildPortal` / `texPortal` |
+| 地图装饰（树/石头/草簇的散布） | `function scatterDecor` |
+| **场景搭建：光照/阴影/草地/石板路/法阵光圈/商店建筑** | `function init` |
+| **相机装框（正交范围计算）** | `function resize` |
+| 世界坐标→屏幕坐标（覆盖层用） | `function proj` / `ppu` |
+| **点击拾取（屏幕→格子坐标）** | `function pick` |
+| **每帧渲染主函数**（地面效果/英雄/召唤物/怪物/宝箱/弹道/血条/飘字） | `function draw` |
+| **所有 fx 特效的 3D 实现**（aoe/line/bolt/zap/slash/fall/flame/sword/rock/heal/spark） | `function drawFx` |
+| **角色卡片里的 3D 预览**（独立小 renderer） | `function cardInit` / `cardShow` / `cardTick` |
 
 - **发布 Artifact**（用户在手机上就是看这个链接测试）：`python3 www/_build_artifact.py <输出路径>` 把 html+css+three+rpg3d+rpg 内联成单文件，再用 Artifact 工具发布，**传 url 参数**才能保住同一个 URL：https://claude.ai/code/artifact/463665a7-a08f-4cd2-b42d-0b95f1d6d779
-- **本地验证手段**（省事又省token）：容器里有 Chromium + 全局 playwright，可跑无头浏览器截图看效果：
-  `NODE_PATH=/opt/node22/lib/node_modules node 脚本.js`，executablePath 用 `/opt/pw-browsers/chromium-1194/chrome-linux/chrome`。
-  测试时可把内联出来的 test.html 临时改数值（如 gold=9999、给英雄预置技能）再截图。
+- **本地验证（已固化成脚本，别再手写 playwright）**：`www/_test/run.js` + `www/_test/go.sh`，一条命令干完语法检查→build→跑：
+  | 命令 | 干什么 |
+  |---|---|
+  | `sh www/_test/go.sh shot` | 布阵/战斗/精英试炼各截一张 → `/tmp/rpgtest/s0_setup.png` `s1_fight.png` `s2_trial.png`，末尾打印 FPS 和报错 |
+  | `sh www/_test/go.sh cards` | 招募卡→转职卡→技能书授予全流程点一遍，打印断言（英雄数/金币/tier/技能数）+ 三张截图 |
+  | `sh www/_test/go.sh sim` | **平衡快跑**：裸跑 3 英雄，用逻辑时钟加速（16秒真实≈1500秒逻辑，能跑完25波），打印每波的命/场上怪/存活英雄 |
+  | `sh www/_test/go.sh shot --clip=250,130,340,110` | 只截某块区域放大看（省得截全屏再裁） |
+  - 截图落在 `/tmp/rpgtest/`，直接用 Read 工具看。改 `run.js` 顶部的 `SEED` 可以调测试用的开局（钱/等级/预置技能）。
+  - **改完平衡必跑 `sim`**，和下面记的裸跑基准对比。
+  - FPS 是 swiftshader 软件渲染，只能看"有没有崩"，别当真机参考。
 
 ## 方块战线·玩法现状
 - 横屏。**战斗区 5 行**（`ROWS=5`），横向 `COLS=20`（HCOLS=3 出兵 + BCOLS=17 战线），怪从右来；最多 3 英雄（**开局免费送1个**，之后 100/200 金，招募走卡片弹层）。
@@ -237,6 +262,14 @@
 - **相机是正交（OrthographicCamera）不是透视**：战场 16×3 太宽，透视会把两端格子拉变形；正交下所有格子等大、战线清楚。俯角 `TILT=55°`。`resize()` 里按 stage 宽高比算正交范围，横向必装下 COLS+0.5。
 - 光照：半球光(天蓝/地暗) + 主平行光(带 2048×1024 阴影贴图) + 一盏补光。
 - **低端机自动降级**：`draw()` 末尾统计帧时，连续 120 帧平均 >17ms 就自动关阴影（`shadowOn`）。
+
+## 省 token 复盘（本轮实际踩到的，照着避坑）
+- **锚点表不写行号**：改了十几轮之后行号全漂了，写上去只会让人 `sed -n` 读错位置再重读一次。锚点（函数名/常量名/注释串）才是稳定的。**改动后如果动了锚点文字，顺手把表里那行改掉**——失效的锚点比没有锚点更坑。
+- **替换前先 grep 拿原文**：本轮 3 次 `assert old in s` 失败都是因为凭记忆写 old_string，空格或注释对不上。失败一次 = 重新 grep + 重跑，白花两轮。
+- **批量替换用一个 python 脚本**（`(old,new)` 列表 + 逐条 assert + 最后统一写文件），比逐个 Edit 省往返，而且 assert 会在写盘前拦住不匹配的。
+- **验证脚本已固化**（`www/_test/`），别再手写 playwright。本轮前几次每改一次就重写一遍脚本，是最大的一笔浪费。
+- **截图直接用 `--clip`**，别截全屏再裁剪放大（等于看两张图）。
+- **一次改完再回复**：用户会攒一批需求一起说，中途汇报会让同一份上下文被重复带入。
 
 ## 已否决的方案（别再提）
 - ~~战斗区改 5×n~~ —— **这条已作废**：用户后来重申要 5 行，现在已经是 5 行了（见"玩法现状"）。当初劝退的理由是格子会变小，后来把商店建筑从战场下方挪到左侧、俯角从 55° 放平到 50°，纵向空间换回来了，代价比预估小。留这段是提醒：**用户重申过的需求就照做，别再拿旧结论劝**。

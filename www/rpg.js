@@ -179,7 +179,7 @@ const WAVE_EVERY=35;
 const BOSS_WAVE_MUL=2.5, ELITE_RS=1.2;
 function isBossWave(w){return w%10===0;}
 function isEliteWave(w){return w%10===5;}
-/* 怪物AI：仇恨范围>攻击范围（攻击距离见 MOBS.atkR），仇恨内只做轻微纵向贴靠 */
+/* 怪物AI：进仇恨半径就直接扑向最近的英雄/召唤物，进攻击范围(MOBS.atkR)停下开打 */
 const AGGRO_R=4.6;   // 仇恨半径：进这个圈就扑向英雄。5行后调大过，否则上下两行的怪来不及被吸引
 /* 召唤物不再有活动上限：召出来就一路向右压，波次结束随波消散 */
 /* ===== 召唤物（bears 数组统一管理，kind 决定属性/外观）=====
