@@ -172,18 +172,19 @@ const MOBS={
   boss:  {hp:700,spd:.55,atk:30,reward:70,xp:60,r:.47,lives:3,armor:10,mres:.3,atkR:1.05,color:'#ff3860'},
 };
 /* ---- 金矿 / 伐木场：产出 = 工人数 × 等级（每秒）。等级上限10、工人上限5 ----
-   两栋楼刻意做成不同的性价比曲线，让同样的钱花在不同地方收益不同：
-   · 金矿  =「升级流」：升级便宜(80×lv)、工人贵(250×现有工人)
-             买工人更划算的条件 Lv > 1.77×工人数 → 先堆等级，工人是大额跃升
-   · 伐木场=「人海流」：工人便宜(110×现有工人)、升级贵(150×lv)
-             买工人更划算的条件 Lv > 0.86×工人数 → 几乎总是先招满5个工人再升级
-   满配：金矿 5人×Lv10=50金/s（共 3600+2500=6100金）
-        伐木场 5人×Lv10=50木/s（共 6750+1100=7850金） */
+   平衡推导：升级和招人是互相放大的（P=W×L），所以只比"边际收益/花费"：
+     招人更划算 ⇔ L/Cw(W) > W/Cl(L)。两边都取线性 Cl=a·L、Cw=b·W 时，
+     条件化简成 L > W·√(b/a) —— 也就是 √(b/a) 决定这栋楼的"性格"。
+   · 金矿 = 平衡型：b/a=250/60≈4，√=2 → 交叉点 L=2W，正好对上 10级/5人 的上限比，
+            所以从头到尾等级和工人是交替买的，每一步都要重新算，真的有得选。
+   · 伐木场 = 人海型：b/a=110/150，√≈0.86 → 交叉点 L=0.86W，几乎永远先招满 5 个工人。
+   满配：金矿 5人×Lv10=50金/s（升级2700+工人2500=5200金）
+        伐木场 5人×Lv10=50木/s（升级6750+工人1100=7850金） */
 const INCOME_MAX=10, WORKER_MAX=5;
-function mineCost(lv){return 80*lv;}            // 升级：80/160/…/720
-function millCost(lv){return 150*lv;}           // 升级：150/300/…/1350
-function mineWkCost(w){return 250*w;}           // 招工人：250/500/750/1000
-function millWkCost(w){return 110*w;}           // 招工人：110/220/330/440
+function mineCost(lv){return 60*lv;}            // 金矿升级：60/120/…/540（共2700）
+function millCost(lv){return 150*lv;}           // 伐木场升级：150/300/…/1350（共6750）
+function mineWkCost(w){return 250*w;}           // 金矿招工人：250/500/750/1000（共2500）
+function millWkCost(w){return 110*w;}           // 伐木场招工人：110/220/330/440（共1100）
 /* 波次节奏：出怪后不限时（只记录战斗用时），清场后进入 REST_TIME 秒备战，倒计时结束才出下一波 */
 const REST_TIME=25;
 /* 整波入场的阵型（按波轮换）：雁形/锋矢/横阵/斜阵/方阵 */
@@ -1438,15 +1439,13 @@ function shopHTML(){
     <span>Lv${lv}/${INCOME_MAX} · 工人 ${w}/${WORKER_MAX}</span>
     <span style="color:var(--${isMine?'gold':'wood'})">现产 +${w*lv} ${unit}/s</span></div>`;
   const up=lv>=INCOME_MAX
-    ? `<button class="btn" disabled><b>等级已满</b><span class="sub">Lv${INCOME_MAX}</span></button>`
+    ? `<button class="btn" disabled><b>工人效率</b> 已满</button>`
     : `<button class="btn" data-shop="${openShop}" data-cost="${cost}" data-lock="0" ${gold>=cost?'':'disabled'}>
-        <b>升级 Lv${lv+1}</b> <span class="cost">${cost}金</span>
-        <span class="sub">全部工人变强 · +${w*lv} → +${w*(lv+1)} ${unit}/s</span></button>`;
+        <b>升级工人效率</b> Lv${lv+1} <span class="cost">${cost}金</span></button>`;
   const hire=w>=WORKER_MAX
-    ? `<button class="btn" disabled><b>工人已满</b><span class="sub">${WORKER_MAX}人</span></button>`
+    ? `<button class="btn" disabled><b>工人数量</b> 已满</button>`
     : `<button class="btn" data-worker="${openShop}" data-cost="${wcost}" data-lock="0" ${gold>=wcost?'':'disabled'}>
-        <b>招工人 ${w+1}/${WORKER_MAX}</b> <span class="cost">${wcost}金</span>
-        <span class="sub">多一个人干活 · +${w*lv} → +${(w+1)*lv} ${unit}/s</span></button>`;
+        <b>增加工人数量</b> ${w+1}/${WORKER_MAX} <span class="cost">${wcost}金</span></button>`;
   return head+`<div class="shopGrid inc">${up}${hire}</div>`;
 }
 function refreshAfford(){

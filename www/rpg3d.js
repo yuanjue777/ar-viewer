@@ -472,18 +472,20 @@ function texGlow(){
 
 /* ================= 商店建筑（原来 dock 上那一行，现在摆进地图） ================= */
 const SHOPS=[
-  {k:'skill',name:'技能'},
+  {k:'mill', name:'伐木场'},   // 第1排建筑：伐木场|金矿，上有树、下有矿脉，工人两边跑
+  {k:'mine', name:'金矿'},
+  {k:'skill',name:'技能'},     // 第2排建筑：技能|装备
   {k:'item', name:'装备'},
-  {k:'mill', name:'伐木场'},   // 右上：挨着上排 5 棵树，伐木工出门就到
-  {k:'mine', name:'金矿'},     // 右下：挨着下排 5 处矿脉
 ];
-/* 2×2 摆在战场左侧：左列=技能/装备，右列=金矿/伐木场（SHOPS 顺序 skill,item,mine,mill）*/
-const SHOP_X0B=-3.75, SHOP_DX=1.95, SHOP_Z0=1.32, SHOP_DZ=2.36, SHOP_R=.9;
+/* 左侧广场从上到下四排（可见地面 z≈-0.5~5.03，四排刚好塞满）：
+   ① 5棵树 TREE_Z  ② 伐木场|金矿 INC_Z  ③ 5处矿脉 ORE_Z  ④ 技能|装备 SHOP_Z */
+const SHOP_X0B=-3.75, SHOP_DX=1.95, SHOP_R=.9;
+const INC_Z=1.30, SHOP_Z=3.95;
 /* 宽屏时横向会多出空间：整排商店往左挪(shopShift)，广场跟着变宽，左边就不空了（resize 里算） */
 let SHOP_X0=SHOP_X0B, shopShift=0;
 const SHIFT_MAX=2.6;                               // 最多往左挪这么多
-const shopPos=i=>[SHOP_X0+(i>1?SHOP_DX:0), SHOP_Z0+(i%2)*SHOP_DZ];
-const SHOP_S=1.6;                                  // 建筑整体缩放
+const shopPos=i=>[SHOP_X0+(i%2)*SHOP_DX, i<2?INC_Z:SHOP_Z];
+const SHOP_S=1.4;                                  // 建筑整体缩放（四排要塞下，比 2×2 时略小）
 let shopGroups=[],circles=[],yard=null;
 /* 把商店排 + 脚下广场按当前 shopShift 摆好（init 和 resize 都调） */
 function layoutShops(){
@@ -503,11 +505,11 @@ function layoutShops(){
 
 /* ================= 资源点 + 工人 =================
    上排 5 棵树（伐木工砍）/ 下排 5 处金矿脉（矿工挖），横向跟着广场一起铺开。
-   工人数 = rpg.js 的 mineW/millW（最多 5），从离建筑最近的资源点开始往外占（右→左）。
+   工人数 = rpg.js 的 mineW/millW（最多 5），从离本建筑最近的资源点开始往外占。
    一趟 TRIP 秒，落一个 “+等级×TRIP” 的飘字 —— 正好等于 每秒 工人数×等级 的真实产出。 */
 const NODE_N=5, TRIP=3;
-const TREE_Z=.55, ORE_Z=4.72;        // 相机纵向刚好装得下这两条（可见地面 z≈-0.5~5.03）
-/* ⚠️ 树高别超过 .9：z=.55 处树梢投影 v≈1.85，相机上沿 hh≈2.13，再高就被切头 */
+const TREE_Z=.2, ORE_Z=2.62;         // 树在最上面一排、矿脉夹在两排建筑之间
+/* ⚠️ 树高别超过 .89：z=.2 处树梢投影 v=(H-.31)·cos50°+2.3·sin50°，相机上沿 hh≈2.134 */
 let treeG=[],oreG=[],nodeX=[];
 function layoutNodes(){
   const x0=SHOP_X0-1.0, x1=-.62;
@@ -517,11 +519,11 @@ function layoutNodes(){
     if(oreG[i]) oreG[i].position.x=nodeX[i];
   }
 }
-function buildTree(){                // 高约 .86
+function buildTree(){                // 高约 .76
   const g=mk();
-  add(g,g_cyl(.07,.09,.34,6),0x4a3a2a,0,.17,0);
-  add(g,g_cone(.31,.42,7),0x24422c,0,.49,0);
-  add(g,g_cone(.22,.31,7),0x2d5236,0,.71,0);
+  add(g,g_cyl(.065,.085,.3,6),0x4a3a2a,0,.15,0);
+  add(g,g_cone(.29,.38,7),0x24422c,0,.42,0);
+  add(g,g_cone(.21,.28,7),0x2d5236,0,.62,0);
   return g;
 }
 function buildOre(){                 // 金矿脉：碎石堆 + 露出来的金块
@@ -562,12 +564,14 @@ function drawWorkers(){
     const n=min(NODE_N,(isM?mineW:millW)|0);
     const lv=(isM?mineLv:millLv)|0;
     let idx=0;for(let i=0;i<SHOPS.length;i++)if(SHOPS[i].k===key)idx=i;
-    // 出门口开在靠资源的那一侧（金矿在下→矿脉更下；伐木场在上→树更上）
-    const hp=shopPos(idx), hx=hp[0], hz=hp[1]+(isM?.5:-.5);
-    const nz=isM?ORE_Z:TREE_Z, stand=isM?nz-.42:nz+.42;
+    // 出门口开在靠资源的那一侧（矿脉在建筑下方、树在建筑上方）
+    const hp=shopPos(idx), hx=hp[0], hz=hp[1]+(isM?.45:-.45);
+    const nz=isM?ORE_Z:TREE_Z, stand=isM?nz-.38:nz+.38;
+    // 就近占点：按离本建筑的横向距离排序
+    const order=nodeX.map((v,j)=>j).sort((a,b)=>abs(nodeX[a]-hx)-abs(nodeX[b]-hx));
     for(let i=0;i<n;i++){
       const ph0=wkT/TRIP+i*.37, ph=ph0-Math.floor(ph0), ci=Math.floor(ph0);
-      const nx=nodeX[NODE_N-1-i]||0;         // 先占最近的（建筑在右边）
+      const nx=nodeX[order[i]]||0;
       let x,z,face,swing=0;
       if(ph<.32){                                      // 出门
         const k=ph/.32;x=hx+(nx-hx)*k;z=hz+(stand-hz)*k;
@@ -951,7 +955,7 @@ function draw(){
   /* 建筑名牌（覆盖层，跟着建筑走） */
   for(let i=0;i<SHOPS.length;i++){
     const [sx,sz]=shopPos(i);
-    const u=ppu(sx,.9,sz), sp=proj(sx,0,sz+.86);   // 建筑放大后名牌要往下挪，别压在墙上
+    const u=ppu(sx,.9,sz), sp=proj(sx,0,sz+.75);   // 名牌画在建筑正下方
     const on=openShop===SHOPS[i].k;
     const fs=max(11,.23*u);
     octx.textAlign='center';                     // 名牌画在建筑正下方（2×2 时上方总是别的建筑）
