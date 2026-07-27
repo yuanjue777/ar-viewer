@@ -183,6 +183,7 @@ const BOSS_WAVE_MUL=3.0, ELITE_RS=1.2;
 function isBossWave(w){return w%10===0;}
 function isEliteWave(w){return w%10===5;}
 /* 怪物AI：进仇恨半径就直接扑向最近的英雄/召唤物，进攻击范围(MOBS.atkR)停下开打 */
+const MS_EXTRA=.5;   // 多重射击：次级目标的检索范围比主目标多这么多格
 const AGGRO_R=4.6;   // 仇恨半径：进这个圈就扑向英雄。5行后调大过，否则上下两行的怪来不及被吸引
 /* 召唤物不再有活动上限：召出来就一路向右压，波次结束随波消散 */
 /* ===== 召唤物（bears 数组统一管理，kind 决定属性/外观）=====
@@ -758,11 +759,13 @@ function update(dt){
       if(ms){
         let extra=Math.floor(ms/2)+((ms%2)&&Math.random()<.5?1:0);
         if(extra>0){
+          // 次级目标的检索范围比主目标再放宽 MS_EXTRA 格（横向和纵向都放宽），
+          // 否则常常只打得到 1 个、打不满 extra 个
           const others=mobs.filter(m=>{
             if(m.dead||m===best)return false;
-            if(h.cls==='archer'&&Math.abs(m.y-h.row)>1.6)return false;
-            if(h.cls==='warrior'&&Math.abs(m.y-h.row)>.7)return false;
-            return Math.hypot(m.x-hx,(m.y+.5)-hy)<=h.range+m.r;
+            if(h.cls==='archer'&&Math.abs(m.y-h.row)>2.3+MS_EXTRA)return false;
+            if(h.cls==='warrior'&&Math.abs(m.y-h.row)>1.15+MS_EXTRA)return false;
+            return Math.hypot(m.x-hx,(m.y+.5)-hy)<=h.range+m.r+MS_EXTRA;
           }).sort((a,b)=>a.x-b.x).slice(0,extra);
           for(const o of others)attack(h,hx,hy,o,.7,'#7fe8ff');
         }
@@ -1387,21 +1390,22 @@ function closeShop(){
 }
 function shopHTML(){
   if(openShop==='skill'){
-    return `<div class="card shopHead"><b>技能商店</b></div>`+
+    return `<div class="card shopHead"><b>技能商店</b></div><div class="shopGrid">`+
       Object.entries(CATS).map(([cat,c])=>
-        `<button class="btn grow" data-pack="${cat}" data-cost="${PACK_COST}" data-lock="0" ${gold>=PACK_COST?'':'disabled'}>
+        `<button class="btn" data-pack="${cat}" data-cost="${PACK_COST}" data-lock="0" ${gold>=PACK_COST?'':'disabled'}>
           <b style="color:${c.color}">${c.label}</b> <span class="cost">${PACK_COST}金</span>
-          <span class="sub">随机${PACK_N}本${c.label}系技能书</span></button>`).join('')+
-      `<button class="btn grow" data-pack="roll" data-cost="${ROLL_COST}" data-lock="0" ${gold>=ROLL_COST?'':'disabled'}>
+          <span class="sub">随机${PACK_N}本${c.label}系</span></button>`).join('')+
+      `<button class="btn" data-pack="roll" data-cost="${ROLL_COST}" data-lock="0" ${gold>=ROLL_COST?'':'disabled'}>
         <b style="color:#f0c46a">ROLL</b> <span class="cost">${ROLL_COST}金</span>
-        <span class="sub">全池·最便宜（新书替换旧书）</span></button>`;
+        <span class="sub">全池·最便宜（换掉旧书）</span></button></div>`;
   }
   if(openShop==='item'){
-    return `<div class="card shopHead"><b>装备商店</b></div>`+
+    return `<div class="card shopHead"><b>装备商店</b></div><div class="shopGrid eq">`+
       Object.entries(EQ_TIERS).map(([k,t])=>
-        `<button class="btn grow" data-eqroll="${k}" data-cost="${t.cost}" data-lock="0" ${gold>=t.cost?'':'disabled'}>
+        `<button class="btn" data-eqroll="${k}" data-cost="${t.cost}" data-lock="0" ${gold>=t.cost?'':'disabled'}>
           <b>${t.n}</b> <span class="cost">${t.cost}金</span>
-          <span class="sub">白${t.w.common}/绿${t.w.fine}/蓝${t.w.rare}/紫${t.w.epic}%</span></button>`).join('');
+          <span class="sub">白${t.w.common}/绿${t.w.fine}/蓝${t.w.rare}/紫${t.w.epic}%</span></button>`).join('')+
+      `</div>`;
   }
   const isMine=openShop==='mine';
   const lv=isMine?mineLv:millLv, cost=isMine?mineCost(lv):millCost(lv);
@@ -1508,7 +1512,7 @@ function renderInv(){
   const total=inv.reduce((s,it)=>s+sellValue(it),0);
   const nEq=inv.filter(canSell).length;
   sb.disabled=!nEq;
-  sb.innerHTML=nEq?`出售装备<br><span style="color:var(--gold);font-size:9px">${nEq}件 +${total}金</span>`:'出售<br>装备';
+  sb.innerHTML=nEq?`出售${nEq}件<br><span style="color:var(--gold)">+${total}金</span>`:'出售<br>装备';
   inv.forEach((it,i)=>{
     const el=document.createElement('div');
     el.className='book';

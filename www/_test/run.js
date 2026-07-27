@@ -138,6 +138,10 @@ const SEED=`
     await p.evaluate(()=>{wave=12;trialCd.elite=0;startTrial('elite');});
     await p.waitForTimeout(3000);
     await shot('s2_trial',cl);                        // 精英试炼+宝箱
+    // 底栏 UI：技能商店 2×2 + 背包两行（只截底栏那一条，省得看全屏）
+    await p.evaluate(()=>{gold=99999;setShop('skill');buyPack('agi');buyEquip('low');renderInv();});
+    await p.waitForTimeout(400);
+    await shot('s3_bottom',{x:0,y:H-86,width:W,height:86});
     const fps=await p.evaluate(()=>new Promise(r=>{let n=0;const t0=performance.now();
       (function f(){n++;performance.now()-t0<2000?requestAnimationFrame(f):r((n/((performance.now()-t0)/1000)).toFixed(1));})();}));
     console.log('FPS(swiftshader软渲染，只看有没有崩，别当真机参考):',fps);
