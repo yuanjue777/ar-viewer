@@ -7,35 +7,41 @@ const MAX_SLOTS=4, MAX_SKILL_LV=10, MAX_EQUIP=6, MAX_HERO_LV=15;   // 装备栏2
 const COL_CLASS=['mage','archer','warrior'];
 /* bat=基础攻击间隔s wep=武器基础攻击 main=主属性(加攻) grow=每级属性成长 */
 const CLASSES={
-  mage:  {name:'法师',color:'#4f8dff',hpB:60,wep:6, bat:1.9,baseArmor:1,range:4.5,splash:1.1,main:'int',
+  mage:  {name:'法师',color:'#4f8dff',hpB:60,wep:6, bat:1.6,baseArmor:1,range:4.5,splash:1.1,main:'int',
           attr:{str:8, agi:12,int:24},grow:{str:1.1,agi:1.4,int:3.2},desc:'远程溅射·主智力'},
-  archer:{name:'游侠',color:'#57d474',hpB:70,wep:8, bat:1.3,baseArmor:2,range:6,  splash:0,  main:'agi',
+  archer:{name:'游侠',color:'#57d474',hpB:70,wep:8, bat:1.4,baseArmor:2,range:6,  splash:0,  main:'agi',
           attr:{str:10,agi:22,int:12},grow:{str:1.4,agi:2.9,int:1.5},desc:'中程速射·主敏捷'},
-  warrior:{name:'战士',color:'#ff5d5d',hpB:90,wep:15,bat:1.7,baseArmor:4,range:1.15,splash:0, main:'str',
+  warrior:{name:'战士',color:'#ff5d5d',hpB:90,wep:15,bat:1.5,baseArmor:4,range:1.15,splash:0, main:'str',
           attr:{str:22,agi:10,int:8}, grow:{str:2.7,agi:1.3,int:1.0},desc:'近战坦克·主力量'},
 };
-/* 转职分支：每职业2条路线，各带1个专精技能（专精用金+木升级，上限Lv5） */
+/* 转职分支：**每职业3条路线**，各带1个专精天赋（专精用金+木升级，上限Lv10） */
 const ADV={
   warrior:[
-    {key:'berserker',name:'狂战士',atk:1.6,hp:1.5,bat:.9, range:.25,splash:0},
-    {key:'guard',    name:'护卫',  atk:1.3,hp:1.9,bat:.95,range:.2, splash:0},
+    {key:'berserker',name:'狂战士',atk:1.6, hp:1.5, bat:.9, range:.25,splash:0},
+    {key:'guard',    name:'护卫',  atk:1.3, hp:1.9, bat:.95,range:.2, splash:0},
+    {key:'bandit',   name:'强盗',  atk:1.45,hp:1.35,bat:.88,range:.25,splash:0},
   ],
   archer:[
-    {key:'elf',  name:'精灵游侠',atk:1.4,hp:1.3, bat:.85,range:1.5,splash:0},
-    {key:'death',name:'死亡射手',atk:1.6,hp:1.25,bat:.9, range:1.2,splash:0},
+    {key:'musket',name:'火枪兵',  atk:1.5,hp:1.3, bat:.95,range:1.5,splash:0},
+    {key:'elf',   name:'精灵游侠',atk:1.4,hp:1.3, bat:.85,range:1.5,splash:0},
+    {key:'xbow',  name:'弩手',    atk:1.6,hp:1.35,bat:1,  range:1.8,splash:0},
   ],
   mage:[
-    {key:'priest',name:'牧师',  atk:1.4,hp:1.5,bat:1,range:1,splash:.2},
-    {key:'druid', name:'德鲁伊',atk:1.4,hp:1.4,bat:1,range:1,splash:.2},
+    {key:'summoner',name:'召唤师',atk:1.35,hp:1.45,bat:1,range:1,  splash:.2},
+    {key:'priest',  name:'牧师',  atk:1.4, hp:1.5, bat:1,range:1,  splash:.2},
+    {key:'archmage',name:'大法师',atk:1.5, hp:1.35,bat:1,range:1.2,splash:.3},
   ],
 };
 const SPECS={
   berserker:{n:'血怒',    d:lv=>`失血越多输出越高：攻击+失血比×${15+10*lv}%，攻速+失血比×${30+15*lv}点`},
-  guard:    {n:'坚壁',    d:lv=>`护甲+${3*lv}`},
+  guard:    {n:'护甲光环',d:lv=>`3格内友方英雄+${5+lv}护甲，自己+${(5+lv)*2}（不叠加取最高）`},
+  bandit:   {n:'掠夺',    d:lv=>`每次普攻偷取 ${30+5*lv} 金币`},
+  musket:   {n:'精准射击',d:lv=>`弹道瞬发（无飞行时间）；普攻附加 敏×${(0.15+0.05*lv).toFixed(2)} 魔法伤害`},
   elf:      {n:'迅捷',    d:lv=>`攻击间隔额外-${(0.1+0.01*lv).toFixed(2)}s`},
-  death:    {n:'死神收割',d:lv=>`每有敌人死亡+0.5敏捷，上限${20+10*(lv-1)}`},
-  priest:   {n:'治愈祷言',d:lv=>`主动(30蓝,CD8s)：回复全体英雄 30+智×${(0.6+0.4*lv).toFixed(1)} 生命`},
-  druid:    {n:'自然之力',d:lv=>`召唤物属性+${20*lv}%`},
+  xbow:     {n:'重弩',    d:lv=>`攻击间隔+0.2s；攻击力与最终伤害各提升「攻击间隔×75% + ${5*lv}%」`},
+  summoner: {n:'召唤精通',d:lv=>`召唤物属性+${20+2*lv}%`},
+  priest:   {n:'治愈祷言',d:lv=>`主动(30蓝,CD2s)：回复全体英雄 智×${(0.5*lv).toFixed(1)} 生命`},
+  archmage: {n:'奥术专精',d:lv=>`技能CD-${10+2*lv}%`},
 };
 function advOf(h){return h.tier?ADV[h.cls][h.branch]:null;}
 function specCost(lv){return {g:60+40*(lv-1),w:40+25*(lv-1)};}   // 专精升级费用（当前级→下一级）
@@ -89,6 +95,9 @@ const BOOK_COST={qgreen:40,qblue:80,qpurple:150};
 function bookCost(name){return BOOK_COST[SKB[name].q]||0;}
 /* 出售：只有装备能卖，技能书不能卖；返还压低到roll成本的40~60% */
 const SELL_EQ={common:8,fine:18,rare:40,epic:80};
+/* 装备穿上时按品质付费（和技能书的学习费一个思路：roll只是出货，装备要另付钱） */
+const EQUIP_COST={common:15,fine:35,rare:70,epic:140,legend:250};
+function equipCost(it){return EQUIP_COST[eqDef(it).q]||0;}
 function canSell(it){return it.t==='eq';}
 function sellValue(it){return canSell(it)?(SELL_EQ[eqDef(it).q]||8):0;}
 
@@ -149,7 +158,7 @@ function eqDesc(def){
   if(s.armor)p.push('护甲+'+s.armor);
   if(s.aspd)p.push('攻速+'+s.aspd);
   if(s.cdr)p.push('技能CD-'+Math.round(s.cdr*100)+'%');
-  if(s.bat)p.push('攻击间隔-'+s.bat);
+  if(s.bat)p.push('攻击间隔-'+s.bat+'(唯一特效)');
   if(s.block)p.push('格挡普攻伤害'+s.block);
   if(s.mpre)p.push('回蓝+'+s.mpre+'/s');
   if(s.range)p.push('射程+'+s.range+'格');
@@ -259,7 +268,8 @@ function calc(h){
     const s=eqDef(e).stats;
     eqAtk+=s.atk||0;eqArmor+=s.armor||0;eqHp+=s.hp||0;eqAspd+=s.aspd||0;
     eqStr+=s.str||0;eqAgi+=s.agi||0;eqInt+=s.int||0;eqMres+=s.mres||0;
-    eqCdr+=s.cdr||0;eqBat+=s.bat||0;eqBlock+=s.block||0;eqMpre+=s.mpre||0;eqRange+=s.range||0;
+    eqCdr+=s.cdr||0;eqBlock+=s.block||0;eqMpre+=s.mpre||0;eqRange+=s.range||0;
+    eqBat=Math.max(eqBat,s.bat||0);            // 雷鸣弓的减攻击间隔是唯一特效，取最高不叠加
     eqCrit+=s.crit||0;eqSummon+=s.summon||0;eqTitan+=s.titan||0;
     eqSunder=Math.max(eqSunder,s.sunder||0);   // 破甲是唯一特效，取最高不叠加
   }
@@ -279,16 +289,29 @@ function calc(h){
   h.int=Math.round((b.attr.int+b.grow.int*(h.lv-1))*am)+eqInt+Math.round(h.soulInt||0)+(b.main==='int'?aura:0);
   h.atk=Math.round(b.wep*(a?a.atk:1)+h[b.main]+eqAtk+ts*5);
   h.maxHp=Math.round((b.hpB+h.str*8)*(a?a.hp:1)+eqHp);
-  // 护卫专精：坚壁加甲
-  h.armor=Math.round((b.baseArmor+h.agi/7+eqArmor+ts*2+(key==='guard'?3*sp:0))*10)/10;
+  // 护卫专精·护甲光环：3格内友方英雄 +5+lv 甲，护卫自己双倍（不叠加取最高）
+  let armAura=0;
+  for(const o of heroes){
+    if(!o.alive||!o.tier||advOf(o).key!=='guard')continue;
+    if(o!==h&&Math.hypot((o.x||0)-(h.x||0),o.row-h.row)>3)continue;
+    armAura=Math.max(armAura,(5+(o.specLv||1))*(o===h?2:1));
+  }
+  h.armor=Math.round((b.baseArmor+h.agi/7+eqArmor+ts*2+armAura)*10)/10;
   h.mres=Math.min(.75,.25+eqMres+ts*.005);
   // 魔兽/DotA公式：每秒攻击=(1+攻速/100)/BAT；1敏=1攻速；上限400⇒最多5/BAT次每秒
   // 精灵游侠专精：迅捷额外降BAT
   const bat=Math.max(.35,b.bat*(a?a.bat:1)-eqBat-(key==='elf'?.1+.01*sp:0));
   h.bat=Math.round(bat*100)/100;   // 基础攻击间隔(BAT)：只含职业/转职/装备/迅捷，不含攻速
+  /* 弩手·重弩：间隔+0.2s，换来「攻击间隔×75% + 5%×等级」的攻击力和最终伤害加成 */
+  h.dmgMul=1;
+  if(key==='xbow'){
+    h.bat=Math.round((h.bat+.2)*100)/100;
+    const r=h.bat*.75+.05*sp;
+    h.atk=Math.round(h.atk*(1+r));h.dmgMul=1+r;
+  }
   h.ias=Math.min(400,h.agi+eqAspd);
-  h.interval=bat/(1+h.ias/100);
-  h.cdr=Math.min(.5,eqCdr+.04*(h.skills['CD光环']||0));
+  h.interval=h.bat/(1+h.ias/100);
+  h.cdr=Math.min(.5,eqCdr+.04*(h.skills['CD光环']||0)+(key==='archmage'?(10+2*sp)/100:0));
   h.block=eqBlock;
   h.critAdd=eqCrit/100;      // 射神炮等装备提供的额外暴击率
   h.sunder=eqSunder;         // 幽冥刃：普攻削甲（唯一）
@@ -495,10 +518,6 @@ function onKill(){
       const cap=10+5*(sk-1);
       if(h.soulInt<cap){h.soulInt=Math.min(cap,h.soulInt+.5);calc(h);dirty=true;}
     }
-    if(h.tier&&advOf(h).key==='death'){
-      const cap=20+10*((h.specLv||1)-1);
-      if(h.deathAgi<cap){h.deathAgi=Math.min(cap,h.deathAgi+.5);calc(h);dirty=true;}
-    }
   }
   if(dirty&&sel)renderInfo();
 }
@@ -556,7 +575,8 @@ function update(dt){
   if(hudAcc>=.25){
     hudAcc=0;updateHUD();
     // 主属光环按距离生效，英雄会推进，所以定期重算一次属性
-    if(heroes.some(h=>h.skills['主属光环']))for(const h of heroes){const rt=h.hp/h.maxHp;calc(h);h.hp=h.maxHp*rt;}
+    if(heroes.some(h=>h.skills['主属光环']||(h.tier&&advOf(h).key==='guard')))
+      for(const h of heroes){const rt=h.hp/h.maxHp;calc(h);h.hp=h.maxHp*rt;}
   }
   /* 怪物：视野外向左推进；**进入仇恨范围就直接扑向最近的英雄/召唤物**（不是擦着走过去），
      进攻击范围停下开打。所以只要英雄不死，上下两行的怪也会被拉过来，理论上不漏。 */
@@ -745,8 +765,8 @@ function update(dt){
       if(h.specCd<=0&&h.mp>=30){
         const hurt=heroes.filter(o=>o.alive&&o.hp<o.maxHp);
         if(hurt.length){
-          h.specCd=8*(1-h.cdr);h.mp-=30;
-          const heal=30+h.int*(.6+.4*h.specLv);
+          h.specCd=2*(1-h.cdr);h.mp-=30;
+          const heal=h.int*h.specLv*.5;
           for(const o of hurt){
             o.hp=Math.min(o.maxHp,o.hp+heal);
             dnum(o.x,o.row+.5,heal,'#7effc0');
@@ -859,7 +879,12 @@ function effInterval(h){
 function attack(h,hx,hy,m,mul,color){
   mul=mul||1;
   h.anim=ANIM_T;
-  let dmg=effAtk(h)*mul,c=color;
+  const adv=advOf(h), akey=adv?adv.key:'', asp=h.specLv||1;
+  let dmg=effAtk(h)*mul*(h.dmgMul||1),c=color;   // dmgMul = 弩手·重弩的最终伤害加成
+  if(akey==='bandit'){                            // 强盗·掠夺：每次普攻偷金币
+    const st=30+5*asp;gold+=st;
+    nums.push({x:h.x,y:h.row+.1,txt:'+'+st,color:'#f0c46a',t:.8,max:.8});
+  }
   // 致命一击：(15+5lv)%几率 (140+10lv)%伤害
   const cr=h.skills['致命一击'];
   const critC=(cr?.15+.05*cr:0)+(h.critAdd||0);   // 技能暴击率 + 装备暴击率
@@ -876,6 +901,13 @@ function attack(h,hx,hy,m,mul,color){
     if(h.splash>0)for(const o of mobs){
       if(o!==m&&!o.dead&&Math.hypot(o.x-m.x,o.y-m.y)<=h.splash+o.r)physDamage(o,dmg*.6);
     }
+  }else if(akey==='musket'){
+    /* 火枪兵·精准射击：弹道瞬发（参考 DotA 火枪），没有飞行时间，直接结算 + 一条枪线 */
+    physDamage(m,dmg,c);
+    if(poison)magDamage(m,poison,'#7ce87c');
+    if(cleave)cleaveAround(m,dmg,cleave);
+    magDamage(m,h.agi*(.15+.05*asp),'#ffd08a');   // 天赋：平A附加敏捷伤害
+    fx.push({type:'bolt',x1:hx,y1:hy,x2:m.x,y2:m.y+.5,t:.12,max:.12,color:'#ffd08a'});
   }else{
     shots.push({x:hx,y:hy,target:m,tx:m.x,ty:m.y+.5,a:Math.atan2((m.y+.5)-hy,m.x-hx),
       kind:h.cls==='mage'?'orb':'arrow',
@@ -924,8 +956,8 @@ const SUMMONS={'召唤熊德':'bear','火元素':'fire','水元素':'water','地
 function summon(h,kind,lv){
   const d=MINIONS[kind];
   if(!mobs.length)return false;   // 同种召唤物可以叠着召（CD流人海战术）
-  // 德鲁伊·自然之力：召唤物属性+20%×专精等级
-  const sm=((h.tier&&advOf(h).key==='druid')?1+.2*h.specLv:1)*(h.sumB||1);
+  // 召唤师·召唤精通：召唤物属性 +(20+2×专精等级)%
+  const sm=((h.tier&&advOf(h).key==='summoner')?1+(20+2*h.specLv)/100:1)*(h.sumB||1);
   const hp=(d.hpB+h.int*d.hpI*lv)*sm, atk=(d.atkB+h.int*d.atkI*lv)*sm;
   // 同排已有其它召唤物时错开站位，避免模型重叠
   const cnt=bears.filter(b=>!b.dead&&b.row===h.row).length;
@@ -1252,7 +1284,7 @@ function openGiveCards(idx){
     cardInfo.innerHTML=`<div class="in" style="color:${q.c}">${d.n}</div>
       <div class="iq" style="color:${q.c}">[${q.n}]</div>
       <div class="id">${eqDesc(d)}</div>
-      <div class="ix">每位英雄 ${MAX_EQUIP} 个装备位<br>装满后先在面板里双击脱下</div>`;
+      <div class="ix">装备费 <b style="color:var(--gold)">${equipCost(it)}金</b><br>每位英雄 ${MAX_EQUIP} 个装备位<br>装满后先在面板里双击脱下</div>`;
   }
   cardInfo.classList.add('show');
   cardsEl.classList.add('give');
@@ -1269,7 +1301,7 @@ function openGiveCards(idx){
       else if(!lv&&Object.keys(h.skills).length>=MAX_SLOTS)why='技能位已满';
       else if(gold<cost)why='学费不足';
       else why='';
-    }
+    }else if(gold<equipCost(it))why='金币不足';
     const ok=!why;
     const el=document.createElement('div');
     el.className='chcard'+(ok?'':' no');
@@ -1554,7 +1586,7 @@ function invCell(it,i){
     const d=eqDef(it),q=qOf(it);
     el.style.borderColor=q.c;
     el.style.color=q.c;
-    el.innerHTML=`${d.s}<small>${q.n}</small>`;
+    el.innerHTML=`${d.s}<small style="color:var(--gold)">${equipCost(it)}金</small>`;
   }
   return el;
 }
@@ -1597,6 +1629,9 @@ function applyItem(idx,h,slot){
     calc(h);
     fx.push({type:'ring',x:h.x,y:h.row+.5,rr:.6,t:.4,max:.4,color:CATS[SKB[it.name].cat].color});
   }else{
+    const ec=equipCost(it);
+    if(gold<ec){showToast(`装备 <b>${eqDef(it).n}</b> 需要 <b style="color:var(--gold)">${ec}金</b>`);return;}
+    gold-=ec;updateHUD();refreshAfford();
     // 拖到已占用的装备栏 → 覆盖，旧装备退回背包
     if(slot&&slot.eq!=null&&slot.eq<h.equips.length){
       const old=h.equips[slot.eq];
@@ -1607,7 +1642,7 @@ function applyItem(idx,h,slot){
       renderInv();if(selHero()===h)renderInfo();
       return;
     }
-    if(h.equips.length>=MAX_EQUIP){showToast('装备位已满，拖到某件装备上可替换');return;}
+    if(h.equips.length>=MAX_EQUIP){gold+=ec;showToast('装备位已满，拖到某件装备上可替换');return;}
     h.equips.push(it);
     const ratio=h.hp/h.maxHp;calc(h);h.hp=Math.round(h.maxHp*ratio);
     fx.push({type:'ring',x:h.x,y:h.row+.5,rr:.6,t:.4,max:.4,color:qOf(it).c});

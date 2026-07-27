@@ -115,7 +115,8 @@ function buildHero(cls,tier,branch){
   const dk=shade3(c,.5), lt=shade3(c,1.42);
   const SKIN=0xf6d9bb, EYE=0x2b2436, GOLD=0xf0c46a;
   const HAIR=cls==='mage'?0x7a5a9a:cls==='archer'?0xe8c46a:0xd4713a;
-  const CLOAK=branch?shade3(c,1.15):shade3(c,.62);
+  /* 三条转职支线各给披风一个色调，卡片上一眼能区分 */
+  const CLOAK=shade3(c,[.62,1.15,.86][branch]||1);
   const HY=.66;                                   // 头中心高度
 
   /* ---- 腿 + 鞋（短腿，二头身） ---- */
