@@ -69,20 +69,35 @@ const SEED=`
     await p.evaluate(()=>document.querySelectorAll('#cardRow .chcard')[0].click());
     await p.waitForTimeout(400);
     console.log('转职 tier/branch:',await p.evaluate(()=>heroes[0].tier+'/'+heroes[0].branch));
-    await p.evaluate(()=>{setShop('skill');buyPack('int');renderInv();});
+    await p.evaluate(()=>{heroes.push(makeHero('archer',ROW0,1),makeHero('mage',ROW0+2,0));
+      heroes.forEach(h=>{calc(h);h.hp=h.maxHp;h.mp=h.maxMp;});
+      setShop('skill');buyPack('int');renderInv();});
     await p.waitForTimeout(400);
     await p.evaluate(()=>{const el=document.querySelector('#invItems .book');
       el.dispatchEvent(new PointerEvent('pointerdown',{clientX:100,clientY:400,bubbles:true}));
       window.dispatchEvent(new PointerEvent('pointerup',{clientX:100,clientY:400,bubbles:true}));});
-    await p.waitForTimeout(400);
-    console.log('点书后信息区有详情+学习按钮:',await p.evaluate(()=>!!document.querySelector('#info [data-give]')));
-    await p.evaluate(()=>document.querySelector('#info [data-give]').click());
     await p.waitForTimeout(1300);
+    console.log('技能卡片层：左详情',await p.evaluate(()=>!!document.querySelector('#cardInfo.show')),
+                '侧栏数',await p.evaluate(()=>document.querySelectorAll('#cardRow .chside').length),
+                '技能格',await p.evaluate(()=>document.querySelectorAll('#cardRow .chside .row').length));
     await shot('k3_give');
     const before=await p.evaluate(()=>Object.keys(heroes[0].skills).length);
     await p.evaluate(()=>document.querySelectorAll('#cardRow .chcard')[0].click());
     await p.waitForTimeout(400);
     console.log('技能数:',before,'→',await p.evaluate(()=>Object.keys(heroes[0].skills).length));
+    // 装备卡片层：右边应显示6行装备栏
+    await p.evaluate(()=>{buyEquip('low');renderInv();});
+    await p.waitForTimeout(300);
+    await p.evaluate(()=>{const el=[...document.querySelectorAll('#invItems .book')].pop();
+      el.dispatchEvent(new PointerEvent('pointerdown',{clientX:100,clientY:400,bubbles:true}));
+      window.dispatchEvent(new PointerEvent('pointerup',{clientX:100,clientY:400,bubbles:true}));});
+    await p.waitForTimeout(1300);
+    console.log('装备卡片层：每卡装备行数',await p.evaluate(()=>document.querySelectorAll('#cardRow .chpair')[0].querySelectorAll('.chside .row').length));
+    await shot('k4_eq');
+    const beq=await p.evaluate(()=>heroes[0].equips.length);
+    await p.evaluate(()=>document.querySelectorAll('#cardRow .chcard')[0].click());
+    await p.waitForTimeout(300);
+    console.log('装备数:',beq,'→',await p.evaluate(()=>heroes[0].equips.length));
 
   }else if(scene==='sim'){
     /* 平衡测试：不 seed（裸跑），用逻辑时钟快跑，不等真实时间 */

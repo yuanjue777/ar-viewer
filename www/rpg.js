@@ -1046,6 +1046,7 @@ function selHero(){return sel?heroAt(sel.col,sel.row):null;}
 const cardsEl=document.getElementById('cards'),
       cardRow=document.getElementById('cardRow'),
       cardTitle=document.getElementById('cardTitle'),
+      cardInfo=document.getElementById('cardInfo'),
       hireBtn=document.getElementById('hireBtn'),
       hireLvT=document.getElementById('hireLv');
 let cardMode=null;                       // 'hire' | 'adv'
@@ -1061,8 +1062,9 @@ function attrRows(base,grow,main){
   }).join('');
 }
 function closeCards(){
-  cardMode=null;cardsEl.classList.remove('show');
-  cardRow.innerHTML='';R3.cardHide();
+  cardMode=null;cardsEl.classList.remove('show');cardsEl.classList.remove('give');
+  cardRow.innerHTML='';cardInfo.innerHTML='';cardInfo.classList.remove('show');
+  R3.cardHide();
 }
 /* 招募：三张职业卡，选一张就把英雄放进该职业那一列的空位 */
 function openHireCards(){
@@ -1143,7 +1145,32 @@ function openAdvCards(h){
   cardsEl.classList.add('show');
   R3.cardShow(views);
 }
-/* 背包里点技能书/装备 → 弹出当前英雄的卡片（按购买顺序从左往右），点谁给谁 */
+/* 卡片右侧：该英雄当前的技能栏(1×4) */
+function sideSkills(h,nm){
+  const names=Object.keys(h.skills);
+  let out=`<div class="st">技能栏 ${names.length}/${MAX_SLOTS}</div>`;
+  for(let i=0;i<MAX_SLOTS;i++){
+    const n=names[i];
+    if(!n){out+='<div class="row em">空</div>';continue;}
+    const d=SKB[n],up=n===nm&&h.skills[n]<MAX_SKILL_LV;
+    out+=`<div class="row${n===nm?' hi':''}" style="border-color:${QC[d.q]};color:${CATS[d.cat].color}">
+      <b>${n}</b><small>Lv${h.skills[n]}${up?` <span style="color:#f0c46a">→ Lv${h.skills[n]+1}</span>`:''}</small></div>`;
+  }
+  return out;
+}
+/* 卡片右侧：该英雄当前的装备栏（6行，带属性） */
+function sideEquips(h){
+  let out=`<div class="st">装备栏 ${h.equips.length}/${MAX_EQUIP}</div>`;
+  for(let i=0;i<MAX_EQUIP;i++){
+    const e=h.equips[i];
+    if(!e){out+='<div class="row em">空</div>';continue;}
+    const d=eqDef(e),q=qOf(e);
+    out+=`<div class="row" style="border-color:${q.c};color:${q.c}"><b>${d.n}</b><small>${eqDesc(d)}</small></div>`;
+  }
+  return out;
+}
+/* 背包里点技能书/装备 → 弹出当前英雄的卡片（按购买顺序从左往右），点谁给谁
+   左边=物品详情（不再进信息区），每张卡右边=该英雄的技能栏/装备栏 */
 function openGiveCards(idx){
   const it=inv[idx];
   if(!it){closeCards();return;}
@@ -1154,6 +1181,21 @@ function openGiveCards(idx){
   cardTitle.innerHTML=isBook
     ? `把 <b style="color:${QC[SKB[nm].q]}">${nm}</b> 教给哪位英雄？`
     : `把 <b style="color:${qOf(it).c}">${nm}</b> 装备给哪位英雄？`;
+  if(isBook){
+    const d=SKB[nm];
+    cardInfo.innerHTML=`<div class="in" style="color:${CATS[d.cat].color}">${nm}</div>
+      <div class="iq"><span style="color:${QC[d.q]}">[${QN[d.q]}]</span> <span style="color:${CATS[d.cat].color}">${CATS[d.cat].label}系</span></div>
+      <div class="id">${d.desc}</div>
+      <div class="ix">学习费 <b style="color:var(--gold)">${bookCost(nm)}金</b><br>同名书可升级，上限 Lv${MAX_SKILL_LV}<br>每位英雄 ${MAX_SLOTS} 个技能位</div>`;
+  }else{
+    const d=eqDef(it),q=qOf(it);
+    cardInfo.innerHTML=`<div class="in" style="color:${q.c}">${d.n}</div>
+      <div class="iq" style="color:${q.c}">[${q.n}]</div>
+      <div class="id">${eqDesc(d)}</div>
+      <div class="ix">每位英雄 ${MAX_EQUIP} 个装备位<br>装满后先在面板里双击脱下</div>`;
+  }
+  cardInfo.classList.add('show');
+  cardsEl.classList.add('give');
   const views=[];
   cardRow.innerHTML='';
   heroes.forEach((h,i)=>{
@@ -1180,7 +1222,13 @@ function openGiveCards(idx){
       closeCards();
       applyItem(idx,h);
     };
-    cardRow.appendChild(el);
+    const pair=document.createElement('div');
+    pair.className='chpair';
+    const side=document.createElement('div');
+    side.className='chside';
+    side.innerHTML=isBook?sideSkills(h,nm):sideEquips(h);
+    pair.appendChild(el);pair.appendChild(side);
+    cardRow.appendChild(pair);
     views.push({canvas:el.querySelector('canvas'),cls:h.cls,tier:h.tier,branch:h.branch,phase:i*2.1});
   });
   cardsEl.classList.add('show');
@@ -1203,21 +1251,6 @@ cardsEl.onclick=ev=>{if(ev.target===cardsEl)closeCards();};
 function renderInfo(){
   if(over)return;
   if(openShop){info.innerHTML=shopHTML();return;}
-  if(invSel!=null&&inv[invSel]){
-    const it=inv[invSel];
-    if(it.t==='book'){
-      const d=SKB[it.name];
-      info.innerHTML=`<div class="card"><b style="color:${CATS[d.cat].color}">${it.name}</b>
-        <span style="color:${QC[d.q]}">[${QN[d.q]}]</span>
-        <span>${CATS[d.cat].label}系技能书</span><br><span>${d.desc}</span><br><span>同名升级（上限Lv${MAX_SKILL_LV}）</span></div>
-        <button class="btn" data-give="${invSel}">学习 ▸ 选英雄<br><span class="sub">学习费 <span class="cost">${bookCost(it.name)}金</span></span></button>`;
-    }else{
-      const d=eqDef(it),q=qOf(it);
-      info.innerHTML=`<div class="card"><b style="color:${q.c}">${d.n}</b> <span style="color:${q.c}">[${q.n}]</span><br>
-        <span>${eqDesc(d)}</span><br><span>点这件装备 → 选英雄卡片穿戴（${MAX_EQUIP}个装备位）</span></div>`;
-    }
-    return;
-  }
   const h=selHero();
   let html='';
   if(sel&&!h){
@@ -1457,7 +1490,6 @@ function renderInv(){
       el.style.color=q.c;
       el.innerHTML=`${d.s}<small>${q.n}</small>`;
     }
-    if(i===invSel)el.style.boxShadow='0 0 0 2px #fff8, 0 0 8px #fff6';
     invEl.appendChild(el);
   });
 }
@@ -1525,9 +1557,9 @@ window.addEventListener('pointerup',ev=>{
   ghost.style.display='none';
   const {idx,moved}=drag;drag=null;
   if(!moved){
-    // 单击 = 信息区显示详情（技能书）/ 弹英雄卡片（装备）；拖动仍然可用
-    invSel=idx;closeShop();sel=null;renderInfo();renderInv();
-    if(inv[idx]&&inv[idx].t!=='book')openGiveCards(idx);
+    // 单击 = 弹英雄卡片（详情在卡片层左边显示）；拖动到栏位仍然可用
+    invSel=null;closeShop();sel=null;renderInfo();
+    openGiveCards(idx);
     return;
   }
   const it=inv[idx];if(!it)return;
@@ -1579,7 +1611,6 @@ info.addEventListener('click',ev=>{
     return;
   }
   const b=ev.target.closest('button');if(!b||b.disabled)return;
-  if(b.dataset.give){openGiveCards(+b.dataset.give);return;}
   if(b.dataset.pack){buyPack(b.dataset.pack);return;}
   if(b.dataset.eqroll){buyEquip(b.dataset.eqroll);return;}
   if(b.dataset.shop){

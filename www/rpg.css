@@ -188,7 +188,36 @@
   }
   #cards.show{display:flex}
   #cardTitle{font-size:15px;font-weight:700;color:#e8eef7;letter-spacing:1px}
+  #cardBody{display:flex;gap:10px;align-items:center;justify-content:center;max-width:100vw}
   #cardRow{display:flex;gap:10px;align-items:stretch}
+  /* 左侧：物品详情（学技能/穿装备时显示） */
+  #cardInfo{
+    display:none;width:150px;flex:0 0 auto;align-self:stretch;
+    padding:8px 9px;border-radius:10px;
+    background:linear-gradient(180deg,#1b2740,#121a2a);border:1px solid #3a4a68;
+  }
+  #cardInfo.show{display:block}
+  #cardInfo .in{font-size:12.5px;font-weight:700;line-height:1.3}
+  #cardInfo .iq{font-size:9.5px;margin-top:2px}
+  #cardInfo .id{font-size:10px;color:#9fb0c8;line-height:1.45;margin-top:5px}
+  #cardInfo .ix{font-size:9.5px;color:#7f8ea6;line-height:1.4;margin-top:6px;
+    border-top:1px solid #2c3a58;padding-top:5px}
+  /* 右侧：该英雄的技能栏(1×4) / 装备栏(6行) */
+  .chpair{display:flex;align-items:stretch;gap:5px}
+  .chside{width:92px;flex:0 0 auto;display:flex;flex-direction:column;gap:3px}
+  .chside .st{font-size:9px;color:#7f8ea6;text-align:center}
+  .chside .row{
+    flex:1;border:1px solid #3a4a68;border-radius:5px;padding:2px 5px;
+    font-size:9.5px;line-height:1.25;background:#141c2c;display:flex;
+    flex-direction:column;justify-content:center;overflow:hidden;
+  }
+  .chside .row.em{border-style:dashed;color:#4e586c;text-align:center;background:none}
+  .chside .row.hi{box-shadow:0 0 0 1px #f0c46a inset}
+  .chside .row small{display:block;color:#8ea0ba;font-size:8px;line-height:1.2}
+  #cards.give .chcard{width:108px}
+  #cards.give .chcard canvas{height:96px}
+  #cards.give .chcard .hcRow{font-size:9.5px}
+  #cards.give #cardRow{gap:6px}
   .chcard{
     width:150px;background:linear-gradient(180deg,#1b2740,#121a2a);
     border:2px solid #3a4a68;border-radius:10px;overflow:hidden;
@@ -227,6 +256,10 @@
     .chcard{width:132px}
     .chcard canvas{height:108px}
     #cardTitle{font-size:13px}
+    #cards.give .chcard{width:102px}
+    #cards.give .chcard canvas{height:86px}
+    #cardInfo{width:130px}
+    .chside{width:86px}
   }
 
   /* 帧率徽标：显示实测 FPS + 屏幕刷新率；点一下切换 自动/60 上限 */
