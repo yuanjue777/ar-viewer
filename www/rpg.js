@@ -197,16 +197,17 @@ function isEliteWave(w){return w%10===5;}
 const MS_EXTRA=.5;   // 多重射击：次级目标的检索范围比主目标多这么多格
 const AGGRO_R=4.6;   // 仇恨半径：进这个圈就扑向英雄。5行后调大过，否则上下两行的怪来不及被吸引
 /* 召唤物不再有活动上限：召出来就一路向右压，波次结束随波消散 */
-/* ===== 召唤物（bears 数组统一管理，kind 决定属性/外观）=====
-   hp/atk = 基础 + 智力×系数×技能等级；rng=攻击距离 ivl=攻击间隔 splash=溅射半径 */
-const MINIONS={
-  bear:    {name:'熊灵',  n:1,r:.28,spd:1.8,rng:.8, ivl:1,  hpB:120,hpI:6,  atkB:8, atkI:.7, dur:l=>12+2*l,   mag:false,splash:0,  color:'#c9a068'},
-  fire:    {name:'火元素',n:1,r:.26,spd:1.5,rng:2.6,ivl:1.2,hpB:70, hpI:3,  atkB:7, atkI:.5, dur:l=>10+1.5*l, mag:true, splash:0,  color:'#ff7a2f'},
-  water:   {name:'水元素',n:2,r:.26,spd:1.7,rng:.85,ivl:1.1,hpB:90, hpI:4,  atkB:6, atkI:.42,dur:l=>12+2*l,   mag:false,splash:0,  color:'#4fc3ff'},
-  infernal:{name:'地狱火',n:1,r:.38,spd:1.4,rng:1,  ivl:1.4,hpB:220,hpI:9,  atkB:16,atkI:1.1,dur:l=>15+2*l,   mag:false,splash:1.2,color:'#ff4d3d'},
-};
 /* 开波后英雄从左往右推进的速度（格/秒），清场后按1.8倍走回本阵 */
 const HERO_SPD=.55;
+/* ===== 召唤物（bears 数组统一管理，kind 决定属性/外观）=====
+   hp/atk = 基础 + 智力×系数×技能等级；rng=攻击距离 ivl=攻击间隔 splash=溅射半径
+   ⚠️ spd 统一 = HERO_SPD：召唤物不能比英雄跑得快（原来 1.4~1.8，会一路冲到最前面送死） */
+const MINIONS={
+  bear:    {name:'熊灵',  n:1,r:.28,spd:HERO_SPD,rng:.8, ivl:1,  hpB:120,hpI:6,  atkB:8, atkI:.7, dur:l=>12+2*l,   mag:false,splash:0,  color:'#c9a068'},
+  fire:    {name:'火元素',n:1,r:.26,spd:HERO_SPD,rng:2.6,ivl:1.2,hpB:70, hpI:3,  atkB:7, atkI:.5, dur:l=>10+1.5*l, mag:true, splash:0,  color:'#ff7a2f'},
+  water:   {name:'水元素',n:2,r:.26,spd:HERO_SPD,rng:.85,ivl:1.1,hpB:90, hpI:4,  atkB:6, atkI:.42,dur:l=>12+2*l,   mag:false,splash:0,  color:'#4fc3ff'},
+  infernal:{name:'地狱火',n:1,r:.38,spd:HERO_SPD,rng:1,  ivl:1.4,hpB:220,hpI:9,  atkB:16,atkI:1.1,dur:l=>15+2*l,   mag:false,splash:1.2,color:'#ff4d3d'},
+};
 
 /* ================= 四大试炼 =================
    点图标才开始；奖励挂在试炼怪身上（击杀即得）；CD 从左到右依次变长；
@@ -616,10 +617,10 @@ function update(dt){
       if(!best||m.x<best.x)best=m;
     }
     const md=MINIONS[br.kind]||MINIONS.bear, by=br.row+.5+(br.oy||0);
-    if(!best){br.x=Math.min(br.x+(br.spd||1.8)*dt,COLS-.5);continue;}   // 本行没敌人：继续往前压
+    if(!best){br.x=Math.min(br.x+(br.spd||HERO_SPD)*dt,COLS-.5);continue;}   // 本行没敌人：继续往前压
     {
       const gap=best.x-br.x;
-      if(gap>(br.rng||.8)){br.x=Math.min(br.x+(br.spd||1.8)*dt,COLS-.5);}   // 一直向前推进，不再被召唤点限制
+      if(gap>(br.rng||.8)){br.x=Math.min(br.x+(br.spd||HERO_SPD)*dt,COLS-.5);}   // 一直向前推进，不再被召唤点限制
       else if(br.cd<=0){
         br.cd=br.ivl||1;
         if(br.mag)magDamage(best,br.atk,md.color);else physDamage(best,br.atk,md.color);
@@ -1538,6 +1539,25 @@ function buyEquip(tier){
   for(let i=0;i<4;i++)inv.push(rollEquip(tier));   // 每档固定roll4件
   updateHUD();renderInfo();renderInv();
 }
+/* 背包排布：**左边固定 4 格技能书**（空的画虚线占位）→ 浅竖线 → 右边全是装备 */
+const BOOK_SLOTS=4;
+function invCell(it,i){
+  const el=document.createElement('div');
+  el.className='book';
+  el.dataset.idx=i;
+  if(it.t==='book'){
+    const d=SKB[it.name];
+    el.style.borderColor=QC[d.q];               // 边框=品质
+    el.style.color=CATS[d.cat].color;           // 文字=属性系
+    el.innerHTML=`${d.short}<small style="color:var(--gold)">${bookCost(it.name)}金</small>`;
+  }else{
+    const d=eqDef(it),q=qOf(it);
+    el.style.borderColor=q.c;
+    el.style.color=q.c;
+    el.innerHTML=`${d.s}<small>${q.n}</small>`;
+  }
+  return el;
+}
 function renderInv(){
   invEl.innerHTML='';
   const sb=document.getElementById('sellAll');
@@ -1545,23 +1565,14 @@ function renderInv(){
   const nEq=inv.filter(canSell).length;
   sb.disabled=!nEq;
   sb.innerHTML=nEq?`出售${nEq}件<br><span style="color:var(--gold)">+${total}金</span>`:'出售<br>装备';
-  inv.forEach((it,i)=>{
-    const el=document.createElement('div');
-    el.className='book';
-    el.dataset.idx=i;
-    if(it.t==='book'){
-      const d=SKB[it.name];
-      el.style.borderColor=QC[d.q];             // 边框=品质
-      el.style.color=CATS[d.cat].color;         // 文字=属性系
-      el.innerHTML=`${d.short}<small style="color:var(--gold)">${bookCost(it.name)}金</small>`;
-    }else{
-      const d=eqDef(it),q=qOf(it);
-      el.style.borderColor=q.c;
-      el.style.color=q.c;
-      el.innerHTML=`${d.s}<small>${q.n}</small>`;
-    }
-    invEl.appendChild(el);
-  });
+  const books=[];inv.forEach((it,i)=>{if(it.t==='book')books.push([it,i]);});
+  const nb=Math.max(BOOK_SLOTS,books.length);   // 万一超过4本也不能吞掉
+  for(let k=0;k<nb;k++){
+    if(books[k])invEl.appendChild(invCell(books[k][0],books[k][1]));
+    else{const e=document.createElement('div');e.className='book empty';invEl.appendChild(e);}
+  }
+  const sep=document.createElement('div');sep.className='invSep';invEl.appendChild(sep);
+  inv.forEach((it,i)=>{if(it.t!=='book')invEl.appendChild(invCell(it,i));});
 }
 /* slot: 可选目标栏位 {sk:i} 或 {eq:i}，用于覆盖 */
 function applyItem(idx,h,slot){
@@ -1608,7 +1619,7 @@ function applyItem(idx,h,slot){
 /* 背包：单击=弹英雄卡片选给谁（主要交互）；拖动到技能栏/装备栏=指定栏位覆盖（保留） */
 let drag=null;
 invEl.addEventListener('pointerdown',ev=>{
-  const el=ev.target.closest('.book');if(!el)return;
+  const el=ev.target.closest('.book');if(!el||el.dataset.idx==null)return;   // 空占位格不响应
   drag={idx:+el.dataset.idx,sx:ev.clientX,sy:ev.clientY,moved:false};
   ghost.innerHTML=el.outerHTML;
   ev.preventDefault();
@@ -1809,24 +1820,9 @@ document.getElementById('speedBtn').addEventListener('click',ev=>{
 document.getElementById('startBtn').addEventListener('click',begin);
 
 /* ================= 主循环 ================= */
-/* 帧率：rAF 本身就跟屏幕刷新走（iPhone ProMotion 上可到 120Hz）。
-   这里只做两件事：① 实测 FPS 并探测屏幕刷新率显示在左上角；
-   ② 点徽标可把上限锁到 60（掉帧抖动时更稳、也更省电）。 */
-let fpsCap=0;                 // 0=跟随屏幕，60=锁 60
-let fpsAcc=0,fpsN=0,fpsShow=0,scrHz=0;
-const fpsEl=document.getElementById('fps');
-fpsEl.addEventListener('click',()=>{fpsCap=fpsCap?0:60;});
-function fpsTick(dt){
-  fpsAcc+=dt;fpsN++;
-  if(fpsAcc>=.5){
-    fpsShow=Math.round(fpsN/fpsAcc);fpsAcc=0;fpsN=0;
-    /* 屏幕刷新率 = 历史最高实测帧率，向标准档位取整 */
-    if(fpsShow>scrHz)scrHz=fpsShow;
-    const hz=scrHz>=100?120:scrHz>=76?90:scrHz>=46?60:scrHz>=25?30:scrHz;
-    fpsEl.textContent=fpsShow+' FPS · '+(fpsCap?'限'+fpsCap:'屏'+hz+'Hz');
-    fpsEl.className=fpsCap?'cap':(fpsShow<hz*.75?'low':'');
-  }
-}
+/* 帧率：rAF 本身就跟屏幕刷新走（iPhone ProMotion 上可到 120Hz），逻辑全按 dt 推进。
+   左上角那个帧率徽标已按用户要求去掉；`fpsCap` 留着（0=跟随屏幕，改成 60 就锁 60）。 */
+let fpsCap=0;
 let last=performance.now();
 function loop(now){
   requestAnimationFrame(loop);
@@ -1835,7 +1831,6 @@ function loop(now){
   gt+=dt;
   if(running&&!over)update(dt*speed);
   R3.draw();
-  fpsTick(dt);
 }
 reset();resize();
 requestAnimationFrame(loop);

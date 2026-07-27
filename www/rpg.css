@@ -196,6 +196,11 @@
     border:1.5px solid var(--line);transition:transform .1s;
   }
   .book:active{transform:translateY(-2px)}
+  /* 左边 4 个固定技能书位：空的画虚线占位，不响应点击 */
+  .book.empty{border-style:dashed;border-color:#22314a;background:rgba(255,255,255,.02);
+    pointer-events:none}
+  /* 技能书区 / 装备区之间的浅竖线 */
+  .invSep{width:1px;align-self:stretch;margin:0 5px;background:#2c3d5c;opacity:.75}
   .book small{font-size:7.5px;font-weight:400;color:var(--ink-dim);line-height:1.1}
   #dragGhost{position:fixed;z-index:80;pointer-events:none;opacity:.9;display:none}
 
@@ -313,13 +318,3 @@
     .chside{width:86px}
   }
 
-  /* 帧率徽标：显示实测 FPS + 屏幕刷新率；点一下切换 自动/60 上限 */
-  #fps{
-    position:absolute;left:6px;top:6px;z-index:6;
-    padding:2px 7px;border-radius:7px;
-    font:600 11px/1.5 ui-monospace,Menlo,Consolas,monospace;
-    color:#9fe6c0;background:rgba(6,10,18,.62);border:1px solid rgba(110,231,160,.28);
-    letter-spacing:.3px;white-space:nowrap;user-select:none;cursor:pointer;
-  }
-  #fps.low{color:#ffb36b;border-color:rgba(255,179,107,.34)}
-  #fps.cap{color:#8fb6ff;border-color:rgba(143,182,255,.34)}
