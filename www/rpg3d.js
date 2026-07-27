@@ -703,8 +703,8 @@ function scatterDecor(){
   /* 商店排会随 shopShift 往左挪，这里按最大挪动量留出空地，别让树长到广场里 */
   const inShops =(x,z)=>x>SHOP_X0B-SHIFT_MAX-1.8&&x<SHOP_X0B+SHOP_DX+1.4&&z>-.9&&z<ROWS+.9;
   let n=0,guard=0;
-  while(n<52&&guard++<900){
-    const x=-5+srand()*(COLS+10), z=-3+srand()*(ROWS+6);
+  while(n<78&&guard++<1400){                       // 上方露出的草地也要有东西，范围往上铺开
+    const x=-6+srand()*(COLS+12), z=-6+srand()*(ROWS+10);
     if(inBattle(x,z)||inShops(x,z))continue;
     const t=srand(),g=mk();
     if(t<.3){                                      // 树
@@ -852,13 +852,13 @@ function resize(){
   ren.setPixelRatio(PR);ren.setSize(W,H,false);
 
   const asp=W/H;
-  /* 纵向：正好装下 5 行本身（下沿贴着第5行地面，上沿只多留 HEAD 给顶行单位的头顶/血条），
-     多出来的那一点点由纵向多铺的石板盖住，所以屏幕上下不会露草地。
-     相机看向 y=yc，使得上下两边各自贴边：v(y,z)=(y-yc)*cos(TILT)-(z-tz)*sin(TILT) */
-  const tz=ROWS/2, HEAD=.62, yc=HEAD/2;
+  /* 纵向：**下沿死死贴着第5行地面，多出来的纵向空间全部留给上面**（用户明确要求：
+     下面不留多余空间，上面可以留）。相机看向 y=yc：v(y,z)=(y-yc)*cos(TILT)-(z-tz)*sin(TILT)，
+     下沿 v(0,ROWS)=-hh 反解出 tz；hh==needH 时正好回到 tz=ROWS/2。 */
+  const HEAD=.62, yc=HEAD/2;
   const xR=PORTAL_X+.8, xLB=SHOP_X0B-1.45;
   const needW=(xR-xLB)/2;
-  const needH=yc*cos(TILT)+tz*sin(TILT)+.02;
+  const needH=yc*cos(TILT)+(ROWS/2)*sin(TILT)+.02;
   const hh=max(needH,needW/asp), hw=max(needW,hh*asp);
   cam.left=-hw;cam.right=hw;cam.top=hh;cam.bottom=-hh;
   /* 屏幕特别扁时横向会富余：先让商店整排往左挪(广场跟着变宽)，
@@ -866,6 +866,7 @@ function resize(){
   shopShift=min(SHIFT_MAX,max(0,(hw-needW)*2));
   layoutShops();
   const tx=xR-hw;
+  const tz=ROWS-(hh-.02-yc*cos(TILT))/sin(TILT);   // 下沿贴第5行，富余全给上面
   cam.position.set(tx,yc+CAM_D*sin(TILT),tz+CAM_D*cos(TILT));
   cam.lookAt(tx,yc,tz);
   cam.updateProjectionMatrix();

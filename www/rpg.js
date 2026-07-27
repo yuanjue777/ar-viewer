@@ -1441,7 +1441,8 @@ function shopHTML(){
   const up=lv>=INCOME_MAX
     ? `<button class="btn" disabled><b>工人效率</b> 已满</button>`
     : `<button class="btn" data-shop="${openShop}" data-cost="${cost}" data-lock="0" ${gold>=cost?'':'disabled'}>
-        <b>升级工人效率</b> Lv${lv+1} <span class="cost">${cost}金</span></button>`;
+        <b>升级工人效率</b> Lv${lv+1} <span class="cost">${cost}金</span>
+        <span class="sub">每个工人 ${lv} → ${lv+1} ${unit}/s</span></button>`;
   const hire=w>=WORKER_MAX
     ? `<button class="btn" disabled><b>工人数量</b> 已满</button>`
     : `<button class="btn" data-worker="${openShop}" data-cost="${wcost}" data-lock="0" ${gold>=wcost?'':'disabled'}>
