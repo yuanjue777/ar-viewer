@@ -474,8 +474,8 @@ function texGlow(){
 const SHOPS=[
   {k:'skill',name:'技能'},
   {k:'item', name:'装备'},
-  {k:'mine', name:'金矿'},
-  {k:'mill', name:'伐木场'},
+  {k:'mill', name:'伐木场'},   // 右上：挨着上排 5 棵树，伐木工出门就到
+  {k:'mine', name:'金矿'},     // 右下：挨着下排 5 处矿脉
 ];
 /* 2×2 摆在战场左侧：左列=技能/装备，右列=金矿/伐木场（SHOPS 顺序 skill,item,mine,mill）*/
 const SHOP_X0B=-3.75, SHOP_DX=1.95, SHOP_Z0=1.32, SHOP_DZ=2.36, SHOP_R=.9;
@@ -497,6 +497,102 @@ function layoutShops(){
     yard.scale.set(w,d,1);
     yard.position.set((x0+x1)/2,.004,(BZ0+BZ1)/2);
     yard.material.map.repeat.set(w/2.1,d/2.1);
+  }
+  layoutNodes();
+}
+
+/* ================= 资源点 + 工人 =================
+   上排 5 棵树（伐木工砍）/ 下排 5 处金矿脉（矿工挖），横向跟着广场一起铺开。
+   工人数 = rpg.js 的 mineW/millW（最多 5），从离建筑最近的资源点开始往外占（右→左）。
+   一趟 TRIP 秒，落一个 “+等级×TRIP” 的飘字 —— 正好等于 每秒 工人数×等级 的真实产出。 */
+const NODE_N=5, TRIP=3;
+const TREE_Z=.55, ORE_Z=4.72;        // 相机纵向刚好装得下这两条（可见地面 z≈-0.5~5.03）
+/* ⚠️ 树高别超过 .9：z=.55 处树梢投影 v≈1.85，相机上沿 hh≈2.13，再高就被切头 */
+let treeG=[],oreG=[],nodeX=[];
+function layoutNodes(){
+  const x0=SHOP_X0-1.0, x1=-.62;
+  for(let i=0;i<NODE_N;i++){
+    nodeX[i]=x0+(x1-x0)*i/(NODE_N-1);
+    if(treeG[i])treeG[i].position.x=nodeX[i];
+    if(oreG[i]) oreG[i].position.x=nodeX[i];
+  }
+}
+function buildTree(){                // 高约 .86
+  const g=mk();
+  add(g,g_cyl(.07,.09,.34,6),0x4a3a2a,0,.17,0);
+  add(g,g_cone(.31,.42,7),0x24422c,0,.49,0);
+  add(g,g_cone(.22,.31,7),0x2d5236,0,.71,0);
+  return g;
+}
+function buildOre(){                 // 金矿脉：碎石堆 + 露出来的金块
+  const g=mk();
+  add(g,g_oct(.26),0x4a5164,0,.17,0,{s:[1.25,.85,1]});
+  add(g,g_oct(.15),0x565f74,.24,.1,.13);
+  add(g,g_oct(.09),0xf0c46a,-.05,.31,.11,{em:0x6b4d12});
+  add(g,g_oct(.07),0xf0c46a,.2,.19,-.12,{em:0x6b4d12});
+  return g;
+}
+/* 工人：矮胖小人（约英雄一半高），模型面朝 +X，挥动的工具挂在 userData.tool 上 */
+function buildWorker(kind){
+  const isM=kind==='mine', g=mk();
+  add(g,g_cyl(.05,.05,.16,6),0x39415a,0,.08,.06);
+  add(g,g_cyl(.05,.05,.16,6),0x39415a,0,.08,-.06);
+  add(g,g_box(.2,.24,.19),isM?0x4f6a9a:0xb04a3a,0,.28,0);
+  add(g,g_sph(.145,10),0xf3c9a0,0,.52,0);
+  add(g,g_sph(.155,10),isM?0xf0c46a:0x7a4a2e,0,.56,0,{s:[1,.6,1]});
+  add(g,g_sph(.02,6),0x21252e,.12,.51,.055,{noSh:1});
+  add(g,g_sph(.02,6),0x21252e,.12,.51,-.055,{noSh:1});
+  const tool=mk();
+  add(tool,g_cyl(.022,.022,.42,6),0x6b5236,0,0,0,{rz:PI/2});
+  if(isM)add(tool,g_box(.06,.07,.2),0x9aa6bc,.2,.03,0,{rz:.4});
+  else   add(tool,g_box(.045,.17,.12),0xc8d2dc,.2,.02,0);
+  tool.position.set(.15,.34,.03);
+  g.add(tool);g.userData.tool=tool;
+  return g;
+}
+/* 工人循环：出门 → 到资源点砍/挖 → 回家交货（交货那一刻落飘字） */
+let wkT=0,_lastGt=0;
+const wkCyc={};
+function drawWorkers(){
+  const d=max(0,min(gt-_lastGt,.1));_lastGt=gt;
+  if(started&&!over)wkT+=d*(typeof speed==='number'?speed:1);
+  for(let s=0;s<2;s++){
+    const isM=s===1;                                   // 0=伐木场(上) 1=金矿(下)
+    const key=isM?'mine':'mill';
+    const n=min(NODE_N,(isM?mineW:millW)|0);
+    const lv=(isM?mineLv:millLv)|0;
+    let idx=0;for(let i=0;i<SHOPS.length;i++)if(SHOPS[i].k===key)idx=i;
+    // 出门口开在靠资源的那一侧（金矿在下→矿脉更下；伐木场在上→树更上）
+    const hp=shopPos(idx), hx=hp[0], hz=hp[1]+(isM?.5:-.5);
+    const nz=isM?ORE_Z:TREE_Z, stand=isM?nz-.42:nz+.42;
+    for(let i=0;i<n;i++){
+      const ph0=wkT/TRIP+i*.37, ph=ph0-Math.floor(ph0), ci=Math.floor(ph0);
+      const nx=nodeX[NODE_N-1-i]||0;         // 先占最近的（建筑在右边）
+      let x,z,face,swing=0;
+      if(ph<.32){                                      // 出门
+        const k=ph/.32;x=hx+(nx-hx)*k;z=hz+(stand-hz)*k;
+        face=Math.atan2(-(stand-hz),nx-hx);
+      }else if(ph<.72){                                // 干活
+        x=nx;z=stand;swing=1;
+        face=Math.atan2(-(nz-stand),0);
+      }else{                                           // 回家交货
+        const k=(ph-.72)/.28;x=nx+(hx-nx)*k;z=stand+(hz-stand)*k;
+        face=Math.atan2(-(hz-stand),hx-nx);
+      }
+      const g=take('WK'+key,()=>buildWorker(key));
+      const walk=swing?0:abs(sin(wkT*9+i));
+      g.position.set(x,walk*.045,z);
+      g.rotation.y=face;
+      g.userData.tool.rotation.z=swing?-1.35*(.5+.5*sin(wkT*11+i*2)):-.35;
+      // 交货：一趟结算一次，金额 = 等级×TRIP，合起来正好是 每秒 工人数×等级
+      const ck=key+i;
+      if(wkCyc[ck]===undefined)wkCyc[ck]=ci;
+      else if(ci!==wkCyc[ck]){
+        wkCyc[ck]=ci;
+        if(started&&!over&&lv>0&&nums.length<80)
+          nums.push({x:hx,y:hz-.15,txt:'+'+(lv*TRIP),color:isM?'#f0c46a':'#c98f5b',t:1.1,max:1.1});
+      }
+    }
   }
 }
 function shopAt(x,z){                              // 供 rpg.js 判断点击
@@ -703,6 +799,10 @@ function init(){
     g.userData.k=SHOPS[i].k;
     shopGroups.push(g);scene.add(g);
   }
+  for(let i=0;i<NODE_N;i++){
+    const tr=buildTree();tr.position.set(0,0,TREE_Z);scene.add(tr);treeG.push(tr);
+    const or=buildOre(); or.position.set(0,0,ORE_Z); scene.add(or); oreG.push(or);
+  }
   layoutShops();
   buildPortal(glowTex);
   scatterDecor();
@@ -846,6 +946,8 @@ function draw(){
     if(u.pulse)u.pulse.scale.setScalar(.85+.3*p);
     g.position.y=on?.05+.03*p:0;
   }
+  drawWorkers();
+
   /* 建筑名牌（覆盖层，跟着建筑走） */
   for(let i=0;i<SHOPS.length;i++){
     const [sx,sz]=shopPos(i);
@@ -860,7 +962,8 @@ function draw(){
     octx.fillText(SHOPS[i].name,sp[0],sp[1]);
     // 技能/装备不再显示小字，只有金矿伐木场标 Lv 和产量
     const k=SHOPS[i].k;
-    const sub=k==='mine'?'Lv'+mineLv+' +'+mineLv+'/s':k==='mill'?'Lv'+millLv+' +'+millLv+'/s':'';
+    const sub=k==='mine'?'Lv'+mineLv+'·'+mineW+'人 +'+(mineW*mineLv)+'/s'
+             :k==='mill'?'Lv'+millLv+'·'+millW+'人 +'+(millW*millLv)+'/s':'';
     if(sub){
       octx.font='500 '+(fs*.72).toFixed(1)+'px -apple-system,sans-serif';
       octx.strokeText(sub,sp[0],sp[1]+fs*.95);

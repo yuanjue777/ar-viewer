@@ -13,26 +13,30 @@
     <div class="stat woodS"><b id="uiWood">0</b><small>木</small></div>
     <div class="stat life"><b id="uiLife">0</b><small>基地</small></div>
     <div class="stat wave"><b id="uiWave">0/15</b><small>波</small></div>
-    <button class="hbtn" id="speedBtn">×1</button>
-    <button class="hbtn" id="nextBtn" style="display:none">⏩ 下一波</button>
-    <button class="hbtn" id="launchBtn" style="display:none;background:#2a6ee0;border-color:#2a6ee0;color:#fff">▶ 启动</button>
+    <div class="hright">
+      <button class="hbtn auto" id="autoLearnBtn">自动学习</button>
+      <button class="hbtn auto" id="autoTrialBtn">自动试炼</button>
+      <button class="hbtn auto" id="autoNextBtn">自动开波</button>
+      <button class="hbtn" id="speedBtn">×1</button>
+      <button class="hbtn hire" id="hireBtn">招募英雄<span id="hireLv">免费</span></button>
+      <button class="hbtn" id="nextBtn" style="display:none">⏩ 下一波</button>
+      <button class="hbtn" id="launchBtn" style="display:none;background:#2a6ee0;border-color:#2a6ee0;color:#fff">▶ 启动</button>
+    </div>
   </header>
   <div id="stage"><canvas id="cv"></canvas><div id="fps">--</div></div>
   <div id="dock">
-    <button class="tile hire" id="hireBtn"><span class="ic"></span>招募英雄<span class="lv" id="hireLv">免费</span></button>
-    <div class="spacer"></div>
     <button class="tile trial" data-trial="gold"><span class="cdmask"></span><span class="ic"></span>金币试炼<span class="lv">就绪</span></button>
     <button class="tile trial" data-trial="wood"><span class="cdmask"></span><span class="ic"></span>木头试炼<span class="lv">就绪</span></button>
     <button class="tile trial" data-trial="xp"><span class="cdmask"></span><span class="ic"></span>经验试炼<span class="lv">就绪</span></button>
     <button class="tile trial" data-trial="elite"><span class="cdmask"></span><span class="ic"></span>精英试炼<span class="lv">Lv5波</span></button>
-  </div>
-  <div id="bottom">
-    <div id="info"><div class="hint"></div></div>
     <div id="inv">
       <div class="invLabel">背包</div>
       <button id="sellAll">出售装备</button>
       <div id="invItems"></div>
     </div>
+  </div>
+  <div id="bottom">
+    <div id="info"><div class="hint"></div></div>
   </div>
 </div>
 

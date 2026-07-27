@@ -171,9 +171,19 @@ const MOBS={
   tank:  {hp:150,spd:.7, atk:14,reward:14,xp:12,r:.38,lives:2,armor:6,mres:.15,atkR:.85,color:'#8a6bff'},
   boss:  {hp:700,spd:.55,atk:30,reward:70,xp:60,r:.47,lives:3,armor:10,mres:.3,atkR:1.05,color:'#ff3860'},
 };
-const INCOME_MAX=10;
-function mineCost(lv){return 45+30*(lv-1);}
-function millCost(lv){return 35+25*(lv-1);}
+/* ---- 金矿 / 伐木场：产出 = 工人数 × 等级（每秒）。等级上限10、工人上限5 ----
+   两栋楼刻意做成不同的性价比曲线，让同样的钱花在不同地方收益不同：
+   · 金矿  =「升级流」：升级便宜(80×lv)、工人贵(250×现有工人)
+             买工人更划算的条件 Lv > 1.77×工人数 → 先堆等级，工人是大额跃升
+   · 伐木场=「人海流」：工人便宜(110×现有工人)、升级贵(150×lv)
+             买工人更划算的条件 Lv > 0.86×工人数 → 几乎总是先招满5个工人再升级
+   满配：金矿 5人×Lv10=50金/s（共 3600+2500=6100金）
+        伐木场 5人×Lv10=50木/s（共 6750+1100=7850金） */
+const INCOME_MAX=10, WORKER_MAX=5;
+function mineCost(lv){return 80*lv;}            // 升级：80/160/…/720
+function millCost(lv){return 150*lv;}           // 升级：150/300/…/1350
+function mineWkCost(w){return 250*w;}           // 招工人：250/500/750/1000
+function millWkCost(w){return 110*w;}           // 招工人：110/220/330/440
 /* 波次节奏：出怪后不限时（只记录战斗用时），清场后进入 REST_TIME 秒备战，倒计时结束才出下一波 */
 const REST_TIME=25;
 /* 整波入场的阵型（按波轮换）：雁形/锋矢/横阵/斜阵/方阵 */
@@ -214,7 +224,9 @@ const TRIAL_KEYS=['gold','wood','xp','elite'];
 
 /* ================= 状态 ================= */
 let gold,wood,lives,wave,queue,spawnT,incomeT,waveT,battleT,resting,cleared,hudAcc;
-let mineLv,millLv;
+let mineLv,millLv,mineW,millW;                  // 等级 / 工人数
+/* 右上角三个自动开关（跨局保留，不在 reset 里清） */
+let autoLearnAll=false,autoTrial=false,autoNext=false,autoTrialT=0;
 let heroes,mobs,shots,fx,nums,bears,inv,hails,storms,quakes,chests,trialCd;
 let sel=null,invSel=null,speed=1,running=false,started=false,over=false,openShop=null;
 const ANIM_T=.22;   // 攻击动作时长（rpg3d.js 的挥砍/拉弓动作用它算进度）
@@ -229,7 +241,7 @@ window.addEventListener('resize',()=>setTimeout(resize,60));
 
 /* ================= 英雄 ================= */
 function makeHero(cls,row,col){
-  const h={cls,row,col,x:col+.5,lv:1,xp:0,tier:0,branch:-1,specLv:1,autoLearn:false,
+  const h={cls,row,col,x:col+.5,lv:1,xp:0,tier:0,branch:-1,specLv:1,autoLearn:autoLearnAll,
     soulInt:0,deathAgi:0,equips:[],
     skills:{},cds:{},cd:0,flash:0,anim:0,endT:0,endF:0,titanS:0,alive:true};
   calc(h);h.hp=h.maxHp;
@@ -296,7 +308,7 @@ function dispName(h){return h.tier?advOf(h).name:CLASSES[h.cls].name;}
 function reset(){
   gold=350;wood=0;lives=10;wave=0;queue=[];spawnT=0;incomeT=0;
   waveT=0;battleT=0;resting=false;cleared=true;hudAcc=0;
-  mineLv=1;millLv=1;
+  mineLv=1;millLv=1;mineW=1;millW=1;autoTrialT=0;
   heroes=[];mobs=[];shots=[];fx=[];nums=[];bears=[];inv=[];hails=[];storms=[];quakes=[];chests=[];
   trialCd={};for(const k of TRIAL_KEYS)trialCd[k]=0;
   renderTrials();
@@ -521,13 +533,22 @@ function update(dt){
     incomeT+=dt;
     while(incomeT>=1){
       incomeT-=1;
-      if(mineLv||millLv){gold+=mineLv;wood+=millLv;updateHUD();refreshAfford();}
+      gold+=mineW*mineLv;wood+=millW*millLv;updateHUD();refreshAfford();
     }
     // 出怪后不限时（只累计战斗用时）；清场后进入备战倒计时，到点自动开下一波
     if(resting){
       waveT-=dt;
-      if(waveT<=0)startWave();
+      if(autoNext&&wave<TOTAL_WAVES)goNextWave(true);   // 自动开波：不等备战倒计时
+      else if(waveT<=0)startWave();
     }else if(wave>0)battleT+=dt;
+    /* 自动试炼：CD一好就开，隔 1.5s 开一个，别 4 个一起涌进来 */
+    if(autoTrial){
+      autoTrialT-=dt;
+      if(autoTrialT<=0){
+        const tk=TRIAL_KEYS.find(trialReady);
+        if(tk){startTrial(tk);autoTrialT=1.5;}
+      }
+    }
   }
   hudAcc+=dt;
   if(hudAcc>=.25){
@@ -1362,6 +1383,7 @@ function renderInfo(){
       showToast('已启用自动学习：商店刷出的同名技能书会自动升级');
       autoLearnPass();renderInv();
     }
+    autoLearnAll=heroes.length>0&&heroes.every(o=>o.autoLearn);refreshAuto();
     renderInfo();
   };
   const ao=document.getElementById('advOpen');
@@ -1407,15 +1429,25 @@ function shopHTML(){
           <span class="sub">白${t.w.common}/绿${t.w.fine}/蓝${t.w.rare}/紫${t.w.epic}%</span></button>`).join('')+
       `</div>`;
   }
+  /* 金矿/伐木场：产出 = 工人数 × 等级。升级 = 每个工人都变强，招工人 = 多一份产出 */
   const isMine=openShop==='mine';
-  const lv=isMine?mineLv:millLv, cost=isMine?mineCost(lv):millCost(lv);
-  const head=`<div class="card shopHead"><b>${isMine?'金矿':'伐木场'} Lv${lv}/${INCOME_MAX}</b></div>`;
-  if(lv>=INCOME_MAX)
-    return head+`<button class="btn grow" disabled><b>已满级</b><span class="sub">每秒 +${lv} ${isMine?'金币':'木头'}</span></button>`;
-  return head+
-    `<button class="btn grow" data-shop="${openShop}" data-cost="${cost}" data-lock="0" ${gold>=cost?'':'disabled'}>
-      <b>升级到 Lv${lv+1}</b> <span class="cost">${cost}金</span>
-      <span class="sub">每秒 +${lv} → +${lv+1}${isMine?'':'（木头用于转职）'}</span></button>`;
+  const lv=isMine?mineLv:millLv, w=isMine?mineW:millW, unit=isMine?'金':'木';
+  const cost=isMine?mineCost(lv):millCost(lv);
+  const wcost=isMine?mineWkCost(w):millWkCost(w);
+  const head=`<div class="card shopHead inc"><b>${isMine?'金矿':'伐木场'}</b>
+    <span>Lv${lv}/${INCOME_MAX} · 工人 ${w}/${WORKER_MAX}</span>
+    <span style="color:var(--${isMine?'gold':'wood'})">现产 +${w*lv} ${unit}/s</span></div>`;
+  const up=lv>=INCOME_MAX
+    ? `<button class="btn" disabled><b>等级已满</b><span class="sub">Lv${INCOME_MAX}</span></button>`
+    : `<button class="btn" data-shop="${openShop}" data-cost="${cost}" data-lock="0" ${gold>=cost?'':'disabled'}>
+        <b>升级 Lv${lv+1}</b> <span class="cost">${cost}金</span>
+        <span class="sub">全部工人变强 · +${w*lv} → +${w*(lv+1)} ${unit}/s</span></button>`;
+  const hire=w>=WORKER_MAX
+    ? `<button class="btn" disabled><b>工人已满</b><span class="sub">${WORKER_MAX}人</span></button>`
+    : `<button class="btn" data-worker="${openShop}" data-cost="${wcost}" data-lock="0" ${gold>=wcost?'':'disabled'}>
+        <b>招工人 ${w+1}/${WORKER_MAX}</b> <span class="cost">${wcost}金</span>
+        <span class="sub">多一个人干活 · +${w*lv} → +${(w+1)*lv} ${unit}/s</span></button>`;
+  return head+`<div class="shopGrid inc">${up}${hire}</div>`;
 }
 function refreshAfford(){
   document.querySelectorAll('#info [data-cost]').forEach(b=>{
@@ -1659,6 +1691,18 @@ info.addEventListener('click',ev=>{
     if(gold>=cost){gold-=cost;if(isMine)mineLv++;else millLv++;updateHUD();renderInfo();}
     return;
   }
+  if(b.dataset.worker){
+    const isMine=b.dataset.worker==='mine';
+    const w=isMine?mineW:millW;
+    if(w>=WORKER_MAX)return;
+    const cost=isMine?mineWkCost(w):millWkCost(w);
+    if(gold>=cost){
+      gold-=cost;if(isMine)mineW++;else millW++;
+      showToast(`${isMine?'金矿':'伐木场'}新工人上工了（${w+1}/${WORKER_MAX}）`);
+      updateHUD();renderInfo();
+    }
+    return;
+  }
 });
 /* 战场拖动：按住英雄可以在本职业那一列的出兵格之间换行 */
 let hDrag=null;
@@ -1718,13 +1762,45 @@ document.getElementById('launchBtn').addEventListener('click',ev=>{
 });
 /* 提前开波奖励 = 剩余备战秒数 × 波数 × 2 */
 function nextBonus(){return Math.max(0,Math.ceil(waveT))*wave*2;}
-document.getElementById('nextBtn').addEventListener('click',()=>{
+function goNextWave(auto){
   if(!started||over||!resting||wave>=TOTAL_WAVES)return;
   const bonus=nextBonus();
   gold+=bonus;
-  showToast(`提前开波，省下的时间换成 <b style="color:var(--gold)">+${bonus}金</b>`);
+  if(!auto)showToast(`提前开波，省下的时间换成 <b style="color:var(--gold)">+${bonus}金</b>`);
   startWave();updateHUD();refreshAfford();
+}
+document.getElementById('nextBtn').addEventListener('click',()=>goNextWave(false));
+/* ================= 右上角三个自动开关 ================= */
+const autoBtnL=document.getElementById('autoLearnBtn'),
+      autoBtnT=document.getElementById('autoTrialBtn'),
+      autoBtnN=document.getElementById('autoNextBtn');
+function refreshAuto(){
+  autoBtnL.classList.toggle('on',autoLearnAll);
+  autoBtnT.classList.toggle('on',autoTrial);
+  autoBtnN.classList.toggle('on',autoNext);
+}
+autoBtnL.addEventListener('click',()=>{
+  autoLearnAll=!autoLearnAll;
+  for(const h of (heroes||[]))h.autoLearn=autoLearnAll;
+  if(autoLearnAll&&running){autoLearnPass();renderInv();}
+  refreshAuto();if(running)renderInfo();
+  showToast(autoLearnAll
+    ?'<b style="color:var(--gold)">自动学习</b> 已开启<br>全部英雄自动吃掉刷出的同名技能书（要扣学习费）'
+    :'自动学习已关闭');
 });
+autoBtnT.addEventListener('click',()=>{
+  autoTrial=!autoTrial;autoTrialT=0;refreshAuto();
+  showToast(autoTrial
+    ?'<b style="color:var(--gold)">自动试炼</b> 已开启<br>试炼 CD 一好就自动开（备战期不开）'
+    :'自动试炼已关闭');
+});
+autoBtnN.addEventListener('click',()=>{
+  autoNext=!autoNext;refreshAuto();
+  showToast(autoNext
+    ?'<b style="color:var(--gold)">自动开波</b> 已开启<br>清场后不等备战，直接下一波（照拿提前开波奖励）'
+    :'自动开波已关闭');
+});
+refreshAuto();
 document.getElementById('speedBtn').addEventListener('click',ev=>{
   speed=speed===1?2:1;
   ev.currentTarget.textContent='×'+speed;
