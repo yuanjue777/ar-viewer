@@ -45,12 +45,13 @@
 | 实体 | 字段 |
 |---|---|
 | 英雄 `heroes[]` | `cls`(mage/archer/warrior) `row` `col` `x`(浮点，老家=col+.5) `lv` `xp` `tier` `branch` `specLv` `alive` `hp/maxHp` `mp/maxMp` `flash` `anim` `endT` `titanS` `sizeMul` `skills{名:lv}` `equips[]` `str/agi/int`(calc 后) |
-| 怪 `mobs[]` | `type`(normal/fast/tank/boss) `x` `y`(行坐标,浮点) `row`(派生) `r` `hp/maxHp` `atk` `atkR` `color` `elite` `trial` `frost` `slowT/slowF` `asT/asF` `sunderT` `dead` `flash` `chest` |
+| 怪 `mobs[]` | `type`(normal/fast/tank/boss) `x` `y`(行坐标,浮点) `row`(派生) `r` `hp/maxHp` `atk` `atkR` `color` `elite` `trial` `frost` `slowT/slowF` `asT/asF` `sunderT` `dead` `flash` `knock`(挨打后弹，纯表现) `chest` |
 | 召唤物 `bears[]` | `kind`(bear/fire/water/infernal) `x` `row` `oy` `hp/maxHp` `dead` |
 | 弹道 `shots[]` | `x` `y` `a`(角度) `kind`('orb'或箭) `color` `target` |
 | 特效 `fx[]` | `type` `t/max`(倒计时) `color`，按 type 另有 `x,y` / `x1,y1,x2,y2` / `rr` `sz` `a` `seed` `vx` `ax,ay` |
 | 飘字 `nums[]` | `x` `y` `txt` `color` `t/max` |
 | 宝箱 `chests[]` | `x` `y` `dead` |
+| 尸体 `corpses[]` | `type` `x` `y` `r` `t/max`(0.6s) —— 怪死时在 `damage()` 里生成，纯表现 |
 | 区域技能 | `storms[]`(cx,cy,R,delay) `quakes[]`(x0,y0,x1,y1) `hails[]` |
 
 ### 改什么 → 去哪里 · `www/rpg.js`（逻辑，约1600行）
@@ -120,6 +121,9 @@
 | **相机俯角/投影方式** | `const TILT=` |
 | 几何缓存小工具（box/球/锥/环…） | `const GEO=` |
 | **卡通着色：分阶 ramp / 手绘贴图 / 描边 / 饱和度** | `function toonRamp` / `texPaint` / `function outline` / `function pop` |
+| **攻击动作曲线（打击感）** | `function swing` / `function recoil` / `const ANT=` `PEAK=` |
+| **屏幕震动** | `function shake` / `let shk=` / `camBase` |
+| **尸体倒地下沉** | `draw` 里注释 `/* --- 尸体` |
 | 受击闪白/死亡变灰/冰霜染色 | `function tint` |
 | 对象池（复用 mesh，别每帧 new） | `function bind` / `take` |
 | 两点之间拉光束（闪电/射线用） | `function beam` |
@@ -232,6 +236,15 @@
   | 大法师 | 高尖帽（缀星）+ **巨型奥术宝珠 + 双道符文环**（`orbit`/`orbit2`） |
   ⚠️ 子部件要单独做动作就用局部的 `attach(sub)`（建 group + 把 mats 并进主 group 才会跟着染色）。对象池 key 是 `'H'+cls+tier+branch`，所以转职后模型自动重建。带呼吸浮动、受击闪白(emissive)、死亡变灰、转职脚下金环。怪物模型按 `m.r` 缩放、走路上下颠，配色沿用 MOBS.color 保证辨识度：普通=驼背小鬼(双角+大眼)、快速=前倾锥体+速度鳍、坦克=重甲方体(头盔+背刺)、Boss=巨体恶魔(弯角+尖牙+发光眼)；减速时整体染一层冰霜蓝。召唤物：熊灵/火元素(自发光锥焰)/水元素(半透明)/地狱火(岩石身+熔岩裂缝)。
 - **血条/蓝条/经验条/等级框/伤害飘字不在 3D 里**，画在覆盖层 2D canvas `#cv2` 上（`draw()` 用 `proj()` 把世界坐标投影成屏幕坐标）——文字清晰、性能好。`#cv2` 设了 `pointer-events:none`，点击照样落到 `#cv`。
+- **打击感（2026-07 加，⚠️ 改动作前先看这段）**：逻辑层只给一个线性进度 `h.anim`（倒计时），渲染层在 `draw()` 里换算成 `t`(已用时间比 0→1) 再喂给动作曲线。
+  - **`swing(t)`（近战）** = 三段：`t<ANT(.16)` 反向蓄力 → `ANT~PEAK(.30)` 极快出手 → `PEAK~1` 慢慢收招。返回值 0→-.32→1→0，所以各支线原来 `rest+amp*p` 的公式**把 p 换成 sw 就自动变成三段动作**，不用改每条公式。
+  - **`recoil(t)=(1-t)^2.1`（远程：拉弓/火枪/弩/施法）**。⚠️ **远程绝对不能用 swing**：箭和子弹是在 `attack()` 那一帧（t=0）就飞出去的，加蓄力会变成"箭比弓先动"。
+  - ⚠️ 同理，近战的伤害也是 t=0 结算的，视觉命中在 t=PEAK（0.22s 的动作≈66ms≈4帧）比飘字晚一点点——**这是刻意接受的**，因为"有起手"对打击感是决定性的，4 帧看不出来。
+  - **全身跟随**：出手时整个 group 往 +X 冲 `sw*.17`、扭身 `sw*.2`、前倾 `-sw*.09`、纵向拉伸；蓄力时反向下蹲。加新支线动作只要挂 `akind`，这层是白送的。
+  - **挨打**：`damage()` 里给怪加 `m.knock`（上限 .2，每帧衰减），渲染层据此把怪往后弹、压扁、侧倾。
+  - **尸体**：怪死时 `damage()` 往 `corpses[]` 塞一条（上限24），0.6 秒内往后仰倒并沉进地里，不是瞬间消失。
+  - **屏幕震动 `R3.shake(a)`**：暴击 .09 / 重弩命中 .13 / 坦克死 .1 / Boss死 .22 / 英雄阵亡 .16。正交相机直接抖 `cam.position`（基准存在 `camBase`，`resize` 里更新）。
+  - **走路**：英雄真的在推进时才有摆动（比对上一帧的 `h.x`，存在 `userData.lx`），清场瞬移回本阵不会误触发。
 - **攻击动作与节奏（2026-07 加）**：`ANIM_T=.22` 是默认动作时长，各支线在 `ANIM_BR` 里覆盖（`animT(h)` 算出来存进 `h.animT`，渲染层用 `h.anim/h.animT` 当进度 p，1→0）：**弩手 .44（慢）/ 狂战士 .28 / 火枪 .17 / 强盗 .15 / 精灵游侠 .12（快）**。动作实现按 `g.userData.akind` 分流：
   | akind | 谁 | 动作 |
   |---|---|---|

@@ -359,7 +359,8 @@ const SEED=`
       },b);
       await p.waitForTimeout(500);
       await shot('m'+b+'_idle',CLIP);
-      await p.evaluate(()=>heroes.forEach(h=>{h.animT=animT(h);h.anim=h.animT*.8;}));
+      // 动作峰值在 t=PEAK=.30，也就是 anim=animT*.70（三段曲线里命中的那一帧）
+      await p.evaluate(()=>heroes.forEach(h=>{h.animT=animT(h);h.anim=h.animT*.70;}));
       await p.waitForTimeout(60);
       await shot('m'+b+'_atk',CLIP);
       console.log('branch',b,'=',await p.evaluate(()=>heroes.map(h=>ADV[h.cls][h.branch].name+'/animT='+animT(h)).join(' | ')));

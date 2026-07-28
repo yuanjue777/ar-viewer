@@ -303,6 +303,8 @@ let mineLv,millLv,mineW,millW;                  // 等级 / 工人数
 let autoLearnAll=false,autoTrial=false,autoNext=false,autoTrialT=0;
 let heroes,mobs,shots,fx,nums,bears,inv,hails,storms,quakes,chests,trialCd;
 let sel=null,invSel=null,speed=1,running=false,started=false,over=false,openShop=null;
+/* 尸体：怪死后不是瞬间消失，留半秒往后仰倒并沉进地里（纯表现，渲染层读它） */
+let corpses=[];
 /* 熔炉：信息区右边的装备暂存架。只收装备（技能书不收，免得绕过"买新书清旧书"的规则），
    不参与"出售装备"和树枝合成——所以它的用途就是「把好装备存起来别被卖掉/别占背包」。 */
 const FORGE_MAX=8;
@@ -418,7 +420,7 @@ function reset(){
   gold=350;wood=0;lives=10;wave=0;queue=[];spawnT=0;incomeT=0;
   waveT=0;battleT=0;resting=false;cleared=true;hudAcc=0;
   mineLv=1;millLv=1;mineW=1;millW=1;autoTrialT=0;
-  heroes=[];mobs=[];shots=[];fx=[];nums=[];bears=[];inv=[];forge=[];hails=[];storms=[];quakes=[];chests=[];
+  heroes=[];mobs=[];shots=[];fx=[];nums=[];bears=[];inv=[];forge=[];hails=[];storms=[];quakes=[];chests=[];corpses=[];
   trialCd={};for(const k of TRIAL_KEYS)trialCd[k]=0;
   renderTrials();
   sel=null;invSel=null;over=false;openShop=null;
@@ -559,9 +561,12 @@ function dnum(x,y,val,color){
 function damage(m,d,color){
   if(m.dead)return;
   m.hp-=d;
+  m.knock=Math.min(.2,(m.knock||0)+.09);   // 打击感：被打时往后弹一下并压扁
   dnum(m.x,m.y+.5,d,color);
   if(m.hp<=0){
     m.dead=true;
+    if(corpses.length<24)corpses.push({type:m.type,x:m.x,y:m.y,r:m.r,rot:0,t:.6,max:.6});
+    if(m.type==='boss')R3.shake(.22);else if(m.type==='tank')R3.shake(.1);
     gold+=m.reward;
     gainXp(m.xp);
     // 试炼奖励：击杀即结算
@@ -681,6 +686,7 @@ function update(dt){
   /* 怪物：视野外向左推进；**进入仇恨范围就直接扑向最近的英雄/召唤物**（不是擦着走过去），
      进攻击范围停下开打。所以只要英雄不死，上下两行的怪也会被拉过来，理论上不漏。 */
   for(const m of mobs){
+    if(m.knock>0)m.knock=Math.max(0,m.knock-dt*1.1);
     if(m.slowT>0)m.slowT-=dt;
     if(m.frost>0)m.frost-=dt;        // 冰霜覆层显示时长
     if(m.asT>0)m.asT-=dt;            // 攻速减益（大地震颤）
@@ -936,6 +942,8 @@ function update(dt){
       }else if(s.target&&!s.target.dead)shotHit(s,s.target);
     }else{s.a=Math.atan2(dy,dx);s.x+=dx/l*SPD*dt;s.y+=dy/l*SPD*dt;}
   }
+  for(const c of corpses)c.t-=dt;
+  corpses=corpses.filter(c=>c.t>0);
   mobs=mobs.filter(m=>!m.dead);
   shots=shots.filter(s=>!s.dead);
   for(const f of fx)f.t-=dt;
@@ -1001,7 +1009,7 @@ function attack(h,hx,hy,m,mul,color,noEcho){
   // 致命一击：(15+5lv)%几率 (140+10lv)%伤害；装备再加暴击率/爆伤
   const cr=h.skills['致命一击'];
   const critC=(cr?.15+.05*cr:0)+(h.critAdd||0);   // 技能暴击率 + 装备暴击率
-  if(critC>0&&Math.random()<critC){dmg*=(cr?1.4+.1*cr:1.5)+(h.critDmg||0);c='#ffd24f';}
+  if(critC>0&&Math.random()<critC){dmg*=(cr?1.4+.1*cr:1.5)+(h.critDmg||0);c='#ffd24f';R3.shake(.09);}
   if(h.sunder){m.sunderT=6;m.sunder=Math.max(m.sunder||0,h.sunder);}   // 锈蚀/幽冥破甲
   if(P.black){                                    // 黑刀：永久削最大生命与护甲
     m.maxHp=Math.max(1,m.maxHp*.9);m.hp=Math.min(m.hp,m.maxHp);
@@ -1039,6 +1047,7 @@ function attack(h,hx,hy,m,mul,color,noEcho){
 function shotHit(s,m){
   physDamage(m,s.dmg,s.color==='#7fe8ff'?'#7fe8ff':(s.color==='#ffd24f'?'#ffd24f':undefined));
   if(s.heavy){                       // 弩手·重弩：单发命中的冲击感
+    R3.shake(.13);
     fx.push({type:'ring',x:m.x,y:m.y+.5,rr:.9,t:.24,max:.24,color:'#ffd08a'});
     fx.push({type:'slash',x:m.x-.05,y:m.y+.5,rr:.34,a:s.a||0,t:.18,max:.18,color:'#fff0c4'});
   }
@@ -1072,7 +1081,7 @@ function hitUnit(u,m){
   const th=h.skills['荆棘光环'];
   if(th)magDamage(m,m.atk*.15*th+h.str*.4*th,'#9dff9d');
   if(h.hp<=0){
-    h.hp=0;h.alive=false;
+    h.hp=0;h.alive=false;R3.shake(.16);
     fx.push({type:'ring',x:h.x,y:h.row+.5,rr:.7,t:.35,max:.35,color:'#fff'});
     renderInfo();
   }

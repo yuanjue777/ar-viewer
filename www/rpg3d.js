@@ -108,6 +108,28 @@ function outline(m,geo){
   m.add(o);olMeshes.push(o);
 }
 
+/* ================= 攻击动作曲线（打击感的核心） =================
+   逻辑层只给一个线性进度 p（1→0），渲染层把它重映射成有节奏的动作。
+   ⚠️ 伤害是在 attack() 那一帧就结算的（t=0），所以：
+     · 近战用 swing(t)：先反向蓄力、再极快出手、然后慢慢收招。
+       峰值落在 t=PEAK≈0.3（0.22s 的动作就是 66ms≈4帧），比飘字晚 4 帧，看不出来，
+       但"有起手"这件事对打击感是决定性的。
+     · 远程用 recoil(t)：箭/子弹在 t=0 就飞出去了，再做蓄力会变成"箭比弓先动"，
+       所以只能做纯后坐衰减。
+   各支线原来的公式是 rest+amp*p，把 p 换成 swing/recoil 就自动变三段动作。 */
+const ANT=.16, PEAK=.30;
+function swing(t){
+  if(t<=0)return 0;
+  if(t<ANT){const k=t/ANT;return -.32*(1-(1-k)*(1-k));}          // 蓄力后拉(ease-out)
+  if(t<PEAK){const k=(t-ANT)/(PEAK-ANT);return -.32+1.32*k*k;}   // 出手(ease-in，最快)
+  return Math.pow(1-(t-PEAK)/(1-PEAK),1.8);                      // 收招(慢)
+}
+function recoil(t){return t<=0?0:Math.pow(1-t,2.1);}
+
+/* 屏幕震动：暴击/重弩命中/Boss死亡时抖一下相机（正交相机直接偏移位置就行） */
+let shk=0,lastGt=0,camBase=new T.Vector3();
+function shake(a){if(a>shk)shk=a;}
+
 /* 建组：userData 存材质与基础色，方便整体染色（受击闪白/死亡变灰/冰霜） */
 function mk(){const g=new T.Group();g.userData={mats:[],base:[]};return g;}
 function add(g,geo,color,x,y,z,o){
@@ -1116,6 +1138,7 @@ function resize(){
   const tx=xR-hw;
   const tz=ROWS-(hh-.02-yc*cos(TILT))/sin(TILT);   // 下沿贴第5行，富余全给上面
   cam.position.set(tx,yc+CAM_D*sin(TILT),tz+CAM_D*cos(TILT));
+  camBase.copy(cam.position);
   cam.lookAt(tx,yc,tz);
   cam.updateProjectionMatrix();
 }
@@ -1254,36 +1277,44 @@ function draw(){
   for(const h of heroes){
     const g=bind(h,'H'+h.cls+h.tier+h.branch,()=>buildHero(h.cls,h.tier,h.branch));
     const dead=!h.alive, sz=(h.sizeMul||1)*1.12;
-    const bob=dead?0:sin(gt*2.2+h.row*1.7)*.02;
-    g.position.set(h.x,bob,h.row+.5);
-    g.scale.setScalar(sz);
-    g.rotation.y=dead?0:sin(gt*.8+h.row)*.06;
-    tint(g,h.flash>0,dead,false);
-    /* 攻击动作：每条转职支线一套（进度 p 从 1 衰减到 0，时长由 h.animT 决定） */
     const ud=g.userData;
+    /* 动作进度：t = 已用时间比 0→1（逻辑层给的 h.anim 是倒计时） */
     const p=h.anim>0?h.anim/(h.animT||ANIM_T):0;
+    const t=p>0?1-p:0;
     const wep=ud.wep, ak=ud.akind;
+    const rng=(ak==='draw'||ak==='gun'||ak==='xbow'||ak==='cast');
+    const sw=dead?0:(rng?recoil(t):swing(t));      // 近战三段 / 远程后坐
+    /* 走路：只有真的在往前推进时才摆动（清场传送回本阵不算） */
+    const mv=!dead&&abs(h.x-(ud.lx==null?h.x:ud.lx))>1e-4;
+    ud.lx=h.x;
+    const wk=mv?gt*11:0;
+    let bob=dead?0:sin(gt*2.2+h.row*1.7)*.02;
+    if(mv)bob+=abs(sin(wk))*.035;
+    /* 全身跟随：出手时整个人往前冲一下 + 扭身 + 拉伸，蓄力时下蹲后坐 */
+    g.position.set(h.x+(dead?0:sw*.17),bob,h.row+.5);
+    g.scale.set(sz*(1-sw*.06),sz*(1+sw*.08),sz*(1-sw*.06));
+    g.rotation.y=dead?0:sin(gt*.8+h.row)*.06+sw*.2;
+    g.rotation.z=dead?0:(mv?sin(wk)*.055:0)-sw*.09;
+    tint(g,h.flash>0,dead,false);
     if(wep){
       if(ak==='axes'){                                   // 狂战士：双斧一前一后连斩
-        wep.rotation.z=.3-2.6*p;
-        ud.wep2.rotation.z=.3-2.6*(max(0,p-.32)/.68);
-      }else if(ak==='stab'){                             // 强盗：匕首往前直捅
-        const e=p*p;
-        wep.position.x=.14+.5*e;wep.position.z=.2-.05*e;wep.rotation.y=.3-.3*e;
-      }else if(ak==='gun'){                              // 火枪：后坐上扬 + 枪口火光（无飞行弹道）
-        wep.position.x=.16-.15*p;wep.rotation.z=.06+.4*p;
-        const on=p>.42;
+        wep.rotation.z=.3-2.6*sw;
+        ud.wep2.rotation.z=.3-2.6*swing(max(0,(t-.2)/.8));   // 第二把晚 20% 起手
+      }else if(ak==='stab'){                             // 强盗：先缩手，再往前直捅
+        wep.position.x=.14+.5*sw;wep.position.z=.2-.05*sw;wep.rotation.y=.3-.3*max(0,sw);
+      }else if(ak==='gun'){                              // 火枪：开火即后坐上扬 + 枪口火光
+        wep.position.x=.16-.19*sw;wep.rotation.z=.06+.5*sw;
+        const on=t<.34;                                  // 弹丸 t=0 就出去了，火光只闪一下
         ud.muzzle.visible=ud.muzzle2.visible=on;
-        if(on){const q=(p-.42)/.58;ud.muzzle.scale.setScalar(.6+1.4*q);ud.muzzle2.scale.setScalar(.4+1.2*q);}
+        if(on){const q=1-t/.34;ud.muzzle.scale.setScalar(.5+1.6*q);ud.muzzle2.scale.setScalar(.35+1.4*q);}
       }else if(ak==='xbow'){                             // 弩手：一次沉重后坐，慢慢压回
-        const e=p*p;
-        wep.position.x=.18-.26*e;wep.position.y=.54+.07*e;wep.rotation.z=.62*e;
-      }else if(ak==='swing'){                            // 剑：绕肩挥砍（护卫的盾同步前顶）
-        wep.rotation.z=.25-2.35*p;
-        if(ud.aux)ud.aux.position.x=-.05+.22*p;
-      }else wep.position.x=(ud.wx||.24)-.11*p;           // 拉弓
+        wep.position.x=.18-.3*sw;wep.position.y=.54+.08*sw;wep.rotation.z=.7*sw;
+      }else if(ak==='swing'){                            // 剑：抡起来再劈下去（护卫的盾同步前顶）
+        wep.rotation.z=.25-2.35*sw;
+        if(ud.aux)ud.aux.position.x=-.05+.22*max(0,sw);
+      }else wep.position.x=(ud.wx||.24)-.13*sw;          // 拉弓：放箭瞬间弹回，再慢慢推出
     }
-    if(ud.orb)ud.orb.scale.setScalar(1+.22*sin(gt*4)+p*.6);
+    if(ud.orb)ud.orb.scale.setScalar(1+.22*sin(gt*4)+sw*.7);   // 法杖宝珠：施法瞬间爆亮
     if(ud.halo)ud.halo.material.opacity=.55+.35*sin(gt*2.4);   // 牧师头顶光环呼吸
     if(ud.orbit){                                        // 转职法师：宝珠环绕光环
       ud.orbit.rotation.z=gt*3;
@@ -1343,9 +1374,11 @@ function draw(){
     const z=m.y+.5;
     const g=bind(m,'M'+m.type,()=>buildMob(m.type));
     const ph=gt*6+m.x*2.2;
-    g.position.set(m.x,abs(sin(ph))*.05*m.r,z);
-    g.scale.setScalar(m.r*1.32);
-    g.rotation.z=sin(ph)*.05;
+    /* 打击感：挨打瞬间往后弹一下并被压扁（knock 由逻辑层在 damage() 里置位） */
+    const kn=m.knock||0, S=m.r*1.32;
+    g.position.set(m.x+kn,abs(sin(ph))*.05*m.r,z);
+    g.scale.set(S*(1+kn*1.2),S*(1-kn*1.4),S*(1+kn*1.2));
+    g.rotation.z=sin(ph)*.05+kn*1.1;
     tint(g,m.flash>0,false,m.frost>0);
     /* 脚下光环：试炼色环 / 精英金环 */
     if(m.trial||m.elite){
@@ -1360,6 +1393,17 @@ function draw(){
     }
     const u=ppu(m.x,.4,z),sp=proj(m.x,m.r*2.5,z);
     bar(sp[0],sp[1]-5,m.r*2.4*u,.085*u,m.hp/m.maxHp,'#6ee7a0');
+  }
+
+  /* --- 尸体：倒下去 + 沉进地里（不是"啪"地消失） --- */
+  for(const c of corpses){
+    const k=1-c.t/c.max;                              // 0→1
+    const g=bind(c,'M'+c.type,()=>buildMob(c.type));
+    g.position.set(c.x,-.55*k*k,c.y+.5);
+    g.scale.setScalar(c.r*1.32*(1-.15*k));
+    g.rotation.z=-1.55*min(1,k*1.7);                  // 往后仰倒
+    g.rotation.y=c.rot||0;
+    tint(g,false,true,false);
   }
 
   /* --- 宝箱 --- */
@@ -1397,6 +1441,14 @@ function draw(){
   octx.globalAlpha=1;
 
   sweep();tmpHide();
+  if(shk>0){                                          // 屏幕震动：正交相机直接抖位置
+    cam.position.set(camBase.x+(Math.random()-.5)*shk,
+                     camBase.y+(Math.random()-.5)*shk,
+                     camBase.z+(Math.random()-.5)*shk*.4);
+    shk=max(0,shk-min(.05,max(0,gt-lastGt))*3.4);
+    if(shk<=0)cam.position.copy(camBase);
+  }
+  lastGt=gt;
   ren.render(scene,cam);
   cardTick();
 
@@ -1571,5 +1623,5 @@ function cardTick(){
 
 function info(){const r=ren.info.render;
   return {calls:r.calls,tris:r.triangles,outline:olMeshes.length,textures:ren.info.memory.textures};}
-return {resize,draw,pick,shopAt,cardShow,cardHide,info};
+return {resize,draw,pick,shopAt,cardShow,cardHide,info,shake};
 })();
