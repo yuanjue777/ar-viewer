@@ -335,8 +335,10 @@ const SEED=`
         for(let i=m0;i<mobs.length;i++){hp+=mobs[i].maxHp;at+=mobs[i].atk;}
         mobs.length=m0;wave=sv;
         return `w${w}: 血${Math.round(hp)} 攻${Math.round(at)}(${L.length}只)`;});
-      O['技能书 roll/学习费(木)']=[PACK_COST,ROLL_COST,BOOK_COST.qgreen,BOOK_COST.qblue,BOOK_COST.qpurple];
-      O['移速 普通/快/坦克/Boss/英雄']=[MOBS.normal.spd,MOBS.fast.spd,MOBS.tank.spd,MOBS.boss.spd,HERO_SPD];
+      O['技能书 指定roll/全池roll/学习费绿蓝紫(金)']=[PACK_COST,ROLL_COST,BOOK_COST.qgreen,BOOK_COST.qblue,BOOK_COST.qpurple];
+      O['移速(应全=1.3)']=Object.values(MOBS).map(m=>m.spd).concat([HERO_SPD]);
+      O['小怪分工 血/攻/甲/抗/射程']=Object.entries(MOBS)
+        .map(([k,m])=>`${k}: ${m.hp}血 ${m.atk}攻 ${m.armor}甲 ${Math.round(m.mres*100)}%抗 射程${m.atkR}`);
       // 经济曲线：交叉点（招人更划算 ⇔ L > W×√(b/a)）
       O['金矿 升级/工人']=[[1,2,3].map(mineCost),[1,2,3,4].map(mineWkCost)];
       O['伐木场 升级/工人']=[[1,2,3].map(millCost),[1,2,3,4].map(millWkCost)];
@@ -415,6 +417,11 @@ const SEED=`
     await p.waitForTimeout(900);
     await shot('s7_boss',{x:0,y:0,width:W,height:120});                      // Boss总血条
     console.log('Boss关 只出1只/血量:',await p.evaluate(()=>[mobs.length,Math.round(mobs[0].maxHp)]));
+    // 五种怪各来一只，看模型分工（步兵/长矛兵/狂徒/重甲兵/Boss）
+    await p.evaluate(()=>{mobs.length=0;wave=8;
+      ['normal','lancer','brute','tank','boss'].forEach((t,i)=>spawnMob(t,{lane:i%ROWS,dx:-i*3.2}));});
+    await p.waitForTimeout(700);
+    await shot('s8_mobs',{x:W*.34,y:60,width:W*.66,height:250});
     console.log('渲染开销 drawCalls/三角形/纹理:',await p.evaluate(()=>{
       const i=R3.info?R3.info():null;return i||'n/a';}));
     const fps=await p.evaluate(()=>new Promise(r=>{let n=0;const t0=performance.now();
