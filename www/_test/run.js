@@ -240,8 +240,14 @@ const SEED=`
         .map(q=>EQUIPS.filter(e=>e.q===q&&e.pool!=='evo').length);
       O['商店可roll(白/绿/蓝/紫)']=['common','fine','rare','epic']
         .map(q=>EQUIPS.filter(e=>e.q===q&&!e.pool).length);
-      O['装备roll四档 金+木→紫%']=Object.entries(EQ_TIERS)
-        .map(([k,t])=>`${t.n} ${t.cost}金+${t.wood}木 紫${t.w.epic}%`);
+      O['装备roll四档 金+木→出货率']=Object.entries(EQ_TIERS)
+        .map(([k,t])=>`${t.n} ${t.cost}金+${t.wood}木 紫${t.w.epic}%${t.w.legend?' 金'+t.w.legend+'%':''}`);
+      // 顶级档 roll 2000 次，看实际品质分布（金色应≈10%且只出3件金装）
+      {const c={},names=new Set();
+       for(let i=0;i<2000;i++){const it=rollEquip('top');const d=eqDef(it);
+         c[QUALS[d.q].n]=(c[QUALS[d.q].n]||0)+1;if(d.q==='legend')names.add(d.n);}
+       O['顶级roll×2000 实际分布']=c;
+       O['顶级roll出的金装']=[...names];}
       O['装备费 白/绿/蓝/紫/金']=['doransword','heavyhammer','willowbow','dragonlance','titan']
         .map(id=>equipCost({t:'eq',id}));
       const m=heroes[1];m.tier=0;

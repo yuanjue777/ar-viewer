@@ -188,19 +188,20 @@ const GOLD_DROP=.15;   // 宝箱里开出金色装备的概率
 const EQ_BY_ID=Object.fromEntries(EQUIPS.map(e=>[e.id,e]));
 /* 装备商店四档roll：每次固定4件，越贵越容易出高品质。
    ⚠️ 2026-07 用户加的规则：**每一档都要同时花金币和木头**（木头=金币，1:1），
-   顶级档 800金+800木 是纯紫金档（不出白，5%绿/30%蓝/65%紫）。
-   金色仍然只从宝箱开，商店永远roll不出。 */
+   顶级档 800金+800木 不出白，且是**唯一能roll出金色的地方**（10%）——
+   前三档仍然 roll 不出金色，宝箱那条路（GOLD_DROP）也照旧。 */
 const EQ_TIERS={
   low: {n:'低级roll',cost:100,wood:100,w:{common:60,fine:30,rare:9, epic:1}},
   mid: {n:'中级roll',cost:200,wood:200,w:{common:30,fine:40,rare:24,epic:6}},
   high:{n:'高级roll',cost:400,wood:400,w:{common:5, fine:30,rare:45,epic:20}},
-  top: {n:'顶级roll',cost:800,wood:800,w:{common:0, fine:5,  rare:30,epic:65}},
+  top: {n:'顶级roll',cost:800,wood:800,w:{common:0, fine:5,  rare:30,epic:55,legend:10}},
 };
 function rollEquip(tier){
   const w=EQ_TIERS[tier].w;
   let r=Math.random()*100,qk='common';
-  for(const k of ['common','fine','rare','epic']){if(r<w[k]){qk=k;break;}r-=w[k];}
-  const pool=EQUIPS.filter(e=>e.q===qk&&!e.pool);
+  for(const k of ['common','fine','rare','epic','legend']){if(r<(w[k]||0)){qk=k;break;}r-=w[k]||0;}
+  // 金色不带 pool:'gold' 就永远roll不到；其余品质仍然只roll商店池（排除 gold/evo）
+  const pool=EQUIPS.filter(e=>e.q===qk&&(qk==='legend'?e.pool==='gold':!e.pool));
   return {t:'eq',id:pool[Math.floor(Math.random()*pool.length)].id};
 }
 function eqDef(item){return EQ_BY_ID[item.id];}
@@ -1578,7 +1579,7 @@ function shopHTML(){
       Object.entries(EQ_TIERS).map(([k,t])=>
         `<button class="btn" data-eqroll="${k}" data-cost="${t.cost}" data-wood="${t.wood||0}" data-lock="0" ${gold>=t.cost&&wood>=(t.wood||0)?'':'disabled'}>
           <b>${t.n}</b> <span class="cost">${t.cost}金</span>+<span class="costw">${t.wood}木</span>
-          <span class="sub">${t.w.common?'白'+t.w.common+'/':''}绿${t.w.fine}/蓝${t.w.rare}/紫${t.w.epic}%</span></button>`).join('')+
+          <span class="sub">${t.w.common?'白'+t.w.common+'/':''}绿${t.w.fine}/蓝${t.w.rare}/紫${t.w.epic}${t.w.legend?'/<b style="color:var(--gold)">金'+t.w.legend+'</b>':''}%</span></button>`).join('')+
       `</div>`;
   }
   /* 金矿/伐木场：产出 = 工人数 × 等级。升级 = 每个工人都变强，招工人 = 多一份产出 */
