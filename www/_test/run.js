@@ -299,6 +299,8 @@ const SEED=`
       O['敏→攻速/智→回蓝·法强 (Lv15游侠)']=(()=>{const h=heroes[0];const sv=h.lv;h.lv=15;calc(h);
         const r=[h.agi,h.ias,h.int,+h.mpRegen.toFixed(2),+h.spellP.toFixed(3)];h.lv=sv;calc(h);return r;})();
       O['战士初始护甲']=CLASSES.warrior.baseArmor;
+      O['回血 力/回血每秒 (Lv15三职业)']=['warrior','archer','mage'].map(c=>{
+        const h=makeHero(c,ROW0,0);h.lv=15;calc(h);return `${c}: ${h.str}力 → ${h.hpRegen.toFixed(1)}/s (maxHp ${h.maxHp})`;});
       // 顶级档 roll 2000 次，看实际品质分布（金色应≈10%且只出3件金装）
       {const c={},names=new Set();
        for(let i=0;i<2000;i++){const it=rollEquip('top');const d=eqDef(it);

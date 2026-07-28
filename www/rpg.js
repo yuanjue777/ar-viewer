@@ -425,6 +425,7 @@ function calc(h){
   h.range=b.range+(a?a.range:0)+.3*(h.skills['狙击潜质']||0)+eqRange;
   h.splash=b.splash+(a?a.splash:0);
   h.maxMp=10+h.int*3;
+  h.hpRegen=h.str*.3;                  // 1力 = 0.3 生命回复/s（用户 2026-07 加，英雄原本完全不回血）
   h.mpRegen=1+h.int*.01+eqMpre;        // 1智 = 0.01 回蓝/s
   h.spellP=1+h.int*.001;               // 1智 = +0.1% 法术伤害（作用在所有 magDamage 上）
   if(h.mp===undefined)h.mp=h.maxMp;
@@ -893,7 +894,8 @@ function update(dt){
       const miss=1-h.hp/h.maxHp;
       if(miss>0)h.hp=Math.min(h.maxHp,h.hp+h.maxHp*.02*bb*miss*2*dt);
     }
-    // 回蓝
+    // 回血（1力=0.3/s，和狂战士之血那种按失血比的回复叠加）/ 回蓝
+    if(h.hp<h.maxHp)h.hp=Math.min(h.maxHp,h.hp+h.hpRegen*dt);
     h.mp=Math.min(h.maxMp,h.mp+h.mpRegen*dt);
     /* 装备计时器：回响之刃CD / 风暴骑手攻速buff / 幽邃圣主的诅咒冷却加速 */
     if(h.echoCd>0)h.echoCd-=dt;
@@ -1593,7 +1595,7 @@ function renderInfo(){
     html=`<div class="hcard">
       <div><b style="color:${b.color}">${dispName(h)}</b> <span class="dim">Lv${h.lv} · ${xpTxt}</span></div>
       <div class="hgrid">
-        <span>HP <b id="hpVal">${Math.ceil(h.hp)}/${h.maxHp}</b></span>
+        <span>HP <b id="hpVal">${Math.ceil(h.hp)}/${h.maxHp}</b> +${h.hpRegen.toFixed(1)}/s</span>
         <span>MP <b id="mpVal">${Math.floor(h.mp)}/${h.maxMp}</b> +${h.mpRegen.toFixed(1)}/s</span>
         <span>攻击 <b>${h.atk}</b></span>
         <span>攻速 <b>${h.ias}</b></span>
