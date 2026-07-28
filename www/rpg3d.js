@@ -1446,7 +1446,7 @@ function draw(){
   /* 伤害统计表：三个英雄的总输出 / 总承伤（召唤物挨的打算主人头上） */
   if(heroes.length){
     const fmt=v=>{v=Math.round(v||0);return v>=10000?(v/1e4).toFixed(1)+'万':String(v);};
-    const rowH=13,pad=5,bx=8,by=8,bw=136,bh=pad*2+rowH*(heroes.length+1);
+    const rowH=13,pad=5,bw=136,bx=W-bw-8,by=8,bh=pad*2+rowH*(heroes.length+1);
     octx.globalAlpha=1;
     octx.fillStyle='rgba(8,12,20,.58)';octx.fillRect(bx,by,bw,bh);
     octx.strokeStyle='rgba(120,150,190,.32)';octx.lineWidth=1;octx.strokeRect(bx,by,bw,bh);

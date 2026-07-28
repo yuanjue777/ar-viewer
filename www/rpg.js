@@ -37,7 +37,7 @@ const SPECS={
   berserker:{n:'血怒',    d:lv=>`失血越多输出越高：攻击+失血比×${15+10*lv}%，攻速+失血比×${30+15*lv}点`},
   guard:    {n:'护甲光环',d:lv=>`3格内友方英雄+${5+lv}护甲，自己+${(5+lv)*2}（不叠加取最高）`},
   bandit:   {n:'掠夺',    d:lv=>`每次普攻偷取 ${30+5*lv} 金币`},
-  musket:   {n:'精准射击',d:lv=>`弹道瞬发（无飞行时间）；普攻附加 敏×${(0.15+0.05*lv).toFixed(2)} 魔法伤害`},
+  musket:   {n:'精准射击',d:lv=>`弹道瞬发（无飞行时间）；射程 +${(1+0.1*lv).toFixed(1)} 格；攻击无视敌人 ${30+2*lv}% 护甲`},
   elf:      {n:'迅捷',    d:lv=>`攻击间隔额外-${(0.1+0.01*lv).toFixed(2)}s`},
   xbow:     {n:'重弩',    d:lv=>`攻击间隔+0.2s；攻击力与最终伤害各提升「攻击间隔×75% + ${5*lv}%」`},
   summoner: {n:'召唤精通',d:lv=>`召唤物属性+${20+2*lv}%`},
@@ -407,8 +407,8 @@ function calc(h){
     const r=h.bat*.75+.05*sp;
     h.atk=Math.round(h.atk*(1+r));h.dmgMul=1+r;
   }
-  // ⚠️ 用户 2026-07 定：**1敏 = 0.3 攻速点**（原 1:1 → 试过 0.1 太狠 → 定在 0.3）
-  h.ias=Math.min(400,h.agi*.3+eqAspd+(h.stormT>0?30:0)+(h.sheepS||0)*10);
+  // ⚠️ 用户 2026-07 定：**1敏 = 0.5 攻速点**（1:1 → 0.3 → 现定在 0.5）
+  h.ias=Math.min(400,h.agi*.5+eqAspd+(h.stormT>0?30:0)+(h.sheepS||0)*10);
   h.interval=h.bat/(1+h.ias/100);
   h.cdr=Math.min(.5,eqCdr+.04*(h.skills['CD光环']||0)+(key==='archmage'?(10+2*sp)/100:0));
   h.block=eqBlock;h.flat=eqFlat;   // block=固定格挡(只挡普攻)，flat=固定减免；当前怪只有普攻，两者效果相同
@@ -417,12 +417,13 @@ function calc(h){
   h.critDmg=eqCdmg/100;      // 装备额外暴击伤害
   h.healP=1+eqHeal/100;      // 治疗强度（牧师祷言吃这个）
   h.sunder=eqSunder;         // 锈蚀之刃/幽冥之刃：普攻削甲（同名唯一，异名叠加）
+  h.armorPen=key==='musket'?Math.min(.9,.30+.02*sp):0;   // 火枪兵·精准射击：无视百分比护甲
   h.sumB=1+eqSummon;         // 召唤物强度倍率
   h.titan=!!proc.titan;      // 泰坦的坚决：受伤叠层
   h.silenced=!!proc.silence; // 禁制匕首：沉默携带者
   h.lifesteal=proc.blood?(h.bloodS||0)*.01:0;   // 战争领主的嗜血
   h.sizeMul=1+ts*.02;        // 体型随层数变大
-  h.range=b.range+(a?a.range:0)+.3*(h.skills['狙击潜质']||0)+eqRange;
+  h.range=b.range+(a?a.range:0)+.3*(h.skills['狙击潜质']||0)+eqRange+(key==='musket'?1+.1*sp:0);
   h.splash=b.splash+(a?a.splash:0);
   h.maxMp=10+h.int*3;
   h.hpRegen=h.str*.3;                  // 1力 = 0.3 生命回复/s（用户 2026-07 加，英雄原本完全不回血）
@@ -656,7 +657,11 @@ function onKill(){
   if(dirty&&sel)renderInfo();
 }
 /* 物理伤害吃怪物护甲，魔法伤害吃怪物魔抗 */
-function mobArmor(m){return Math.max(0,m.armor-(m.sunderT>0?(m.sunder||0):0));}
+function mobArmor(m){
+  const a=Math.max(0,m.armor-(m.sunderT>0?(m.sunder||0):0));
+  const pen=(SRC&&SRC.armorPen)||0;   // 百分比无视护甲（火枪兵天赋），来源英雄走全局 SRC
+  return a*(1-pen);
+}
 function physDamage(m,d,color){damage(m,d*(1-armorRed(mobArmor(m))),color);}
 function magDamage(m,d,color){damage(m,d*(SRC&&SRC.spellP?SRC.spellP:1)*(1-m.mres),color);}
 function gainXp(x){
@@ -1083,7 +1088,6 @@ function attack(h,hx,hy,m,mul,color,noEcho){
     physDamage(m,dmg,c);
     if(poison)magDamage(m,poison,'#7ce87c');
     if(cleave)cleaveAround(m,dmg,cleave);
-    magDamage(m,h.agi*(.15+.05*asp),'#ffd08a');   // 天赋：平A附加敏捷伤害
     fx.push({type:'bolt',x1:hx,y1:hy,x2:m.x,y2:m.y+.5,t:.08,max:.08,color:'#ffd08a'});
   }else{
     shots.push({x:hx,y:hy,target:m,tx:m.x,ty:m.y+.5,a:Math.atan2((m.y+.5)-hy,m.x-hx),

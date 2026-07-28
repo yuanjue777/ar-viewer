@@ -256,7 +256,7 @@
     background:rgba(6,9,15,.86);backdrop-filter:blur(3px);
   }
   #cards.show{display:flex}
-  #cardTitle{font-size:15px;font-weight:700;color:#e8eef7;letter-spacing:1px}
+  #cardTitle{display:none}   /* 用户要求去掉卡片层最上面那行文字提示（JS 照旧写文本，只是不显示） */
   #cardBody{display:flex;gap:10px;align-items:center;justify-content:center;
     max-width:100vw;overflow-x:auto;padding:0 4px}
   #cardRow{display:flex;gap:10px;align-items:stretch}
