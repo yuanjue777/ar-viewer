@@ -169,7 +169,7 @@ const EQUIPS=[
   {id:'bladethorn', n:'刃刺',      s:'刃刺',q:'epic',stats:{atk:100,crit:25,str:20,agi:20}},
   {id:'echoblade',  n:'回响之刃',  s:'回响',q:'epic',stats:{str:50,aspd:50},proc:'echo'},
   {id:'goblinhorn', n:'哥布林号角',s:'哥号',q:'epic',stats:{summon:.6,cdr:.15}},
-  {id:'poorshield', n:'穷鬼盾',    s:'穷盾',q:'epic',stats:{block:20,armor:20,flat:20}},
+  {id:'poorshield', n:'穷鬼盾',    s:'穷盾',q:'epic',stats:{blockP:20,armor:20,flat:20}},
   {id:'abysscurse', n:'幽邃圣主的诅咒',s:'诅咒',q:'epic',stats:{int:50,cdr:.25},proc:'curse'},
   {id:'infinity',   n:'无尽之刃',  s:'无尽',q:'epic',stats:{atk:60,crit:20,cdmg:40}},
   {id:'sheepstick', n:'羊刀',      s:'羊刀',q:'epic',stats:{all:25},proc:'sheep'},
@@ -222,6 +222,7 @@ function eqDesc(def,it){
   if(s.mres)p.push('魔抗+'+Math.round(s.mres*100)+'%');
   if(s.hp)p.push('生命+'+s.hp);
   if(s.block)p.push('格挡普攻'+s.block);
+  if(s.blockP)p.push('受到普攻伤害-'+s.blockP+'%');
   if(s.flat)p.push('固定减伤'+s.flat);
   if(s.mpre)p.push('回蓝+'+s.mpre+'/s');
   if(s.cdr)p.push('技能CD-'+Math.round(s.cdr*100)+'%');
@@ -330,7 +331,7 @@ function calc(h){
   const am=h.tier?1.35:1;
   const sp=h.specLv||0,key=a?a.key:'';
   let eqAtk=0,eqArmor=0,eqHp=0,eqAspd=0,eqStr=0,eqAgi=0,eqInt=0,eqMres=0,eqCdr=0,eqBat=0,eqBlock=0,eqMpre=0,eqRange=0;
-  let eqCrit=0,eqSunder=0,eqSummon=0,eqCdmg=0,eqHeal=0,eqFlat=0;
+  let eqCrit=0,eqSunder=0,eqSummon=0,eqCdmg=0,eqHeal=0,eqFlat=0,eqBlockP=0;
   /* 唯一特效 = 同名只生效一件：普通属性照常求和，
      bat/sunder/range/proc 这四类只算每个 id 的第一件（见装备池顶上的注释） */
   const seen=new Set(),proc={};
@@ -339,6 +340,7 @@ function calc(h){
     eqAtk+=s.atk||0;eqArmor+=s.armor||0;eqHp+=s.hp||0;eqAspd+=s.aspd||0;
     eqStr+=(s.str||0)+(s.all||0);eqAgi+=(s.agi||0)+(s.all||0);eqInt+=(s.int||0)+(s.all||0);
     eqMres+=s.mres||0;eqCdr+=s.cdr||0;eqBlock+=s.block||0;eqMpre+=s.mpre||0;eqFlat+=s.flat||0;
+    eqBlockP+=s.blockP||0;
     eqCrit+=s.crit||0;eqSummon+=s.summon||0;eqCdmg+=s.cdmg||0;eqHeal+=s.heal||0;
     if(seen.has(d.id))continue;                // ↓↓ 唯一特效：同名装备只算第一件
     seen.add(d.id);
@@ -385,7 +387,8 @@ function calc(h){
   h.ias=Math.min(400,h.agi+eqAspd+(h.stormT>0?30:0)+(h.sheepS||0)*10);
   h.interval=h.bat/(1+h.ias/100);
   h.cdr=Math.min(.5,eqCdr+.04*(h.skills['CD光环']||0)+(key==='archmage'?(10+2*sp)/100:0));
-  h.block=eqBlock;h.flat=eqFlat;   // block=只挡普攻，flat=固定减免；当前怪只有普攻，两者效果相同
+  h.block=eqBlock;h.flat=eqFlat;   // block=固定格挡(只挡普攻)，flat=固定减免；当前怪只有普攻，两者效果相同
+  h.blockP=Math.min(.8,eqBlockP/100);   // 穷鬼盾：普攻伤害百分比减免（上限80%）
   h.critAdd=eqCrit/100;      // 装备额外暴击率
   h.critDmg=eqCdmg/100;      // 装备额外暴击伤害
   h.healP=1+eqHeal/100;      // 治疗强度（牧师祷言吃这个）
@@ -1047,8 +1050,8 @@ function hitUnit(u,m){
     return;
   }
   const h=u;
-  // 格挡(只挡普攻) + 固定减免 先扣，再吃护甲减伤
-  let dmg=Math.max(0,m.atk-h.block-(h.flat||0))*(1-armorRed(h.armor));
+  // 固定格挡 + 固定减免 先扣，再吃护甲减伤，最后乘百分比格挡(穷鬼盾)
+  let dmg=Math.max(0,m.atk-h.block-(h.flat||0))*(1-armorRed(h.armor))*(1-(h.blockP||0));
   const bb=h.skills['狂战士之血'];
   if(bb){
     const miss=1-h.hp/h.maxHp;
@@ -1504,7 +1507,7 @@ function renderInfo(){
         <span style="color:#ff9d9d">力 <b>${h.str}</b></span>
         <span style="color:#8ce8a8">敏 <b>${h.agi}</b></span>
         <span style="color:#8db8ff">智 <b>${h.int}</b></span>
-        <span>抗 <b>${Math.round(h.mres*100)}%</b>${h.cdr?' CD-'+Math.round(h.cdr*100)+'%':''}${(h.block+(h.flat||0))?' 挡'+(h.block+(h.flat||0)):''}${h.critAdd?' 暴'+Math.round(h.critAdd*100)+'%':''}</span>
+        <span>抗 <b>${Math.round(h.mres*100)}%</b>${h.cdr?' CD-'+Math.round(h.cdr*100)+'%':''}${(h.block+(h.flat||0))?' 挡'+(h.block+(h.flat||0)):''}${h.blockP?' 减'+Math.round(h.blockP*100)+'%':''}${h.critAdd?' 暴'+Math.round(h.critAdd*100)+'%':''}</span>
       </div>${h.tier?`<div style="margin-top:2px;color:${b.color};font-size:9.5px">专精 <b>${SPECS[advOf(h).key].n}</b> Lv${h.specLv} — <span style="color:var(--ink-dim)">${SPECS[advOf(h).key].d(h.specLv)}</span></div>`:''}</div>
       <button class="autoBtn${h.autoLearn?' on':''}" data-auto="1">自动<br>学习</button>
       <div class="slotgrid sk">${sk.join('')}</div>

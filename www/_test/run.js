@@ -191,6 +191,14 @@ const SEED=`
       O['博爱之弩：法师间隔(基础1.6+0.2)']=H[2].bat;
       O['号角+哥布林：召唤强度×']=+H[2].sumB.toFixed(2);
       O['圣洁吊坠：治疗强度×']=H[2].healP;
+      /* 减伤对照：怪攻100 打到 0甲英雄身上，看守望者(蓝) vs 穷鬼盾(紫) */
+      {const h=H[0],sv=[h.equips,h.lv,h.tier];h.equips=[];h.lv=1;h.tier=0;calc(h);
+       const hit=(id,a)=>{h.equips=id?[{t:'eq',id}]:[];calc(h);
+         return Math.round(Math.max(0,a-h.block-(h.flat||0))*(1-armorRed(h.armor))*(1-(h.blockP||0)));};
+       for(const a of [100,330])
+         O['怪攻'+a+' 实际吃到 裸/小圆盾/守望者/穷鬼盾']=
+           [hit(null,a),hit('smallshield',a),hit('watcher',a),hit('poorshield',a)];
+       h.equips=sv[0];h.lv=sv[1];h.tier=sv[2];calc(h);h.hp=h.maxHp;}
       /* 单件装备的 DPS 增益排行：Lv15 转职游侠(精灵游侠)，只穿这一件 */
       {const h=H[1];h.equips=[];h.lv=15;h.tier=1;h.branch=1;h.specLv=5;h.bloodS=0;h.sheepS=0;h.stormT=0;calc(h);
        const dps=x=>{const cr=(x.critAdd||0);const cm=1.5+(x.critDmg||0);
