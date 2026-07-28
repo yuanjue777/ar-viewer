@@ -602,7 +602,7 @@ function makeTex(size,fn,rep){
 /* 草地：暗绿基底 + 噪点 + 草簇斑块。四角重画保证无缝平铺 */
 function texGrass(){
   return makeTex(256,(x,S)=>{
-    x.fillStyle='#16251c';x.fillRect(0,0,S,S);
+    x.fillStyle='#5d9243';x.fillRect(0,0,S,S);
     const blob=(px,py,r,col,a)=>{
       x.globalAlpha=a;
       for(let dx=-1;dx<2;dx++)for(let dy=-1;dy<2;dy++){
@@ -612,12 +612,12 @@ function texGrass(){
       }
       x.globalAlpha=1;
     };
-    for(let i=0;i<26;i++)blob(srand()*S,srand()*S,18+srand()*30,'#233a2a',.5);
-    for(let i=0;i<18;i++)blob(srand()*S,srand()*S,14+srand()*22,'#0f1a14',.45);
-    for(let i=0;i<10;i++)blob(srand()*S,srand()*S,10+srand()*16,'#2d4632',.35);
+    for(let i=0;i<26;i++)blob(srand()*S,srand()*S,18+srand()*30,'#7cb058',.5);
+    for(let i=0;i<18;i++)blob(srand()*S,srand()*S,14+srand()*22,'#477431',.45);
+    for(let i=0;i<10;i++)blob(srand()*S,srand()*S,10+srand()*16,'#93c268',.35);
     for(let i=0;i<2600;i++){                       // 草纹噪点
       const v=srand();
-      x.fillStyle=v>.72?'#2b4331':v>.42?'#1b2c21':'#111d16';
+      x.fillStyle=v>.72?'#82b45c':v>.42?'#65994a':'#4e7f39';
       x.fillRect(srand()*S,srand()*S,1+(v>.9?1:0),1+(v>.85?2:0));
     }
   },[9,5.5]);
@@ -626,12 +626,12 @@ function texGrass(){
 function texStone(){
   return makeTex(256,(x,S)=>{
     const N=4,u=S/N;
-    x.fillStyle='#161f2e';x.fillRect(0,0,S,S);
+    x.fillStyle='#5f594c';x.fillRect(0,0,S,S);       // 石缝（暖灰，要比石块暗才有缝）
     for(let i=0;i<N;i++)for(let j=0;j<N;j++){
       const v=srand(),o=(j%2)*u*.5;                // 错缝
       const px=(i*u+o)%S,py=j*u,pad=1.6;
       const lum=.82+v*.36;
-      const col=(n)=>'#'+[0x22,0x2d,0x40].map((b,k)=>Math.min(255,(b*n)|0).toString(16).padStart(2,'0')).join('');
+      const col=(n)=>'#'+[0xa6,0x9d,0x88].map((b,k)=>Math.min(255,(b*n)|0).toString(16).padStart(2,'0')).join('');
       for(const dx of [0,-S]){
         x.fillStyle=col(lum);
         x.fillRect(px+dx+pad,py+pad,u-pad*2,u-pad*2);
@@ -640,7 +640,7 @@ function texStone(){
       }
     }
     for(let i=0;i<1400;i++){                       // 石面颗粒
-      x.fillStyle=srand()>.5?'rgba(255,255,255,.035)':'rgba(0,0,0,.09)';
+      x.fillStyle=srand()>.5?'rgba(255,255,255,.05)':'rgba(0,0,0,.07)';
       x.fillRect(srand()*S,srand()*S,1,1);
     }
   },[COLS/1.6,ROWS/1.6]);
@@ -648,17 +648,17 @@ function texStone(){
 /* 商店广场：暖色土/碎石地（比战斗区石板亮，和草地、石板都分得开） */
 function texDirt(){
   return makeTex(256,(x,S)=>{
-    x.fillStyle='#59492f';x.fillRect(0,0,S,S);
+    x.fillStyle='#a3855a';x.fillRect(0,0,S,S);
     for(let i=0;i<40;i++){                         // 土色斑块
       const px=srand()*S,py=srand()*S,r=12+srand()*30;
       const g=x.createRadialGradient(px,py,0,px,py,r);
-      g.addColorStop(0,srand()>.5?'#6b5838':'#48391f');
+      g.addColorStop(0,srand()>.5?'#bda077':'#8a6f45');
       g.addColorStop(1,'rgba(0,0,0,0)');
       x.fillStyle=g;x.beginPath();x.arc(px,py,r,0,7);x.fill();
     }
     for(let i=0;i<900;i++){                        // 碎石
       const v=srand(),s=1+(v>.85?2:0);
-      x.fillStyle=v>.8?'#8a7b60':v>.5?'#6d5c3d':'#3d3120';
+      x.fillStyle=v>.8?'#dccdaa':v>.5?'#b2966c':'#7d6644';
       x.fillRect(srand()*S,srand()*S,s,s);
     }
   },[1,1]);
@@ -986,15 +986,16 @@ function scatterDecor(){
 function init(){
   const cv=document.getElementById('cv');
   ren=new T.WebGLRenderer({canvas:cv,antialias:true,powerPreference:'high-performance'});
-  ren.setClearColor(0x0d1420,1);
+  ren.setClearColor(0x8fb8d4,1);                    // 万一露出草地以外，是天光色不是黑
   ren.shadowMap.enabled=true;ren.shadowMap.type=T.PCFShadowMap;
 
   scene=new T.Scene();
   cam=new T.OrthographicCamera(-1,1,1,-1,.5,CAM_D*2.5);
 
-  // 卡通着色下环境光要压低，不然所有面都顶到最亮那一阶、分阶看不出来
-  scene.add(new T.HemisphereLight(0x8fb4e0,0x1a2233,.5));
-  dirLight=new T.DirectionalLight(0xfff0d8,1.25);
+  /* 阳光下的明亮场景：天光偏蓝、地面反光偏暖，主光是一颗高角度的太阳。
+     ⚠️ 环境光不能再往上加了 —— 卡通分阶靠"一盏主光压过环境光"，天光一高就全顶到最亮那一阶。 */
+  scene.add(new T.HemisphereLight(0xbcd8ff,0x6d7a58,.78));
+  dirLight=new T.DirectionalLight(0xfff4d6,1.6);
   dirLight.position.set(COLS/2-5,13,ROWS/2-5);
   dirLight.castShadow=true;
   dirLight.shadow.mapSize.set(2048,1024);
@@ -1003,9 +1004,9 @@ function init(){
   sc.left=-COLS*.95;sc.right=COLS*.72;             // 左边要罩住挪出去的商店排sc.top=ROWS*2.4;sc.bottom=-ROWS*2.4;sc.near=1;sc.far=34;
   scene.add(dirLight);scene.add(dirLight.target);
   dirLight.target.position.set(COLS/2,0,ROWS/2);
-  const fill=new T.DirectionalLight(0x5f7fb8,.26);fill.position.set(6,4,6);scene.add(fill);
+  const fill=new T.DirectionalLight(0x9ec0e8,.2);fill.position.set(6,4,6);scene.add(fill);
   // 背光：从战场远侧低角度打过来，给单位勾一道冷色边，跟地面拉开
-  const rim=new T.DirectionalLight(0xa8d4ff,.45);
+  const rim=new T.DirectionalLight(0xcfe6ff,.4);
   rim.position.set(COLS/2+3,2.6,ROWS+9);scene.add(rim);scene.add(rim.target);
   rim.target.position.set(COLS/2,.5,ROWS/2);
 
@@ -1021,10 +1022,12 @@ function init(){
   };
 
   /* 连贯的草地大地图（一整张，战斗区只是铺在上面的石板路） */
-  const ground=new T.Mesh(new T.PlaneGeometry(COLS+24,ROWS+22),
+  const GW=COLS+46,GD=ROWS+46;                      // 铺大一点，屏幕上方不留天空缝
+  const ground=new T.Mesh(new T.PlaneGeometry(GW,GD),
     new T.MeshLambertMaterial({map:texGrass()}));
+  ground.material.map.repeat.set(GW/4.9,GD/4.9);    // 保持原来那个草纹密度
   ground.rotation.x=-PI/2;ground.position.set(COLS/2,0,ROWS/2);ground.receiveShadow=true;
-  scene.add(lay(ground,0x585858));
+  scene.add(lay(ground,0x232323));
 
   /* 战斗区：石板路台面（边缘有厚度，和草地区分开）
      右边一直铺到传送门脚下（BW>COLS），不然屏幕右侧会留一条空草地 */
@@ -1032,20 +1035,20 @@ function init(){
   BZ0=-1.3;BZ1=ROWS+1.3;                          // 纵向也多铺出去，屏幕上下不露草地
   const BD=BZ1-BZ0, BZC=(BZ0+BZ1)/2;
   const board=new T.Mesh(new T.BoxGeometry(BW,.14,BD),
-    new T.MeshLambertMaterial({color:0x222c3e}));
+    new T.MeshLambertMaterial({color:0x8a7f6c}));
   board.position.set(BW/2,-.07,BZC);board.receiveShadow=true;
-  scene.add(lay(board,0x1d2536));
+  scene.add(lay(board,0x1a1a1a));
   const road=new T.Mesh(new T.PlaneGeometry(BW,BD),
     new T.MeshLambertMaterial({map:texStone(),color:0xffffff}));
   road.material.map.repeat.set(BW/1.6,BD/1.6);
   road.rotation.x=-PI/2;road.position.set(BW/2,.005,BZC);road.receiveShadow=true;
-  scene.add(lay(road,0x6e6e6e));
+  scene.add(lay(road,0x2a2a2a));
 
   /* 左侧商店广场：碎石地，宽度跟着 shopShift 变（layoutShops 里设），把左边空草地填掉 */
   yard=new T.Mesh(new T.PlaneGeometry(1,1),
     new T.MeshLambertMaterial({map:texDirt()}));
   yard.rotation.x=-PI/2;yard.receiveShadow=true;
-  scene.add(lay(yard,0x5a5a5a));
+  scene.add(lay(yard,0x242424));
 
   /* 左侧出兵位：不再是色块，改成职业色法阵光圈 */
   for(let c=0;c<HCOLS;c++){
@@ -1086,7 +1089,7 @@ function init(){
   for(let r=0;r<=ROWS;r++)pts.push(0,.014,r, COLS,.014,r);
   const gg=new T.BufferGeometry();
   gg.setAttribute('position',new T.Float32BufferAttribute(pts,3));
-  scene.add(new T.LineSegments(gg,new T.LineBasicMaterial({color:0x3c5480,transparent:true,opacity:.85})));
+  scene.add(new T.LineSegments(gg,new T.LineBasicMaterial({color:0x453c2e,transparent:true,opacity:.62})));
 
   /* 出兵区/战斗区分界红线 */
   frontier=new T.Mesh(g_box(.06,.02,ROWS),new T.MeshBasicMaterial({color:0xff5d5d,transparent:true,opacity:.55}));
