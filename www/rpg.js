@@ -303,6 +303,10 @@ let mineLv,millLv,mineW,millW;                  // 等级 / 工人数
 let autoLearnAll=false,autoTrial=false,autoNext=false,autoTrialT=0;
 let heroes,mobs,shots,fx,nums,bears,inv,hails,storms,quakes,chests,trialCd;
 let sel=null,invSel=null,speed=1,running=false,started=false,over=false,openShop=null;
+/* 熔炉：信息区右边的装备暂存架。只收装备（技能书不收，免得绕过"买新书清旧书"的规则），
+   不参与"出售装备"和树枝合成——所以它的用途就是「把好装备存起来别被卖掉/别占背包」。 */
+const FORGE_MAX=8;
+let forge=[];
 const ANIM_T=.22;   // 攻击动作时长（rpg3d.js 的挥砍/拉弓动作用它算进度）
 /* 各转职支线的攻击节奏（渲染层按 h.animT 算动作进度）：
    弩手慢而重、精灵游侠快、火枪/强盗短促、狂战士双斧稍长 */
@@ -414,7 +418,7 @@ function reset(){
   gold=350;wood=0;lives=10;wave=0;queue=[];spawnT=0;incomeT=0;
   waveT=0;battleT=0;resting=false;cleared=true;hudAcc=0;
   mineLv=1;millLv=1;mineW=1;millW=1;autoTrialT=0;
-  heroes=[];mobs=[];shots=[];fx=[];nums=[];bears=[];inv=[];hails=[];storms=[];quakes=[];chests=[];
+  heroes=[];mobs=[];shots=[];fx=[];nums=[];bears=[];inv=[];forge=[];hails=[];storms=[];quakes=[];chests=[];
   trialCd={};for(const k of TRIAL_KEYS)trialCd[k]=0;
   renderTrials();
   sel=null;invSel=null;over=false;openShop=null;
@@ -1365,9 +1369,9 @@ function sideSkills(h,nm){
   let out='';
   for(let i=0;i<MAX_SLOTS;i++){
     const n=names[i];
-    if(!n){out+='<div class="row em">空</div>';continue;}
+    if(!n){out+=`<div class="row em" data-side="sk${i}">空</div>`;continue;}
     const d=SKB[n],up=n===nm&&h.skills[n]<MAX_SKILL_LV;
-    out+=`<div class="row${n===nm?' hi':''}" style="border-color:${QC[d.q]};color:${CATS[d.cat].color}">
+    out+=`<div class="row${n===nm?' hi':''}" data-side="sk${i}" style="border-color:${QC[d.q]};color:${CATS[d.cat].color}">
       <b>${n}</b><small>Lv${h.skills[n]}${up?` <span style="color:#f0c46a">→ Lv${h.skills[n]+1}</span>`:''}</small></div>`;
   }
   return out;
@@ -1377,9 +1381,9 @@ function sideEquips(h){
   let out='';
   for(let i=0;i<MAX_EQUIP;i++){
     const e=h.equips[i];
-    if(!e){out+='<div class="row em">空</div>';continue;}
+    if(!e){out+=`<div class="row em" data-side="eq${i}">空</div>`;continue;}
     const d=eqDef(e),q=qOf(e);
-    out+=`<div class="row" style="border-color:${q.c};color:${q.c}"><b>${d.n}</b><small>${eqDesc(d,e)}</small></div>`;
+    out+=`<div class="row" data-side="eq${i}" style="border-color:${q.c};color:${q.c}"><b>${d.n}</b><small>${eqDesc(d,e)}</small></div>`;
   }
   return out;
 }
@@ -1392,9 +1396,10 @@ function openGiveCards(idx){
   const isBook=it.t==='book';
   const nm=isBook?it.name:eqDef(it).n;
   cardMode='give';
-  cardTitle.innerHTML=isBook
+  const hint='<span style="font-size:10.5px;color:#8ea0ba;font-weight:400">（点卡片右边的格子可指定栏位，占用的就是替换）</span>';
+  cardTitle.innerHTML=(isBook
     ? `把 <b style="color:${QC[SKB[nm].q]}">${nm}</b> 教给哪位英雄？`
-    : `把 <b style="color:${qOf(it).c}">${nm}</b> 装备给哪位英雄？`;
+    : `把 <b style="color:${qOf(it).c}">${nm}</b> 装备给哪位英雄？`)+hint;
   if(isBook){
     const d=SKB[nm];
     cardInfo.innerHTML=`<div class="in" style="color:${CATS[d.cat].color}">${nm}</div>
@@ -1441,10 +1446,39 @@ function openGiveCards(idx){
     const side=document.createElement('div');
     side.className='chside';
     side.innerHTML=isBook?sideSkills(h,nm):sideEquips(h);
+    /* 点侧栏的格子 = 指定栏位，占用的那格就是**替换**。
+       「技能位已满 / 装备位已满」正好靠这个解，所以这两种情况不拦。 */
+    if(!why||why==='技能位已满')side.querySelectorAll('[data-side]').forEach(r=>{
+      r.classList.add('pick');
+      r.onclick=ev=>{
+        ev.stopPropagation();
+        const k=r.dataset.side, si=+k.slice(2);
+        closeCards();
+        applyItem(idx,h,k[0]==='s'?{sk:si}:{eq:si});
+      };
+    });
     pair.appendChild(el);pair.appendChild(side);
     cardRow.appendChild(pair);
     views.push({canvas:el.querySelector('canvas'),cls:h.cls,tier:h.tier,branch:h.branch,phase:i*2.1});
   });
+  /* 装备还可以「存入熔炉」（技能书不行：会绕过"买新书清旧书"的规则） */
+  if(!isBook){
+    const full=forge.length>=FORGE_MAX;
+    const pair=document.createElement('div');pair.className='chpair';
+    const el=document.createElement('div');
+    el.className='chcard fcard'+(full?' no':'');
+    el.innerHTML=`<div class="hcName" style="color:#e6a45e">熔炉</div>
+      <div class="fbig">🔥</div>
+      <div class="hcStats"><span>暂存装备，不花装备费</span><span>不会被「出售装备」卖掉</span></div>
+      <div class="hcBuy">${full?'熔炉已满':`存入（${forge.length}/${FORGE_MAX}）`}</div>`;
+    if(!full)el.onclick=()=>{
+      const item=inv[idx];if(!item)return;
+      forge.push(item);inv.splice(idx,1);
+      closeCards();renderInv();renderInfo();
+      showToast(`<b style="color:${qOf(item).c}">${eqDef(item).n}</b> 已存入熔炉`);
+    };
+    pair.appendChild(el);cardRow.appendChild(pair);
+  }
   cardsEl.classList.add('show');
   R3.cardShow(views);
 }
@@ -1464,7 +1498,7 @@ cardsEl.onclick=ev=>{if(ev.target===cardsEl)closeCards();};
 
 function renderInfo(){
   if(over)return;
-  if(openShop){info.innerHTML=shopHTML();return;}
+  if(openShop){info.innerHTML=shopHTML()+forgeHTML();bindForge();return;}
   const h=selHero();
   let html='';
   if(sel&&!h){
@@ -1527,8 +1561,10 @@ function renderInfo(){
     html=`<div class="hint">${!started?'布阵阶段：买好英雄后点右上角 <b style="color:#8ab8d8">▶ 启动</b> 开始进攻':
       n?'第 '+wave+' 波'+(isBossWave(wave)?' <b style="color:#ff5d5d">· BOSS关</b>':isEliteWave(wave)?' <b style="color:#f0c46a">· 精英波</b>':'')+' — 剩余 '+n
        :'点左边建筑逛商店；背包里点技能书/装备再选英雄；英雄可在本职业那一列的法阵间拖动换行'}</div>`;
+    html+=forgeHTML();
   }
   info.innerHTML=html;
+  bindForge();
   const ba=document.getElementById('buyAt');
   if(ba)ba.onclick=()=>openHireCards();
   const au=info.querySelector('[data-auto]');
@@ -1565,6 +1601,17 @@ function setShop(kind){
 }
 function closeShop(){
   openShop=null;
+}
+function forgeHTML(){
+  let g='';
+  for(let i=0;i<FORGE_MAX;i++){
+    const it=forge[i];
+    if(!it){g+='<div class="fslot em"></div>';continue;}
+    const d=eqDef(it),q=qOf(it);
+    g+=`<div class="fslot" data-forge="${i}" style="border-color:${q.c};color:${q.c}">${d.s}</div>`;
+  }
+  return `<div class="forge"><div class="fh">熔炉<small>${forge.length}/${FORGE_MAX}</small></div>
+    <div class="fgrid">${g}</div></div>`;
 }
 function shopHTML(){
   if(openShop==='skill'){
@@ -1603,6 +1650,18 @@ function shopHTML(){
     : `<button class="btn" data-worker="${openShop}" data-cost="${wcost}" data-lock="0" ${gold>=wcost?'':'disabled'}>
         <b>增加工人数量</b> ${w+1}/${WORKER_MAX} <span class="cost">${wcost}金</span></button>`;
   return head+`<div class="shopGrid inc">${up}${hire}</div>`;
+}
+/* 点熔炉里的装备 = 取回背包（再点背包就能选英雄穿） */
+function bindForge(){
+  info.querySelectorAll('[data-forge]').forEach(el=>{
+    el.onclick=()=>{
+      const i=+el.dataset.forge,it=forge[i];
+      if(!it)return;
+      forge.splice(i,1);inv.push(it);
+      showToast(`<b style="color:${qOf(it).c}">${eqDef(it).n}</b> 已取回背包`);
+      renderInv();renderInfo();
+    };
+  });
 }
 function refreshAfford(){
   document.querySelectorAll('#info [data-cost]').forEach(b=>{
@@ -1790,7 +1849,7 @@ function applyItem(idx,h,slot){
   }
   inv.splice(idx,1);
   renderInv();
-  if(selHero()===h)renderInfo();
+  renderInfo();   // 商店页/熔炉/英雄面板都可能要跟着变，统一重画
 }
 /* 背包：单击=弹英雄卡片选给谁（主要交互）；拖动到技能栏/装备栏=指定栏位覆盖（保留） */
 let drag=null;
@@ -1815,7 +1874,8 @@ window.addEventListener('pointerup',ev=>{
   const {idx,moved}=drag;drag=null;
   if(!moved){
     // 单击 = 弹英雄卡片（详情在卡片层左边显示）；拖动到栏位仍然可用
-    invSel=null;closeShop();sel=null;renderInfo();
+    // ⚠️ 别在这里 closeShop()：用户要求学完/穿完还停在商店页，能直接接着 roll
+    invSel=null;
     openGiveCards(idx);
     return;
   }

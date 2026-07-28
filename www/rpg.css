@@ -120,7 +120,7 @@
     flex:0 0 auto;max-width:104px;align-self:stretch;display:flex;align-items:center;
     padding-left:8px;border-left:2px solid #34507e;
   }
-  /* 商店按钮 2×2（装备商店只有3档，最后一档占满整行） */
+  /* 商店按钮 2×2（装备商店四档正好填满） */
   #info .shopGrid{
     flex:1;min-width:0;display:grid;gap:5px;
     grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;
@@ -135,6 +135,20 @@
     max-width:none;flex:0 0 128px;flex-direction:column;align-items:flex-start;
     justify-content:center;gap:1px;line-height:1.35;
   }
+  /* ---- 熔炉：信息区最右边的装备暂存架（挤掉一点商店按钮宽度）---- */
+  #info .forge{
+    flex:0 0 auto;align-self:stretch;display:flex;align-items:center;gap:6px;
+    padding-left:8px;margin-left:2px;border-left:2px solid #7a5330;
+  }
+  #info .forge .fh{font-size:11px;font-weight:700;color:#e6a45e;line-height:1.25;text-align:center}
+  #info .forge .fh small{display:block;font-size:9px;color:var(--ink-dim);font-weight:400}
+  #info .fgrid{display:grid;grid-template-columns:repeat(4,26px);grid-template-rows:26px 26px;gap:4px}
+  #info .fslot{
+    border:1px solid var(--line);border-radius:5px;background:rgba(255,255,255,.04);
+    display:flex;align-items:center;justify-content:center;overflow:hidden;
+    font-size:9px;line-height:1.05;text-align:center;cursor:pointer;
+  }
+  #info .fslot.em{border-style:dashed;opacity:.4;cursor:default}
   #info .btn .sub{display:block;color:var(--ink-dim);font-size:9.5px;margin-top:1px;line-height:1.3}
   #info .btn.grow{flex:1;text-align:left}
   /* 英雄面板：左属性 | 4技能栏 | 2×3装备栏 */
@@ -243,7 +257,8 @@
   }
   #cards.show{display:flex}
   #cardTitle{font-size:15px;font-weight:700;color:#e8eef7;letter-spacing:1px}
-  #cardBody{display:flex;gap:10px;align-items:center;justify-content:center;max-width:100vw}
+  #cardBody{display:flex;gap:10px;align-items:center;justify-content:center;
+    max-width:100vw;overflow-x:auto;padding:0 4px}
   #cardRow{display:flex;gap:10px;align-items:stretch}
   /* 左侧：物品详情（学技能/穿装备时显示） */
   #cardInfo{
@@ -269,6 +284,18 @@
   .chside .row.em{border-style:dashed;color:#4e586c;text-align:center;background:none}
   .chside .row.hi{box-shadow:0 0 0 1px #f0c46a inset}
   .chside .row small{display:block;color:#8ea0ba;font-size:8px;line-height:1.2}
+  /* 侧栏格子可点 = 指定/替换栏位 */
+  .chside .row.pick{cursor:pointer}
+  .chside .row.pick:hover{border-color:#f0c46a;background:#1b2540}
+  /* 卡片层里的「存入熔炉」卡 */
+  .chcard.fcard .fbig{
+    height:132px;display:flex;align-items:center;justify-content:center;font-size:38px;
+    background:radial-gradient(ellipse at 50% 70%,#4a3016,#181209 70%);
+  }
+  .chcard.fcard .hcStats span{font-size:8.5px;color:#9fb0c8;line-height:1.3}
+  /* 熔炉卡不需要跟英雄卡一样宽（give 模式横向本来就紧） */
+  #cards.give .chcard.fcard{width:84px}
+  #cards.give #cardInfo{width:136px}
   #cards.give .chcard{width:108px}
   #cards.give .chcard canvas{height:96px}
   #cards.give .chcard .hcRow{font-size:9.5px}

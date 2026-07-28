@@ -102,6 +102,44 @@ const SEED=`
     await p.waitForTimeout(300);
     console.log('装备数:',beq,'→',await p.evaluate(()=>heroes[0].equips.length));
 
+    /* ---- 商店常驻：学完/穿完不应该把商店页顶掉 ---- */
+    await p.evaluate(()=>{gold=99999;wood=99999;setShop('item');buyEquip('low');renderInv();});
+    await p.waitForTimeout(300);
+    console.log('买完装备 商店仍开着:',await p.evaluate(()=>openShop),
+                '熔炉格数:',await p.evaluate(()=>document.querySelectorAll('#info .fslot').length));
+    const clickInv=()=>p.evaluate(()=>{const el=[...document.querySelectorAll('#invItems .book')].pop();
+      el.dispatchEvent(new PointerEvent('pointerdown',{clientX:100,clientY:400,bubbles:true}));
+      window.dispatchEvent(new PointerEvent('pointerup',{clientX:100,clientY:400,bubbles:true}));});
+    await clickInv();
+    await p.waitForTimeout(900);
+    console.log('点背包后 商店仍开着:',await p.evaluate(()=>openShop),
+                '卡片层有熔炉卡:',await p.evaluate(()=>!!document.querySelector('#cardRow .chcard.fcard')));
+    await shot('k5_forge');
+    console.log('卡片层总宽/视口宽(应<=900，超了会横向滚动):',await p.evaluate(()=>{
+      const r=document.getElementById('cardRow').getBoundingClientRect();
+      const b=document.getElementById('cardBody').getBoundingClientRect();
+      return [Math.round(r.width+150+10),Math.round(b.width),window.innerWidth];}));
+    // 存入熔炉
+    await p.evaluate(()=>document.querySelector('#cardRow .chcard.fcard').click());
+    await p.waitForTimeout(400);
+    console.log('存入熔炉 → 熔炉件数:',await p.evaluate(()=>forge.length),
+                '信息区仍是商店:',await p.evaluate(()=>!!document.querySelector('#info .shopGrid')));
+    // 点熔炉格子取回背包
+    await p.evaluate(()=>document.querySelector('#info .fslot[data-forge]').click());
+    await p.waitForTimeout(300);
+    console.log('取回背包 → 熔炉件数:',await p.evaluate(()=>forge.length),
+                '背包装备数:',await p.evaluate(()=>inv.filter(i=>i.t==='eq').length));
+    /* ---- 点侧栏格子 = 替换该栏位 ---- */
+    await p.evaluate(()=>{heroes[0].equips=[{t:'eq',id:'doransword'},{t:'eq',id:'shortdagger'}];calc(heroes[0]);});
+    await clickInv();
+    await p.waitForTimeout(900);
+    const b0=await p.evaluate(()=>heroes[0].equips.map(e=>eqDef(e).n).join('/'));
+    await p.evaluate(()=>{const r=document.querySelectorAll('#cardRow .chpair')[0]
+      .querySelectorAll('.chside .row')[1];r.click();});
+    await p.waitForTimeout(400);
+    console.log('点第2个装备格替换:',b0,'→',await p.evaluate(()=>heroes[0].equips.map(e=>eqDef(e).n).join('/')),
+                '(第2格应被换掉，旧的退回背包)');
+
   }else if(scene==='sim'){
     /* 平衡测试：不 seed（裸跑），用逻辑时钟快跑，不等真实时间 */
     await p.evaluate(()=>document.querySelectorAll('#cardRow .chcard')[0].click());
@@ -349,6 +387,11 @@ const SEED=`
     await p.evaluate(()=>setShop('item'));      // 装备商店：四档应排成 2×2
     await p.waitForTimeout(300);
     await shot('s4_eqshop',{x:0,y:H-86,width:W,height:86});
+    await shot('s5_forge',{x:W-200,y:H-86,width:200,height:86});   // 熔炉那一角放大
+    console.log('熔炉宽度/右边界/info右边界:',await p.evaluate(()=>{
+      const f=document.querySelector('#info .forge').getBoundingClientRect();
+      const i=document.getElementById('info').getBoundingClientRect();
+      return [Math.round(f.width),Math.round(f.right),Math.round(i.right)];}));
     const fps=await p.evaluate(()=>new Promise(r=>{let n=0;const t0=performance.now();
       (function f(){n++;performance.now()-t0<2000?requestAnimationFrame(f):r((n/((performance.now()-t0)/1000)).toFixed(1));})();}));
     console.log('FPS(swiftshader软渲染，只看有没有崩，别当真机参考):',fps);
