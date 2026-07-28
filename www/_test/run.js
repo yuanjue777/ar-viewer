@@ -240,6 +240,8 @@ const SEED=`
         .map(q=>EQUIPS.filter(e=>e.q===q&&e.pool!=='evo').length);
       O['商店可roll(白/绿/蓝/紫)']=['common','fine','rare','epic']
         .map(q=>EQUIPS.filter(e=>e.q===q&&!e.pool).length);
+      O['装备roll四档 金+木→紫%']=Object.entries(EQ_TIERS)
+        .map(([k,t])=>`${t.n} ${t.cost}金+${t.wood}木 紫${t.w.epic}%`);
       O['装备费 白/绿/蓝/紫/金']=['doransword','heavyhammer','willowbow','dragonlance','titan']
         .map(id=>equipCost({t:'eq',id}));
       const m=heroes[1];m.tier=0;
@@ -327,9 +329,12 @@ const SEED=`
     await p.waitForTimeout(3000);
     await shot('s2_trial',cl);                        // 精英试炼+宝箱
     // 底栏 UI：技能商店 2×2 + 背包两行（只截底栏那一条，省得看全屏）
-    await p.evaluate(()=>{gold=99999;setShop('skill');buyPack('agi');buyEquip('low');renderInv();});
+    await p.evaluate(()=>{gold=99999;wood=99999;setShop('skill');buyPack('agi');buyEquip('low');renderInv();});
     await p.waitForTimeout(400);
     await shot('s3_bottom',{x:0,y:H-86,width:W,height:86});
+    await p.evaluate(()=>setShop('item'));      // 装备商店：四档应排成 2×2
+    await p.waitForTimeout(300);
+    await shot('s4_eqshop',{x:0,y:H-86,width:W,height:86});
     const fps=await p.evaluate(()=>new Promise(r=>{let n=0;const t0=performance.now();
       (function f(){n++;performance.now()-t0<2000?requestAnimationFrame(f):r((n/((performance.now()-t0)/1000)).toFixed(1));})();}));
     console.log('FPS(swiftshader软渲染，只看有没有崩，别当真机参考):',fps);

@@ -132,7 +132,7 @@ const EQUIPS=[
   {id:'doransword', n:'多兰剑',    s:'多兰',q:'common',stats:{str:5,atk:10}},
   {id:'doranshield',n:'多兰盾',    s:'兰盾',q:'common',stats:{flat:10}},
   {id:'doranring',  n:'多兰戒',    s:'兰戒',q:'common',stats:{mpre:1}},
-  {id:'kill1',      n:'杀人剑',    s:'杀剑',q:'common',stats:{atk:15},evo:'kill2',evoN:20},
+  {id:'kill1',      n:'杀人剑',    s:'杀剑',q:'common',stats:{atk:15},evo:'kill2',evoN:20},   // 进化门槛递增 20/50/100/200
   {id:'twig',       n:'小树枝',    s:'小枝',q:'common',stats:{all:5},craft:{to:'bigtwig',n:6}},
   {id:'banditblade',n:'强盗之刃',  s:'强盗',q:'common',stats:{},proc:'gold'},
   {id:'shortdagger',n:'短刀',      s:'短刀',q:'common',stats:{aspd:10}},
@@ -179,18 +179,22 @@ const EQUIPS=[
   {id:'cenarius', n:'塞纳留斯的号角',s:'号角',q:'legend',pool:'gold',stats:{all:100,summon:1,cdr:.2}},
   {id:'titan',    n:'泰坦的坚决',    s:'泰坦',q:'legend',pool:'gold',stats:{armor:20,mres:.2},proc:'titan'},
   /* ---------- 杀人剑的进化形态：pool:'evo' → 商店/宝箱都不会直接出 ---------- */
-  {id:'kill2',n:'杀人剑',s:'杀剑',q:'fine',  pool:'evo',stats:{atk:35,aspd:10},         evo:'kill3',evoN:20},
-  {id:'kill3',n:'杀人剑',s:'杀剑',q:'rare',  pool:'evo',stats:{atk:70,aspd:25},         evo:'kill4',evoN:20},
-  {id:'kill4',n:'杀人剑',s:'杀剑',q:'epic',  pool:'evo',stats:{atk:100,crit:20,aspd:40},evo:'kill5',evoN:20},
+  {id:'kill2',n:'杀人剑',s:'杀剑',q:'fine',  pool:'evo',stats:{atk:35,aspd:10},         evo:'kill3',evoN:50},
+  {id:'kill3',n:'杀人剑',s:'杀剑',q:'rare',  pool:'evo',stats:{atk:70,aspd:25},         evo:'kill4',evoN:100},
+  {id:'kill4',n:'杀人剑',s:'杀剑',q:'epic',  pool:'evo',stats:{atk:100,crit:20,aspd:40},evo:'kill5',evoN:200},
   {id:'kill5',n:'杀人剑',s:'杀剑',q:'legend',pool:'evo',stats:{atk:250,crit:25,aspd:80}},
 ];
 const GOLD_DROP=.15;   // 宝箱里开出金色装备的概率
 const EQ_BY_ID=Object.fromEntries(EQUIPS.map(e=>[e.id,e]));
-/* 装备商店三档roll：每次固定4件，越贵越容易出高品质 */
+/* 装备商店四档roll：每次固定4件，越贵越容易出高品质。
+   ⚠️ 2026-07 用户加的规则：**每一档都要同时花金币和木头**（木头=金币，1:1），
+   顶级档 800金+800木 是纯紫金档（不出白，5%绿/30%蓝/65%紫）。
+   金色仍然只从宝箱开，商店永远roll不出。 */
 const EQ_TIERS={
-  low: {n:'低级roll',cost:100,w:{common:60,fine:30,rare:9, epic:1}},
-  mid: {n:'中级roll',cost:200,w:{common:30,fine:40,rare:24,epic:6}},
-  high:{n:'高级roll',cost:400,w:{common:5, fine:30,rare:45,epic:20}},
+  low: {n:'低级roll',cost:100,wood:100,w:{common:60,fine:30,rare:9, epic:1}},
+  mid: {n:'中级roll',cost:200,wood:200,w:{common:30,fine:40,rare:24,epic:6}},
+  high:{n:'高级roll',cost:400,wood:400,w:{common:5, fine:30,rare:45,epic:20}},
+  top: {n:'顶级roll',cost:800,wood:800,w:{common:0, fine:5,  rare:30,epic:65}},
 };
 function rollEquip(tier){
   const w=EQ_TIERS[tier].w;
@@ -1572,9 +1576,9 @@ function shopHTML(){
   if(openShop==='item'){
     return `<div class="card shopHead"><b>装备商店</b></div><div class="shopGrid eq">`+
       Object.entries(EQ_TIERS).map(([k,t])=>
-        `<button class="btn" data-eqroll="${k}" data-cost="${t.cost}" data-lock="0" ${gold>=t.cost?'':'disabled'}>
-          <b>${t.n}</b> <span class="cost">${t.cost}金</span>
-          <span class="sub">白${t.w.common}/绿${t.w.fine}/蓝${t.w.rare}/紫${t.w.epic}%</span></button>`).join('')+
+        `<button class="btn" data-eqroll="${k}" data-cost="${t.cost}" data-wood="${t.wood||0}" data-lock="0" ${gold>=t.cost&&wood>=(t.wood||0)?'':'disabled'}>
+          <b>${t.n}</b> <span class="cost">${t.cost}金</span>+<span class="costw">${t.wood}木</span>
+          <span class="sub">${t.w.common?'白'+t.w.common+'/':''}绿${t.w.fine}/蓝${t.w.rare}/紫${t.w.epic}%</span></button>`).join('')+
       `</div>`;
   }
   /* 金矿/伐木场：产出 = 工人数 × 等级。升级 = 每个工人都变强，招工人 = 多一份产出 */
@@ -1679,9 +1683,9 @@ function autoLearnPass(){
   if(got.length)showToast('自动学习：'+got.join('、'));
 }
 function buyEquip(tier){
-  const cost=EQ_TIERS[tier].cost;
-  if(gold<cost)return;
-  gold-=cost;
+  const t=EQ_TIERS[tier],cost=t.cost,wd=t.wood||0;
+  if(gold<cost||wood<wd)return;
+  gold-=cost;wood-=wd;
   for(let i=0;i<4;i++)inv.push(rollEquip(tier));   // 每档固定roll4件
   updateHUD();renderInfo();renderInv();
 }
