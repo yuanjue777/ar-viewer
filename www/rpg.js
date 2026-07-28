@@ -407,8 +407,8 @@ function calc(h){
     const r=h.bat*.75+.05*sp;
     h.atk=Math.round(h.atk*(1+r));h.dmgMul=1+r;
   }
-  // ⚠️ 用户 2026-07 定：**1敏 = 0.1 攻速点**（原来是 1:1），让装备上的攻速真正值钱
-  h.ias=Math.min(400,h.agi*.1+eqAspd+(h.stormT>0?30:0)+(h.sheepS||0)*10);
+  // ⚠️ 用户 2026-07 定：**1敏 = 0.3 攻速点**（原 1:1 → 试过 0.1 太狠 → 定在 0.3）
+  h.ias=Math.min(400,h.agi*.3+eqAspd+(h.stormT>0?30:0)+(h.sheepS||0)*10);
   h.interval=h.bat/(1+h.ias/100);
   h.cdr=Math.min(.5,eqCdr+.04*(h.skills['CD光环']||0)+(key==='archmage'?(10+2*sp)/100:0));
   h.block=eqBlock;h.flat=eqFlat;   // block=固定格挡(只挡普攻)，flat=固定减免；当前怪只有普攻，两者效果相同
