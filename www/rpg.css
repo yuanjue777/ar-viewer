@@ -287,14 +287,14 @@
   /* 侧栏格子可点 = 指定/替换栏位 */
   .chside .row.pick{cursor:pointer}
   .chside .row.pick:hover{border-color:#f0c46a;background:#1b2540}
-  /* 卡片层里的「存入熔炉」卡 */
-  .chcard.fcard .fbig{
-    height:132px;display:flex;align-items:center;justify-content:center;font-size:38px;
-    background:radial-gradient(ellipse at 50% 70%,#4a3016,#181209 70%);
+  /* 「存入熔炉」按钮：放在三张卡片下面 */
+  #cardForge{
+    display:none;margin-top:2px;padding:6px 18px;text-align:center;
+    border-color:#8a5f30;color:#e6a45e;background:linear-gradient(180deg,#2e2113,#1b150c);
+    font-size:12px;
   }
-  .chcard.fcard .hcStats span{font-size:8.5px;color:#9fb0c8;line-height:1.3}
-  /* 熔炉卡不需要跟英雄卡一样宽（give 模式横向本来就紧） */
-  #cards.give .chcard.fcard{width:84px}
+  #cardForge .sub{display:block;color:var(--ink-dim);font-size:9.5px;margin-top:2px}
+  #cardForge:disabled{opacity:.45}
   #cards.give #cardInfo{width:136px}
   #cards.give .chcard{width:108px}
   #cards.give .chcard canvas{height:96px}

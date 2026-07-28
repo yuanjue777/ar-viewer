@@ -113,22 +113,27 @@ const SEED=`
     await clickInv();
     await p.waitForTimeout(900);
     console.log('点背包后 商店仍开着:',await p.evaluate(()=>openShop),
-                '卡片层有熔炉卡:',await p.evaluate(()=>!!document.querySelector('#cardRow .chcard.fcard')));
+                '熔炉按钮(在卡片下方):',await p.evaluate(()=>{const b=document.getElementById('cardForge');
+                  return b.style.display!=='none'&&b.parentElement.id==='cards';}));
     await shot('k5_forge');
     console.log('卡片层总宽/视口宽(应<=900，超了会横向滚动):',await p.evaluate(()=>{
       const r=document.getElementById('cardRow').getBoundingClientRect();
       const b=document.getElementById('cardBody').getBoundingClientRect();
       return [Math.round(r.width+150+10),Math.round(b.width),window.innerWidth];}));
     // 存入熔炉
-    await p.evaluate(()=>document.querySelector('#cardRow .chcard.fcard').click());
+    const g0=await p.evaluate(()=>gold);
+    await p.evaluate(()=>document.getElementById('cardForge').click());
     await p.waitForTimeout(400);
     console.log('存入熔炉 → 熔炉件数:',await p.evaluate(()=>forge.length),
+                '扣金:',g0-(await p.evaluate(()=>gold)),
                 '信息区仍是商店:',await p.evaluate(()=>!!document.querySelector('#info .shopGrid')));
-    // 点熔炉格子取回背包
+    // 点熔炉格子取回背包：应标记成已付费、不再标价
     await p.evaluate(()=>document.querySelector('#info .fslot[data-forge]').click());
     await p.waitForTimeout(300);
     console.log('取回背包 → 熔炉件数:',await p.evaluate(()=>forge.length),
-                '背包装备数:',await p.evaluate(()=>inv.filter(i=>i.t==='eq').length));
+                '背包装备数:',await p.evaluate(()=>inv.filter(i=>i.t==='eq').length),
+                '取回的装备再穿要多少金:',await p.evaluate(()=>{
+                  const it=inv.find(i=>i.paid);return it?equipCost(it):'没找到已付费装备';}));
     /* ---- 点侧栏格子 = 替换该栏位 ---- */
     await p.evaluate(()=>{heroes[0].equips=[{t:'eq',id:'doransword'},{t:'eq',id:'shortdagger'}];calc(heroes[0]);});
     await clickInv();
@@ -322,6 +327,16 @@ const SEED=`
       inv.length=0;inv.push({t:'eq',id:'willowbow'});
       const g0=gold;applyItem(0,heroes[0]);
       O['穿装备扣金']=g0-gold;
+      // 波次耐久/伤害曲线（耐久和伤害已分离）
+      O['每波总血/总攻(w1/5/8/10/15/20/25)']=[1,5,8,10,15,20,25].map(w=>{
+        const sv=wave;wave=w;const L=waveComp(w);let hp=0,at=0;
+        const m0=mobs.length;
+        for(const e of L)spawnMob(e.t,{elite:e.elite,mul:e.mul,hmul:e.hmul,rs:e.rs});
+        for(let i=m0;i<mobs.length;i++){hp+=mobs[i].maxHp;at+=mobs[i].atk;}
+        mobs.length=m0;wave=sv;
+        return `w${w}: 血${Math.round(hp)} 攻${Math.round(at)}(${L.length}只)`;});
+      O['技能书 roll/学习费(木)']=[PACK_COST,ROLL_COST,BOOK_COST.qgreen,BOOK_COST.qblue,BOOK_COST.qpurple];
+      O['移速 普通/快/坦克/Boss/英雄']=[MOBS.normal.spd,MOBS.fast.spd,MOBS.tank.spd,MOBS.boss.spd,HERO_SPD];
       // 经济曲线：交叉点（招人更划算 ⇔ L > W×√(b/a)）
       O['金矿 升级/工人']=[[1,2,3].map(mineCost),[1,2,3,4].map(mineWkCost)];
       O['伐木场 升级/工人']=[[1,2,3].map(millCost),[1,2,3,4].map(millWkCost)];
@@ -393,6 +408,13 @@ const SEED=`
       const f=document.querySelector('#info .forge').getBoundingClientRect();
       const i=document.getElementById('info').getBoundingClientRect();
       return [Math.round(f.width),Math.round(f.right),Math.round(i.right)];}));
+    await p.evaluate(()=>setShop('skill'));       // 技能商店现在花木头
+    await p.waitForTimeout(250);
+    await shot('s6_skillshop',{x:0,y:H-86,width:W,height:86});
+    await p.evaluate(()=>{closeShop();mobs.length=0;wave=9;startWave();});   // → 第10波 BOSS关
+    await p.waitForTimeout(900);
+    await shot('s7_boss',{x:0,y:0,width:W,height:120});                      // Boss总血条
+    console.log('Boss关 只出1只/血量:',await p.evaluate(()=>[mobs.length,Math.round(mobs[0].maxHp)]));
     console.log('渲染开销 drawCalls/三角形/纹理:',await p.evaluate(()=>{
       const i=R3.info?R3.info():null;return i||'n/a';}));
     const fps=await p.evaluate(()=>new Promise(r=>{let n=0;const t0=performance.now();

@@ -89,15 +89,17 @@ function pickBook(pool){
   return pool[pool.length-1];
 }
 const CATS={str:{label:'力量',color:'#ff5d5d'},agi:{label:'敏捷',color:'#57d474'},int:{label:'智力',color:'#4f8dff'}};
-const PACK_COST=100, ROLL_COST=40, PACK_N=4;
-/* 技能书学习费：roll只出书，真正学到英雄身上时按品质付金币 */
-const BOOK_COST={qgreen:40,qblue:80,qpurple:150};
+/* ⚠️ 2026-07 用户改：技能书整条线走**木头**（roll 和学习费都是木），装备走金币为主。 */
+const PACK_COST=200, ROLL_COST=100, PACK_N=4;
+/* 技能书学习费：roll只出书，真正学到英雄身上时按品质付**木头**（每升一档品质翻倍） */
+const BOOK_COST={qgreen:200,qblue:400,qpurple:800};
 function bookCost(name){return BOOK_COST[SKB[name].q]||0;}
 /* 出售：只有装备能卖，技能书不能卖；返还压低到roll成本的40~60% */
 const SELL_EQ={common:8,fine:18,rare:40,epic:80,legend:200};
 /* 装备穿上时按品质付费（和技能书的学习费一个思路：roll只是出货，装备要另付钱） */
 const EQUIP_COST={common:15,fine:35,rare:70,epic:140,legend:250};
-function equipCost(it){return EQUIP_COST[eqDef(it).q]||0;}
+/* 已经付过装备费的（存过熔炉的）不再收费，也不再标价 */
+function equipCost(it){return it.paid?0:(EQUIP_COST[eqDef(it).q]||0);}
 function canSell(it){return it.t==='eq';}
 function sellValue(it){return canSell(it)?(SELL_EQ[eqDef(it).q]||8):0;}
 
@@ -191,10 +193,10 @@ const EQ_BY_ID=Object.fromEntries(EQUIPS.map(e=>[e.id,e]));
    顶级档 800金+800木 不出白，且是**唯一能roll出金色的地方**（10%）——
    前三档仍然 roll 不出金色，宝箱那条路（GOLD_DROP）也照旧。 */
 const EQ_TIERS={
-  low: {n:'低级roll',cost:100,wood:100,w:{common:60,fine:30,rare:9, epic:1}},
-  mid: {n:'中级roll',cost:200,wood:200,w:{common:30,fine:40,rare:24,epic:6}},
-  high:{n:'高级roll',cost:400,wood:400,w:{common:5, fine:30,rare:45,epic:20}},
-  top: {n:'顶级roll',cost:800,wood:800,w:{common:0, fine:5,  rare:30,epic:55,legend:10}},
+  low: {n:'低级roll',cost:200, wood:100,w:{common:60,fine:30,rare:9, epic:1}},
+  mid: {n:'中级roll',cost:400, wood:200,w:{common:30,fine:40,rare:24,epic:6}},
+  high:{n:'高级roll',cost:800, wood:400,w:{common:5, fine:30,rare:45,epic:20}},
+  top: {n:'顶级roll',cost:1600,wood:800,w:{common:0, fine:5,  rare:30,epic:55,legend:10}},
 };
 function rollEquip(tier){
   const w=EQ_TIERS[tier].w;
@@ -238,10 +240,11 @@ function eqDesc(def,it){
 /* ================= 怪物（带护甲/魔抗）================= */
 const MOBS={
   // atkR=攻击距离（都小于战士射程1.15，保证近战能还手）
-  normal:{hp:40, spd:1.1,atk:8, reward:7, xp:5, r:.30,lives:1,armor:0,mres:0,  atkR:.62,color:'#c95bff'},
-  fast:  {hp:26, spd:1.9,atk:6, reward:8, xp:6, r:.23,lives:1,armor:0,mres:0,  atkR:.42,color:'#ff9d4d'},
-  tank:  {hp:150,spd:.7, atk:14,reward:14,xp:12,r:.38,lives:2,armor:6,mres:.15,atkR:.85,color:'#8a6bff'},
-  boss:  {hp:700,spd:.55,atk:30,reward:70,xp:60,r:.47,lives:3,armor:10,mres:.3,atkR:1.05,color:'#ff3860'},
+  // ⚠️ 2026-07 用户要求：怪和英雄的移速统一成 1.3 格/秒（快速怪不再靠速度区分）
+  normal:{hp:40, spd:1.3,atk:8, reward:7, xp:5, r:.30,lives:1,armor:0,mres:0,  atkR:.62,color:'#c95bff'},
+  fast:  {hp:26, spd:1.3,atk:6, reward:8, xp:6, r:.23,lives:1,armor:0,mres:0,  atkR:.42,color:'#ff9d4d'},
+  tank:  {hp:150,spd:1.3,atk:14,reward:14,xp:12,r:.38,lives:2,armor:6,mres:.15,atkR:.85,color:'#8a6bff'},
+  boss:  {hp:700,spd:1.3,atk:30,reward:70,xp:60,r:.47,lives:3,armor:10,mres:.3,atkR:1.05,color:'#ff3860'},
 };
 /* ---- 金矿 / 伐木场：产出 = 工人数 × 等级（每秒）。等级上限10、工人上限5 ----
    平衡推导：升级和招人是互相放大的（P=W×L），所以只比"边际收益/花费"：
@@ -263,6 +266,8 @@ const REST_TIME=25;
 const FORMS=['goose','wedge','line','echelon','block'];
 /* 波次类型：逢5(5/15/25)=精英波，逢10(10/20)=Boss关（只有Boss、数值额外拔高） */
 const BOSS_WAVE_MUL=3.0, ELITE_RS=1.2;
+/* Boss关的Boss：数值×BOSS_WAVE_MUL 之外，**血量再单独 ×BOSS_HP_MUL**（只加血不加伤害） */
+const BOSS_HP_MUL=3.0;
 function isBossWave(w){return w%10===0;}
 function isEliteWave(w){return w%10===5;}
 /* 怪物AI：进仇恨半径就直接扑向最近的英雄/召唤物，进攻击范围(MOBS.atkR)停下开打 */
@@ -270,7 +275,7 @@ const MS_EXTRA=.5;   // 多重射击：次级目标的检索范围比主目标�
 const AGGRO_R=4.6;   // 仇恨半径：进这个圈就扑向英雄。5行后调大过，否则上下两行的怪来不及被吸引
 /* 召唤物不再有活动上限：召出来就一路向右压，波次结束随波消散 */
 /* 开波后英雄从左往右推进的速度（格/秒），清场后按1.8倍走回本阵 */
-const HERO_SPD=.55;
+const HERO_SPD=1.3;   // 和怪物统一（用户指定），召唤物也跟着这个值
 /* ===== 召唤物（bears 数组统一管理，kind 决定属性/外观）=====
    hp/atk = 基础 + 智力×系数×技能等级；rng=攻击距离 ivl=攻击间隔 splash=溅射半径
    ⚠️ spd 统一 = HERO_SPD：召唤物不能比英雄跑得快（原来 1.4~1.8，会一路冲到最前面送死） */
@@ -309,6 +314,7 @@ let corpses=[];
    不参与"出售装备"和树枝合成——所以它的用途就是「把好装备存起来别被卖掉/别占背包」。 */
 const FORGE_MAX=8;
 let forge=[];
+const forgeBtn=document.getElementById('cardForge');
 const ANIM_T=.22;   // 攻击动作时长（rpg3d.js 的挥砍/拉弓动作用它算进度）
 /* 各转职支线的攻击节奏（渲染层按 h.animT 算动作进度）：
    弩手慢而重、精灵游侠快、火枪/强盗短促、狂战士双斧稍长 */
@@ -417,7 +423,7 @@ function dispName(h){return h.tier?advOf(h).name:CLASSES[h.cls].name;}
 
 /* ================= 流程 ================= */
 function reset(){
-  gold=350;wood=0;lives=10;wave=0;queue=[];spawnT=0;incomeT=0;
+  gold=350;wood=300;lives=10;wave=0;queue=[];spawnT=0;incomeT=0;
   waveT=0;battleT=0;resting=false;cleared=true;hudAcc=0;
   mineLv=1;millLv=1;mineW=1;millW=1;autoTrialT=0;
   heroes=[];mobs=[];shots=[];fx=[];nums=[];bears=[];inv=[];forge=[];hails=[];storms=[];quakes=[];chests=[];corpses=[];
@@ -432,7 +438,7 @@ function waveComp(w){
   const fin=w>=TOTAL_WAVES;
   const list=[];
   if(isBossWave(w)){   // Boss关：清一色Boss，不带小怪，数值额外×BOSS_WAVE_MUL
-    list.push({t:'boss',mul:BOSS_WAVE_MUL,rs:1.25});   // 每个BOSS关只来1只
+    list.push({t:'boss',mul:BOSS_WAVE_MUL,hmul:BOSS_HP_MUL,rs:1.25});   // 每个BOSS关只来1只
     return list;
   }
   // 前5波是新手期：数量不减（金币照拿），靠 spawnMob 里的强度折扣压低数值
@@ -492,7 +498,7 @@ function startWave(){
   const order=list.map((e,i)=>i).sort((a,b)=>(MOBS[list[a].t].atkR-MOBS[list[b].t].atkR)||(a-b));
   order.forEach((li,si)=>{
     const e=list[li], sl=slots[si];
-    spawnMob(e.t,{dx:sl.dx,lane:sl.lane,elite:e.elite,mul:e.mul,rs:e.rs});
+    spawnMob(e.t,{dx:sl.dx,lane:sl.lane,elite:e.elite,mul:e.mul,hmul:e.hmul,rs:e.rs});
   });
   if(isBossWave(wave))showToast(`<b style="color:#ff5d5d">第 ${wave} 波 · BOSS关</b>　只有Boss，但数值极高`);
   else if(isEliteWave(wave))showToast(`<b style="color:#f0c46a">第 ${wave} 波 · 精英波</b>　混入精英怪`);
@@ -514,8 +520,13 @@ function spawnMob(type,opt){
   const j=hasLane?.5:1.3;
   const y=Math.max(-.32,Math.min(ROWS-1+.32,row+(Math.random()*j-j/2)));
   mul*=opt.mul||1;
+  /* ⚠️ 耐久和伤害分开算（用户指定）：第5波之后**只有血量**额外 ×1.09^(w-5)，
+     攻击力仍然走原来那条 mul 曲线。所以后期是"打得久"而不是"被秒"。
+     实际血量倍率：w10≈1.5× w15≈2.4× w20≈3.6× w25≈5.6×（在原曲线之上再乘） */
+  let hMul=mul*(opt.hmul||1);
+  if(wave>5)hMul*=Math.pow(1.09,wave-5);
   mobs.push({type,row,y,x:COLS+.5+Math.random()*.4+(opt.dx||0),
-    hp:b.hp*mul,maxHp:b.hp*mul,spd:b.spd,atk:b.atk*mul,r:b.r*(opt.rs||1),atkR:b.atkR,
+    hp:b.hp*hMul,maxHp:b.hp*hMul,spd:b.spd,atk:b.atk*mul,r:b.r*(opt.rs||1),atkR:b.atkR,
     reward:Math.round(b.reward*(opt.elite?2:1)),xp:Math.round(b.xp*(opt.elite?2:1)),
     lives:b.lives,armor:b.armor,mres:b.mres,elite:opt.elite||0,
     trial:opt.trial||null,bonus:opt.bonus||0,chest:opt.chest||0,
@@ -1290,6 +1301,7 @@ function attrRows(base,grow,main){
 }
 function closeCards(){
   cardMode=null;cardsEl.classList.remove('show');cardsEl.classList.remove('give');
+  forgeBtn.style.display='none';forgeBtn.onclick=null;
   cardRow.innerHTML='';cardInfo.innerHTML='';cardInfo.classList.remove('show');
   R3.cardHide();
 }
@@ -1414,7 +1426,7 @@ function openGiveCards(idx){
     cardInfo.innerHTML=`<div class="in" style="color:${CATS[d.cat].color}">${nm}</div>
       <div class="iq"><span style="color:${QC[d.q]}">[${QN[d.q]}]</span> <span style="color:${CATS[d.cat].color}">${CATS[d.cat].label}系</span></div>
       <div class="id">${d.desc}</div>
-      <div class="ix">学习费 <b style="color:var(--gold)">${bookCost(nm)}金</b><br>同名书可升级，上限 Lv${MAX_SKILL_LV}<br>每位英雄 ${MAX_SLOTS} 个技能位</div>`;
+      <div class="ix">学习费 <b style="color:var(--wood)">${bookCost(nm)}木</b><br>同名书可升级，上限 Lv${MAX_SKILL_LV}<br>每位英雄 ${MAX_SLOTS} 个技能位</div>`;
   }else{
     const d=eqDef(it),q=qOf(it);
     cardInfo.innerHTML=`<div class="in" style="color:${q.c}">${d.n}</div>
@@ -1435,7 +1447,7 @@ function openGiveCards(idx){
       const cost=BOOK_COST[SKB[nm].q]||0;
       if(lv>=MAX_SKILL_LV)why='已满级';
       else if(!lv&&Object.keys(h.skills).length>=MAX_SLOTS)why='技能位已满';
-      else if(gold<cost)why='学费不足';
+      else if(wood<cost)why='学费不足';
       else why='';
     }else if(gold<equipCost(it))why='金币不足';
     const ok=!why;
@@ -1470,23 +1482,24 @@ function openGiveCards(idx){
     cardRow.appendChild(pair);
     views.push({canvas:el.querySelector('canvas'),cls:h.cls,tier:h.tier,branch:h.branch,phase:i*2.1});
   });
-  /* 装备还可以「存入熔炉」（技能书不行：会绕过"买新书清旧书"的规则） */
+  /* 装备还可以「存入熔炉」——按钮放在三张卡片下面（技能书不行：会绕过"买新书清旧书"的规则）。
+     ⚠️ 存入时就把装备费付掉，之后取回/穿上都不再收费，背包里也不再标价。 */
   if(!isBook){
-    const full=forge.length>=FORGE_MAX;
-    const pair=document.createElement('div');pair.className='chpair';
-    const el=document.createElement('div');
-    el.className='chcard fcard'+(full?' no':'');
-    el.innerHTML=`<div class="hcName" style="color:#e6a45e">熔炉</div>
-      <div class="fbig">🔥</div>
-      <div class="hcStats"><span>暂存装备，不花装备费</span><span>不会被「出售装备」卖掉</span></div>
-      <div class="hcBuy">${full?'熔炉已满':`存入（${forge.length}/${FORGE_MAX}）`}</div>`;
-    if(!full)el.onclick=()=>{
-      const item=inv[idx];if(!item)return;
+    const full=forge.length>=FORGE_MAX, ec=equipCost(it), poor=gold<ec;
+    forgeBtn.style.display='block';
+    forgeBtn.disabled=full||poor;
+    forgeBtn.innerHTML=full?'熔炉已满'
+      :`存入熔炉（${forge.length}/${FORGE_MAX}）${ec?` <span class="cost">${ec}金</span>`:''}`
+       +`<span class="sub">${poor?'金币不足':'存进去就算买下，之后取回和穿戴都免费；不会被「出售装备」卖掉'}</span>`;
+    forgeBtn.onclick=()=>{
+      const item=inv[idx];if(!item||forge.length>=FORGE_MAX)return;
+      const c=equipCost(item);
+      if(gold<c)return;
+      gold-=c;item.paid=1;
       forge.push(item);inv.splice(idx,1);
-      closeCards();renderInv();renderInfo();
+      closeCards();updateHUD();renderInv();renderInfo();
       showToast(`<b style="color:${qOf(item).c}">${eqDef(item).n}</b> 已存入熔炉`);
     };
-    pair.appendChild(el);cardRow.appendChild(pair);
   }
   cardsEl.classList.add('show');
   R3.cardShow(views);
@@ -1626,11 +1639,11 @@ function shopHTML(){
   if(openShop==='skill'){
     return `<div class="card shopHead"><b>技能商店</b></div><div class="shopGrid">`+
       Object.entries(CATS).map(([cat,c])=>
-        `<button class="btn" data-pack="${cat}" data-cost="${PACK_COST}" data-lock="0" ${gold>=PACK_COST?'':'disabled'}>
-          <b style="color:${c.color}">${c.label}</b> <span class="cost">${PACK_COST}金</span>
+        `<button class="btn" data-pack="${cat}" data-cost="0" data-wood="${PACK_COST}" data-lock="0" ${wood>=PACK_COST?'':'disabled'}>
+          <b style="color:${c.color}">${c.label}</b> <span class="costw">${PACK_COST}木</span>
           <span class="sub">随机${PACK_N}本${c.label}系</span></button>`).join('')+
-      `<button class="btn" data-pack="roll" data-cost="${ROLL_COST}" data-lock="0" ${gold>=ROLL_COST?'':'disabled'}>
-        <b style="color:#f0c46a">ROLL</b> <span class="cost">${ROLL_COST}金</span>
+      `<button class="btn" data-pack="roll" data-cost="0" data-wood="${ROLL_COST}" data-lock="0" ${wood>=ROLL_COST?'':'disabled'}>
+        <b style="color:#f0c46a">ROLL</b> <span class="costw">${ROLL_COST}木</span>
         <span class="sub">全池·最便宜（换掉旧书）</span></button></div>`;
   }
   if(openShop==='item'){
@@ -1718,8 +1731,8 @@ function renderTrials(){
 /* ---- 背包（技能书+装备混放）---- */
 function buyPack(cat){
   const cost=cat==='roll'?ROLL_COST:PACK_COST;
-  if(gold<cost)return;
-  gold-=cost;
+  if(wood<cost)return;
+  wood-=cost;
   inv=inv.filter(it=>it.t!=='book');   // 上次没用完的技能书不保留
   const pool=cat==='roll'?Object.keys(SKB):Object.keys(SKB).filter(n=>SKB[n].cat===cat);
   /* 同一次刷新不出重复技能书：抽一本就从本次候选池里拿掉（池子不够 PACK_N 本才重新填） */
@@ -1744,8 +1757,8 @@ function autoLearnPass(){
     const h=heroes.find(o=>o.autoLearn&&o.skills[it.name]&&o.skills[it.name]<MAX_SKILL_LV);
     if(!h)continue;
     const bc=bookCost(it.name);
-    if(gold<bc)continue;             // 金币不够就先不吃这本
-    gold-=bc;
+    if(wood<bc)continue;             // 木头不够就先不吃这本
+    wood-=bc;
     h.skills[it.name]++;calc(h);
     fx.push({type:'ring',x:h.x,y:h.row+.5,rr:.6,t:.4,max:.4,color:CATS[SKB[it.name].cat].color});
     got.push(`${it.name}→Lv${h.skills[it.name]}`);
@@ -1771,12 +1784,13 @@ function invCell(it,i){
     const d=SKB[it.name];
     el.style.borderColor=QC[d.q];               // 边框=品质
     el.style.color=CATS[d.cat].color;           // 文字=属性系
-    el.innerHTML=`${d.short}<small style="color:var(--gold)">${bookCost(it.name)}金</small>`;
+    el.innerHTML=`${d.short}<small style="color:var(--wood)">${bookCost(it.name)}木</small>`;
   }else{
     const d=eqDef(it),q=qOf(it);
     el.style.borderColor=q.c;
     el.style.color=q.c;
-    el.innerHTML=`${d.s}<small style="color:var(--gold)">${equipCost(it)}金</small>`;
+    const ec=equipCost(it);
+    el.innerHTML=d.s+(ec?`<small style="color:var(--gold)">${ec}金</small>`:'<small style="color:var(--ink-dim)">已付</small>');
   }
   return el;
 }
@@ -1831,8 +1845,8 @@ function applyItem(idx,h,slot){
       if(cur>=MAX_SKILL_LV){showToast(`${it.name} 已满级`);return;}
       if(!cur&&names.length>=MAX_SLOTS){showToast('技能位已满，拖到某个技能上可覆盖');return;}
       const bc=bookCost(it.name);
-      if(gold<bc){showToast(`学习 <b>${it.name}</b> 需要 <b style="color:var(--gold)">${bc}金</b>`);return;}
-      gold-=bc;updateHUD();refreshAfford();
+      if(wood<bc){showToast(`学习 <b>${it.name}</b> 需要 <b style="color:var(--wood)">${bc}木</b>`);return;}
+      wood-=bc;updateHUD();refreshAfford();
       h.skills[it.name]=cur+1;
     }
     calc(h);
