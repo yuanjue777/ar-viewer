@@ -94,14 +94,19 @@ const PACK_COST=100, ROLL_COST=40, PACK_N=4;
 const BOOK_COST={qgreen:40,qblue:80,qpurple:150};
 function bookCost(name){return BOOK_COST[SKB[name].q]||0;}
 /* 出售：只有装备能卖，技能书不能卖；返还压低到roll成本的40~60% */
-const SELL_EQ={common:8,fine:18,rare:40,epic:80};
+const SELL_EQ={common:8,fine:18,rare:40,epic:80,legend:200};
 /* 装备穿上时按品质付费（和技能书的学习费一个思路：roll只是出货，装备要另付钱） */
 const EQUIP_COST={common:15,fine:35,rare:70,epic:140,legend:250};
 function equipCost(it){return EQUIP_COST[eqDef(it).q]||0;}
 function canSell(it){return it.t==='eq';}
 function sellValue(it){return canSell(it)?(SELL_EQ[eqDef(it).q]||8):0;}
 
-/* ================= 装备池（用户自定义，持续扩充）================= */
+/* ================= 装备池（2026-07 整池重做）=================
+   ⚠️ 唯一特效规则（用户定的）：**同名装备的特殊特效只生效一件**，
+   不同名字之间照常叠加。代码在 calc() 里用 seen 集合去重：
+   普通属性（攻击/三围/攻速/暴击/护甲…）永远求和，
+   只有 bat(攻击间隔) / sunder(削甲) / range(射程) / proc(特殊触发) 这四类按 id 去重。
+   —— 所以两把满月只减一次间隔，但 满月+柳月弓+幻烁之舞 三件是叠加的。 */
 const QUALS={
   common:{n:'白色',c:'#c8d2dc',w:50},
   fine:  {n:'绿色',c:'#5ad48a',w:35},
@@ -109,29 +114,75 @@ const QUALS={
   epic:  {n:'紫色',c:'#b070ff',w:0},   // 预留
   legend:{n:'金色',c:'#f0a63c',w:0},   // 金色：只从宝箱掉，商店roll不出
 };
+/* 特殊触发效果（proc）：一件装备最多挂一个，说明文字给 eqDesc 用 */
+const PROCS={
+  gold:   '平A获得5金币',
+  thunder:'平A附带(力+敏+智)魔法伤害',
+  storm:  '击杀敌人+30攻速持续3秒，继续击杀刷新',
+  blood:  '每次平A+5攻击+1%吸血，最多25层(每波重置)',
+  black:  '平A永久削目标10%最大生命+40护甲',
+  echo:   '每2秒一次：下一次平A打两下',
+  curse:  '施放技能后3秒内冷却速度+20%',
+  sheep:  '每次平A+10攻速，最多10层(每波重置)',
+  silence:'沉默自己：无法施放主动技能',
+  titan:  '每次受伤+10攻击/+2护甲/+1%魔抗/+2%体型，最多50层(每波重置)',
+};
 const EQUIPS=[
-  {id:'sword1',   n:'新手剑',  s:'新剑',q:'common',stats:{atk:10}},
-  {id:'bow1',     n:'新手弓',  s:'新弓',q:'common',stats:{aspd:15}},
-  {id:'staff1',   n:'新手法杖',s:'法杖',q:'common',stats:{cdr:.05}},
-  {id:'hammer',   n:'狼牙锤',  s:'狼牙',q:'fine',  stats:{str:15}},
-  {id:'shield1',  n:'小圆盾',  s:'圆盾',q:'fine',  stats:{armor:10}},
-  {id:'fang',     n:'毒牙之刃',s:'毒牙',q:'fine',  stats:{agi:15}},
-  {id:'doranring', n:'多兰戒', s:'多兰',q:'fine',  stats:{mpre:3}},
-  {id:'thunderbow',n:'雷鸣弓', s:'雷弓',q:'rare',  stats:{bat:.1,aspd:20}},
-  {id:'poorshield',n:'穷鬼盾', s:'穷盾',q:'rare',  stats:{block:20}},
-  {id:'manaring',  n:'法力指环',s:'蓝戒',q:'rare', stats:{mpre:8}},
-  {id:'dragonlance',n:'魔龙枪',s:'龙枪',q:'epic',  stats:{agi:20,range:2}},
-  /* 精英池：只从精英试炼的宝箱掉落，商店roll不出（boss池以后再加）*/
-  {id:'eliteblade', n:'精英战刃',s:'战刃',q:'epic',pool:'elite',stats:{atk:30,str:12}},
-  {id:'elitecloak', n:'幽影斗篷',s:'幽影',q:'epic',pool:'elite',stats:{agi:22,aspd:25}},
-  {id:'elitecrown', n:'秘法王冠',s:'王冠',q:'epic',pool:'elite',stats:{int:22,cdr:.1}},
-  {id:'elitegirdle',n:'巨力腰带',s:'腰带',q:'rare',pool:'elite',stats:{str:18,hp:120}},
-  {id:'elitetalis', n:'守护护符',s:'护符',q:'rare',pool:'elite',stats:{armor:8,mres:.15}},
-  {id:'gloomblade', n:'幽冥刃',  s:'幽冥',q:'epic',pool:'elite',stats:{atk:40,sunder:20}},
-  /* 金色池：宝箱里小概率掉，最强的一档 */
-  {id:'titan',    n:'泰坦的坚决',      s:'泰坦',q:'legend',pool:'gold',stats:{titan:1}},
-  {id:'cannon',   n:'射神炮',          s:'射神',q:'legend',pool:'gold',stats:{atk:100,crit:25}},
-  {id:'cenarius', n:'塞纳留斯的号角',  s:'号角',q:'legend',pool:'gold',stats:{int:80,summon:1}},
+  /* ---------- 白色 ---------- */
+  {id:'doransword', n:'多兰剑',    s:'多兰',q:'common',stats:{str:5,atk:10}},
+  {id:'doranshield',n:'多兰盾',    s:'兰盾',q:'common',stats:{flat:10}},
+  {id:'doranring',  n:'多兰戒',    s:'兰戒',q:'common',stats:{mpre:1}},
+  {id:'kill1',      n:'杀人剑',    s:'杀剑',q:'common',stats:{atk:15},evo:'kill2',evoN:20},
+  {id:'twig',       n:'小树枝',    s:'小枝',q:'common',stats:{all:5},craft:{to:'bigtwig',n:6}},
+  {id:'banditblade',n:'强盗之刃',  s:'强盗',q:'common',stats:{},proc:'gold'},
+  {id:'shortdagger',n:'短刀',      s:'短刀',q:'common',stats:{aspd:10}},
+  /* ---------- 绿色 ---------- */
+  {id:'rustblade',  n:'锈蚀之刃',  s:'锈蚀',q:'fine',stats:{atk:20,sunder:5}},
+  {id:'stormsword', n:'暴风之剑',  s:'暴剑',q:'fine',stats:{atk:40}},
+  {id:'winddagger', n:'唤风之匕',  s:'唤风',q:'fine',stats:{agi:10,aspd:20}},
+  {id:'thunderhorn',n:'雷霆号角',  s:'雷号',q:'fine',stats:{int:15,summon:.1}},
+  {id:'heavyhammer',n:'重锤',      s:'重锤',q:'fine',stats:{str:20}},
+  {id:'silverdagger',n:'银质匕首', s:'银匕',q:'fine',stats:{crit:10,atk:10}},
+  {id:'smallshield',n:'小圆盾',    s:'圆盾',q:'fine',stats:{block:20,armor:5}},
+  /* ---------- 蓝色 ---------- */
+  {id:'gloomblade', n:'幽冥之刃',  s:'幽冥',q:'rare',stats:{atk:40,sunder:15}},
+  {id:'willowbow',  n:'柳月弓',    s:'柳月',q:'rare',stats:{bat:.1,aspd:20}},
+  {id:'forbidden',  n:'禁制匕首',  s:'禁制',q:'rare',stats:{atk:75,aspd:40},proc:'silence'},
+  {id:'siriusblade',n:'天狼刀',    s:'天狼',q:'rare',stats:{str:30}},
+  {id:'abysstalis', n:'幽邃护符',  s:'幽符',q:'rare',stats:{cdr:.15,int:15}},
+  {id:'holypend',   n:'圣洁吊坠',  s:'圣坠',q:'rare',stats:{heal:20,int:20}},
+  {id:'abyssstaff', n:'幽邃法杖',  s:'幽杖',q:'rare',stats:{int:20,summon:.1}},
+  {id:'manapend',   n:'法力吊坠',  s:'法坠',q:'rare',stats:{mpre:5,all:10}},
+  {id:'phantom',    n:'幻烁之舞',  s:'幻烁',q:'rare',stats:{bat:.15,agi:10}},
+  {id:'lovebow',    n:'博爱之弩',  s:'博爱',q:'rare',stats:{bat:-.2,atk:30}},
+  {id:'darkeye',    n:'漆黑之眼',  s:'黑眼',q:'rare',stats:{atk:50,crit:20}},
+  {id:'watcher',    n:'守望者铠甲',s:'守望',q:'rare',stats:{armor:20,flat:50}},
+  {id:'birdcirclet',n:'森鸟头环',  s:'森鸟',q:'rare',stats:{agi:30}},
+  {id:'abyssring',  n:'幽邃耳环',  s:'幽环',q:'rare',stats:{int:30}},
+  {id:'bigtwig',    n:'大树枝',    s:'大枝',q:'rare',stats:{all:30},craft:{to:'cenarius',n:6}},
+  /* ---------- 紫色 ---------- */
+  {id:'thunderedict',n:'雷霆领主的法令',s:'法令',q:'epic',stats:{},proc:'thunder'},
+  {id:'stormrider', n:'风暴骑手的狂涌',s:'狂涌',q:'epic',stats:{agi:30,aspd:30},proc:'storm'},
+  {id:'warlord',    n:'战争领主的嗜血',s:'嗜血',q:'epic',stats:{all:15},proc:'blood'},
+  {id:'fullmoon',   n:'满月',      s:'满月',q:'epic',stats:{atk:80,aspd:40,bat:.2}},
+  {id:'blackblade', n:'黑刀',      s:'黑刀',q:'epic',stats:{atk:100},proc:'black'},
+  {id:'bladethorn', n:'刃刺',      s:'刃刺',q:'epic',stats:{atk:100,crit:25,str:20,agi:20}},
+  {id:'echoblade',  n:'回响之刃',  s:'回响',q:'epic',stats:{str:50,aspd:50},proc:'echo'},
+  {id:'goblinhorn', n:'哥布林号角',s:'哥号',q:'epic',stats:{summon:.6,cdr:.15}},
+  {id:'poorshield', n:'穷鬼盾',    s:'穷盾',q:'epic',stats:{block:20,armor:20,flat:20}},
+  {id:'abysscurse', n:'幽邃圣主的诅咒',s:'诅咒',q:'epic',stats:{int:50,cdr:.25},proc:'curse'},
+  {id:'infinity',   n:'无尽之刃',  s:'无尽',q:'epic',stats:{atk:60,crit:20,cdmg:40}},
+  {id:'sheepstick', n:'羊刀',      s:'羊刀',q:'epic',stats:{all:25},proc:'sheep'},
+  {id:'dragonlance',n:'魔龙枪',    s:'龙枪',q:'epic',stats:{agi:25,range:1.5}},
+  /* ---------- 金色：商店roll不出，只从宝箱开 ---------- */
+  {id:'godslayer',n:'弑神炮',        s:'弑神',q:'legend',pool:'gold',stats:{atk:200,crit:35,cdmg:50,range:2}},
+  {id:'cenarius', n:'塞纳留斯的号角',s:'号角',q:'legend',pool:'gold',stats:{all:100,summon:1,cdr:.2}},
+  {id:'titan',    n:'泰坦的坚决',    s:'泰坦',q:'legend',pool:'gold',stats:{armor:20,mres:.2},proc:'titan'},
+  /* ---------- 杀人剑的进化形态：pool:'evo' → 商店/宝箱都不会直接出 ---------- */
+  {id:'kill2',n:'杀人剑',s:'杀剑',q:'fine',  pool:'evo',stats:{atk:35,aspd:10},         evo:'kill3',evoN:20},
+  {id:'kill3',n:'杀人剑',s:'杀剑',q:'rare',  pool:'evo',stats:{atk:70,aspd:25},         evo:'kill4',evoN:20},
+  {id:'kill4',n:'杀人剑',s:'杀剑',q:'epic',  pool:'evo',stats:{atk:100,crit:20,aspd:40},evo:'kill5',evoN:20},
+  {id:'kill5',n:'杀人剑',s:'杀剑',q:'legend',pool:'evo',stats:{atk:250,crit:25,aspd:80}},
 ];
 const GOLD_DROP=.15;   // 宝箱里开出金色装备的概率
 const EQ_BY_ID=Object.fromEntries(EQUIPS.map(e=>[e.id,e]));
@@ -150,28 +201,34 @@ function rollEquip(tier){
 }
 function eqDef(item){return EQ_BY_ID[item.id];}
 function qOf(item){return QUALS[eqDef(item).q];}
-function eqDesc(def){
+function eqDesc(def,it){
   const s=def.stats,p=[];
   if(s.atk)p.push('攻击+'+s.atk);
+  if(s.all)p.push('全属性+'+s.all);
   if(s.str)p.push('力量+'+s.str);
   if(s.agi)p.push('敏捷+'+s.agi);
-  if(s.armor)p.push('护甲+'+s.armor);
-  if(s.aspd)p.push('攻速+'+s.aspd);
-  if(s.cdr)p.push('技能CD-'+Math.round(s.cdr*100)+'%');
-  if(s.bat)p.push('攻击间隔-'+s.bat+'(唯一特效)');
-  if(s.block)p.push('格挡普攻伤害'+s.block);
-  if(s.mpre)p.push('回蓝+'+s.mpre+'/s');
-  if(s.range)p.push('射程+'+s.range+'格');
   if(s.int)p.push('智力+'+s.int);
+  if(s.aspd)p.push('攻速+'+s.aspd);
+  if(s.bat>0)p.push('攻击间隔-'+s.bat+'(唯一)');
+  if(s.bat<0)p.push('攻击间隔+'+(-s.bat)+'(唯一)');
+  if(s.crit)p.push('暴击率+'+s.crit+'%');
+  if(s.cdmg)p.push('暴击伤害+'+s.cdmg+'%');
+  if(s.armor)p.push('护甲+'+s.armor);
   if(s.mres)p.push('魔抗+'+Math.round(s.mres*100)+'%');
   if(s.hp)p.push('生命+'+s.hp);
-  if(s.crit)p.push('暴击率+'+s.crit+'%');
-  if(s.sunder)p.push('普攻削减敌人'+s.sunder+'护甲(唯一特效)');
-  if(s.summon)p.push('召唤物强度+'+Math.round(s.summon*100)+'%');
-  if(s.titan)p.push('每次受伤+2护甲/+0.5%魔抗/+5攻击/+2%体型，上限50层，每波开始重置');
+  if(s.block)p.push('格挡普攻'+s.block);
+  if(s.flat)p.push('固定减伤'+s.flat);
+  if(s.mpre)p.push('回蓝+'+s.mpre+'/s');
+  if(s.cdr)p.push('技能CD-'+Math.round(s.cdr*100)+'%');
+  if(s.summon)p.push('召唤强度+'+Math.round(s.summon*100)+'%');
+  if(s.heal)p.push('治疗强度+'+s.heal+'%');
+  if(s.range)p.push('射程+'+s.range+'格(唯一)');
+  if(s.sunder)p.push('平A削'+s.sunder+'护甲(唯一)');
+  if(def.proc)p.push(PROCS[def.proc]+'(唯一)');
+  if(def.craft)p.push(def.craft.n+'个合成 '+EQ_BY_ID[def.craft.to].n);
+  if(def.evo)p.push('击杀'+(it?((it.kills||0)+'/'):'')+def.evoN+'进化');
   return p.join(' · ');
 }
-
 /* ================= 怪物（带护甲/魔抗）================= */
 const MOBS={
   // atkR=攻击距离（都小于战士射程1.15，保证近战能还手）
@@ -258,7 +315,8 @@ window.addEventListener('resize',()=>setTimeout(resize,60));
 function makeHero(cls,row,col){
   const h={cls,row,col,x:col+.5,lv:1,xp:0,tier:0,branch:-1,specLv:1,autoLearn:autoLearnAll,
     soulInt:0,deathAgi:0,equips:[],
-    skills:{},cds:{},cd:0,flash:0,anim:0,endT:0,endF:0,titanS:0,alive:true};
+    skills:{},cds:{},cd:0,flash:0,anim:0,endT:0,endF:0,titanS:0,
+    bloodS:0,sheepS:0,stormT:0,echoCd:0,curseT:0,alive:true};
   calc(h);h.hp=h.maxHp;
   return h;
 }
@@ -267,16 +325,22 @@ function calc(h){
   const am=h.tier?1.35:1;
   const sp=h.specLv||0,key=a?a.key:'';
   let eqAtk=0,eqArmor=0,eqHp=0,eqAspd=0,eqStr=0,eqAgi=0,eqInt=0,eqMres=0,eqCdr=0,eqBat=0,eqBlock=0,eqMpre=0,eqRange=0;
-  let eqCrit=0,eqSunder=0,eqSummon=0,eqTitan=0;
+  let eqCrit=0,eqSunder=0,eqSummon=0,eqCdmg=0,eqHeal=0,eqFlat=0;
+  /* 唯一特效 = 同名只生效一件：普通属性照常求和，
+     bat/sunder/range/proc 这四类只算每个 id 的第一件（见装备池顶上的注释） */
+  const seen=new Set(),proc={};
   for(const e of h.equips){
-    const s=eqDef(e).stats;
+    const d=eqDef(e),s=d.stats;
     eqAtk+=s.atk||0;eqArmor+=s.armor||0;eqHp+=s.hp||0;eqAspd+=s.aspd||0;
-    eqStr+=s.str||0;eqAgi+=s.agi||0;eqInt+=s.int||0;eqMres+=s.mres||0;
-    eqCdr+=s.cdr||0;eqBlock+=s.block||0;eqMpre+=s.mpre||0;eqRange+=s.range||0;
-    eqBat=Math.max(eqBat,s.bat||0);            // 雷鸣弓的减攻击间隔是唯一特效，取最高不叠加
-    eqCrit+=s.crit||0;eqSummon+=s.summon||0;eqTitan+=s.titan||0;
-    eqSunder=Math.max(eqSunder,s.sunder||0);   // 破甲是唯一特效，取最高不叠加
+    eqStr+=(s.str||0)+(s.all||0);eqAgi+=(s.agi||0)+(s.all||0);eqInt+=(s.int||0)+(s.all||0);
+    eqMres+=s.mres||0;eqCdr+=s.cdr||0;eqBlock+=s.block||0;eqMpre+=s.mpre||0;eqFlat+=s.flat||0;
+    eqCrit+=s.crit||0;eqSummon+=s.summon||0;eqCdmg+=s.cdmg||0;eqHeal+=s.heal||0;
+    if(seen.has(d.id))continue;                // ↓↓ 唯一特效：同名装备只算第一件
+    seen.add(d.id);
+    eqBat+=s.bat||0;eqSunder+=s.sunder||0;eqRange+=s.range||0;
+    if(d.proc)proc[d.proc]=1;
   }
+  h.procs=proc;
   // 装备加的力/敏一样吃派生；魂吸智力/死神收割敏捷是击杀累积
   // 主属光环：3格内友方英雄（含自己）提供 20×等级 点各自主属性，不叠加取最高
   let aura=0;
@@ -291,7 +355,7 @@ function calc(h){
   h.str=Math.round((b.attr.str+b.grow.str*(h.lv-1))*am)+eqStr+(b.main==='str'?aura:0);
   h.agi=Math.round((b.attr.agi+b.grow.agi*(h.lv-1))*am)+eqAgi+Math.round(h.deathAgi||0)+(b.main==='agi'?aura:0);
   h.int=Math.round((b.attr.int+b.grow.int*(h.lv-1))*am)+eqInt+Math.round(h.soulInt||0)+(b.main==='int'?aura:0);
-  h.atk=Math.round(b.wep*(a?a.atk:1)+h[b.main]+eqAtk+ts*5);
+  h.atk=Math.round(b.wep*(a?a.atk:1)+h[b.main]+eqAtk+ts*10+(h.bloodS||0)*5);
   h.maxHp=Math.round((b.hpB+h.str*8)*(a?a.hp:1)+eqHp);
   // 护卫专精·护甲光环：3格内友方英雄 +5+lv 甲，护卫自己双倍（不叠加取最高）
   let armAura=0;
@@ -301,7 +365,7 @@ function calc(h){
     armAura=Math.max(armAura,(5+(o.specLv||1))*(o===h?2:1));
   }
   h.armor=Math.round((b.baseArmor+h.agi/7+eqArmor+ts*2+armAura)*10)/10;
-  h.mres=Math.min(.75,.25+eqMres+ts*.005);
+  h.mres=Math.min(.75,.25+eqMres+ts*.01);
   // 魔兽/DotA公式：每秒攻击=(1+攻速/100)/BAT；1敏=1攻速；上限400⇒最多5/BAT次每秒
   // 精灵游侠专精：迅捷额外降BAT
   const bat=Math.max(.35,b.bat*(a?a.bat:1)-eqBat-(key==='elf'?.1+.01*sp:0));
@@ -313,14 +377,18 @@ function calc(h){
     const r=h.bat*.75+.05*sp;
     h.atk=Math.round(h.atk*(1+r));h.dmgMul=1+r;
   }
-  h.ias=Math.min(400,h.agi+eqAspd);
+  h.ias=Math.min(400,h.agi+eqAspd+(h.stormT>0?30:0)+(h.sheepS||0)*10);
   h.interval=h.bat/(1+h.ias/100);
   h.cdr=Math.min(.5,eqCdr+.04*(h.skills['CD光环']||0)+(key==='archmage'?(10+2*sp)/100:0));
-  h.block=eqBlock;
-  h.critAdd=eqCrit/100;      // 射神炮等装备提供的额外暴击率
-  h.sunder=eqSunder;         // 幽冥刃：普攻削甲（唯一）
-  h.sumB=1+eqSummon;         // 塞纳留斯的号角：召唤物强度倍率
-  h.titan=eqTitan>0;         // 泰坦的坚决：受伤叠层
+  h.block=eqBlock;h.flat=eqFlat;   // block=只挡普攻，flat=固定减免；当前怪只有普攻，两者效果相同
+  h.critAdd=eqCrit/100;      // 装备额外暴击率
+  h.critDmg=eqCdmg/100;      // 装备额外暴击伤害
+  h.healP=1+eqHeal/100;      // 治疗强度（牧师祷言吃这个）
+  h.sunder=eqSunder;         // 锈蚀之刃/幽冥之刃：普攻削甲（同名唯一，异名叠加）
+  h.sumB=1+eqSummon;         // 召唤物强度倍率
+  h.titan=!!proc.titan;      // 泰坦的坚决：受伤叠层
+  h.silenced=!!proc.silence; // 禁制匕首：沉默携带者
+  h.lifesteal=proc.blood?(h.bloodS||0)*.01:0;   // 战争领主的嗜血
   h.sizeMul=1+ts*.02;        // 体型随层数变大
   h.range=b.range+(a?a.range:0)+.3*(h.skills['狙击潜质']||0)+eqRange;
   h.splash=b.splash+(a?a.splash:0);
@@ -390,7 +458,8 @@ function startWave(){
   wave++;
   resting=false;waveT=0;battleT=0;
   // 整波一起入场（不再一只只放）：排成纵深队形从右边压上来
-  for(const h of heroes){if(h.titanS){h.titanS=0;calc(h);}}   // 泰坦层数每波重置
+  // 装备叠层每波重置：泰坦 / 嗜血 / 羊刀 / 狂涌 / 回响 / 诅咒
+  for(const h of heroes){h.titanS=0;h.bloodS=0;h.sheepS=0;h.stormT=0;h.echoCd=0;h.curseT=0;calc(h);}
   /* 阵亡英雄在下一波开始时复活。
      ⚠️ 别删：英雄原来只在"清场"时复活，可一旦全灭场上就永远清不掉，
      英雄再也不复活、命一路掉到0，玩家没有任何翻盘机会。5行+追击AI之后
@@ -500,7 +569,9 @@ function dropChest(x,y){
 }
 function openChest(ch){
   const gold15=Math.random()<GOLD_DROP;
-  const pool=EQUIPS.filter(e=>e.pool===(gold15?'gold':'elite'));
+  // 新装备池没有单独的精英池了：15%出金色，否则从商店同款的蓝/紫里随机
+  const pool=gold15?EQUIPS.filter(e=>e.pool==='gold')
+                   :EQUIPS.filter(e=>!e.pool&&(e.q==='rare'||e.q==='epic'));
   const d=pool[Math.floor(Math.random()*pool.length)];
   inv.push({t:'eq',id:d.id});
   ch.dead=true;
@@ -521,6 +592,19 @@ function onKill(){
     if(sk){
       const cap=10+5*(sk-1);
       if(h.soulInt<cap){h.soulInt=Math.min(cap,h.soulInt+.5);calc(h);dirty=true;}
+    }
+    if(h.procs&&h.procs.storm){h.stormT=3;calc(h);}   // 风暴骑手的狂涌：击杀刷新3秒攻速
+    /* 杀人剑：击杀数记在装备实例上（每把独立），够 evoN 就进化一档 */
+    for(const e of h.equips){
+      const d=eqDef(e);
+      if(!d.evo)continue;
+      e.kills=(e.kills||0)+1;
+      if(e.kills>=d.evoN){
+        e.kills=0;e.id=d.evo;calc(h);dirty=true;
+        const nd=eqDef(e),q=QUALS[nd.q];
+        fx.push({type:'ring',x:h.x,y:h.row+.5,rr:.8,t:.5,max:.5,color:q.c});
+        showToast(`<b style="color:${q.c}">${nd.n}</b> 进化 → [${q.n}]<br>${eqDesc(nd,e)}`);
+      }
     }
   }
   if(dirty&&sel)renderInfo();
@@ -752,25 +836,33 @@ function update(dt){
     }
     // 回蓝
     h.mp=Math.min(h.maxMp,h.mp+h.mpRegen*dt);
+    /* 装备计时器：回响之刃CD / 风暴骑手攻速buff / 幽邃圣主的诅咒冷却加速 */
+    if(h.echoCd>0)h.echoCd-=dt;
+    if(h.stormT>0){h.stormT-=dt;if(h.stormT<=0)calc(h);}
+    if(h.curseT>0)h.curseT-=dt;
+    const cdSpd=h.curseT>0?1.2:1;
     for(const name in h.skills){
       const def=SKB[name];
       if(!def.cd)continue;
-      h.cds[name]=(h.cds[name]||0)-dt;
+      h.cds[name]=(h.cds[name]||0)-dt*cdSpd;
+      if(h.silenced)continue;           // 禁制匕首：沉默，主动技能全部不放
       if(h.cds[name]>0)continue;
       if((def.mana||0)>h.mp)continue;   // 蓝不够不放
       if(castSkill(h,name,h.skills[name],hx,hy)){
         h.cds[name]=def.cd*(1-h.cdr);
         h.mp-=def.mana||0;
+        if(h.procs.curse)h.curseT=3;
       }
     }
     // 牧师专精·治愈祷言（主动，自动释放）
-    if(h.tier&&advOf(h).key==='priest'){
-      h.specCd=(h.specCd||0)-dt;
+    if(h.tier&&advOf(h).key==='priest'&&!h.silenced){
+      h.specCd=(h.specCd||0)-dt*cdSpd;
       if(h.specCd<=0&&h.mp>=30){
         const hurt=heroes.filter(o=>o.alive&&o.hp<o.maxHp);
         if(hurt.length){
           h.specCd=2*(1-h.cdr);h.mp-=30;
-          const heal=h.int*h.specLv*.5;
+          if(h.procs.curse)h.curseT=3;
+          const heal=h.int*h.specLv*.5*(h.healP||1);   // 治疗强度
           for(const o of hurt){
             o.hp=Math.min(o.maxHp,o.hp+heal);
             dnum(o.x,o.row+.5,heal,'#7effc0');
@@ -880,20 +972,31 @@ function effInterval(h){
   const bat=h.interval*(1+h.ias/100);   // 还原BAT
   return bat/(1+ias/100);
 }
-function attack(h,hx,hy,m,mul,color){
+function attack(h,hx,hy,m,mul,color,noEcho){
   mul=mul||1;
   h.animT=animT(h);h.anim=h.animT;
   const adv=advOf(h), akey=adv?adv.key:'', asp=h.specLv||1;
+  const P=h.procs||{};
+  /* 平A叠层：战争领主的嗜血(+5攻+1%吸血,25层) / 羊刀(+10攻速,10层) */
+  if(P.blood&&(h.bloodS||0)<25){h.bloodS=(h.bloodS||0)+1;calc(h);}
+  if(P.sheep&&(h.sheepS||0)<10){h.sheepS=(h.sheepS||0)+1;calc(h);}
   let dmg=effAtk(h)*mul*(h.dmgMul||1),c=color;   // dmgMul = 弩手·重弩的最终伤害加成
   if(akey==='bandit'){                            // 强盗·掠夺：每次普攻偷金币
     const st=30+5*asp;gold+=st;
     nums.push({x:h.x,y:h.row+.1,txt:'+'+st,color:'#f0c46a',t:.8,max:.8});
   }
-  // 致命一击：(15+5lv)%几率 (140+10lv)%伤害
+  if(P.gold){gold+=5;nums.push({x:h.x,y:h.row+.1,txt:'+5',color:'#f0c46a',t:.6,max:.6});}
+  // 致命一击：(15+5lv)%几率 (140+10lv)%伤害；装备再加暴击率/爆伤
   const cr=h.skills['致命一击'];
   const critC=(cr?.15+.05*cr:0)+(h.critAdd||0);   // 技能暴击率 + 装备暴击率
-  if(critC>0&&Math.random()<critC){dmg*=cr?1.4+.1*cr:1.5;c='#ffd24f';}
-  if(h.sunder){m.sunderT=6;m.sunder=Math.max(m.sunder||0,h.sunder);}   // 幽冥刃破甲
+  if(critC>0&&Math.random()<critC){dmg*=(cr?1.4+.1*cr:1.5)+(h.critDmg||0);c='#ffd24f';}
+  if(h.sunder){m.sunderT=6;m.sunder=Math.max(m.sunder||0,h.sunder);}   // 锈蚀/幽冥破甲
+  if(P.black){                                    // 黑刀：永久削最大生命与护甲
+    m.maxHp=Math.max(1,m.maxHp*.9);m.hp=Math.min(m.hp,m.maxHp);
+    m.armor=Math.max(0,m.armor-40);
+  }
+  if(P.thunder)magDamage(m,h.str+h.agi+h.int,'#8ad8ff');   // 雷霆领主的法令
+  if(h.lifesteal)h.hp=Math.min(h.maxHp,h.hp+dmg*h.lifesteal);
   const poison=h.skills['沁毒射击']?h.agi*(.35+.15*h.skills['沁毒射击']):0;
   const cleave=h.skills['攻击溅射']?(.25+.05*h.skills['攻击溅射']):0;
   if(h.cls==='warrior'){
@@ -918,6 +1021,8 @@ function attack(h,hx,hy,m,mul,color){
       heavy:akey==='xbow'?1:0,
       dmg,cleave,splash:h.splash,poison,color:c||CLASSES[h.cls].color});
   }
+  /* 回响之刃：每2秒一次，这一下打两遍 */
+  if(P.echo&&!noEcho&&(h.echoCd||0)<=0&&!m.dead){h.echoCd=2;attack(h,hx,hy,m,mul,color,1);}
 }
 function shotHit(s,m){
   physDamage(m,s.dmg,s.color==='#7fe8ff'?'#7fe8ff':(s.color==='#ffd24f'?'#ffd24f':undefined));
@@ -937,8 +1042,8 @@ function hitUnit(u,m){
     return;
   }
   const h=u;
-  // 穷鬼盾类固定格挡先扣，再吃护甲减伤
-  let dmg=Math.max(0,m.atk-h.block)*(1-armorRed(h.armor));
+  // 格挡(只挡普攻) + 固定减免 先扣，再吃护甲减伤
+  let dmg=Math.max(0,m.atk-h.block-(h.flat||0))*(1-armorRed(h.armor));
   const bb=h.skills['狂战士之血'];
   if(bb){
     const miss=1-h.hp/h.maxHp;
@@ -1266,7 +1371,7 @@ function sideEquips(h){
     const e=h.equips[i];
     if(!e){out+='<div class="row em">空</div>';continue;}
     const d=eqDef(e),q=qOf(e);
-    out+=`<div class="row" style="border-color:${q.c};color:${q.c}"><b>${d.n}</b><small>${eqDesc(d)}</small></div>`;
+    out+=`<div class="row" style="border-color:${q.c};color:${q.c}"><b>${d.n}</b><small>${eqDesc(d,e)}</small></div>`;
   }
   return out;
 }
@@ -1292,7 +1397,7 @@ function openGiveCards(idx){
     const d=eqDef(it),q=qOf(it);
     cardInfo.innerHTML=`<div class="in" style="color:${q.c}">${d.n}</div>
       <div class="iq" style="color:${q.c}">[${q.n}]</div>
-      <div class="id">${eqDesc(d)}</div>
+      <div class="id">${eqDesc(d,it)}</div>
       <div class="ix">装备费 <b style="color:var(--gold)">${equipCost(it)}金</b><br>每位英雄 ${MAX_EQUIP} 个装备位<br>装满后先在面板里双击脱下</div>`;
   }
   cardInfo.classList.add('show');
@@ -1394,7 +1499,7 @@ function renderInfo(){
         <span style="color:#ff9d9d">力 <b>${h.str}</b></span>
         <span style="color:#8ce8a8">敏 <b>${h.agi}</b></span>
         <span style="color:#8db8ff">智 <b>${h.int}</b></span>
-        <span>抗 <b>${Math.round(h.mres*100)}%</b>${h.cdr?' CD-'+Math.round(h.cdr*100)+'%':''}${h.block?' 挡'+h.block:''}</span>
+        <span>抗 <b>${Math.round(h.mres*100)}%</b>${h.cdr?' CD-'+Math.round(h.cdr*100)+'%':''}${(h.block+(h.flat||0))?' 挡'+(h.block+(h.flat||0)):''}${h.critAdd?' 暴'+Math.round(h.critAdd*100)+'%':''}</span>
       </div>${h.tier?`<div style="margin-top:2px;color:${b.color};font-size:9.5px">专精 <b>${SPECS[advOf(h).key].n}</b> Lv${h.specLv} — <span style="color:var(--ink-dim)">${SPECS[advOf(h).key].d(h.specLv)}</span></div>`:''}</div>
       <button class="autoBtn${h.autoLearn?' on':''}" data-auto="1">自动<br>学习</button>
       <div class="slotgrid sk">${sk.join('')}</div>
@@ -1599,7 +1704,26 @@ function invCell(it,i){
   }
   return el;
 }
+/* 合成：小树枝×6 → 大树枝，大树枝×6 → 塞纳留斯的号角（背包里凑够自动合，可连锁） */
+function craftInv(){
+  for(let guard=0;guard<20;guard++){
+    let did=false;
+    for(const d of EQUIPS){
+      if(!d.craft)continue;
+      const idx=[];
+      inv.forEach((it,i)=>{if(it.t==='eq'&&it.id===d.id)idx.push(i);});
+      if(idx.length<d.craft.n)continue;
+      for(let k=d.craft.n-1;k>=0;k--)inv.splice(idx[k],1);
+      inv.push({t:'eq',id:d.craft.to});
+      const nd=EQ_BY_ID[d.craft.to],q=QUALS[nd.q];
+      showToast(`${d.craft.n} 个 <b>${d.n}</b> 合成 → <b style="color:${q.c}">${nd.n}</b>`);
+      did=true;break;
+    }
+    if(!did)return;
+  }
+}
 function renderInv(){
+  craftInv();
   invEl.innerHTML='';
   const sb=document.getElementById('sellAll');
   const total=inv.reduce((s,it)=>s+sellValue(it),0);
@@ -1731,7 +1855,7 @@ info.addEventListener('click',ev=>{
         return;
       }
       lastTap={t:now,key};
-      const d=eqDef(e),q=qOf(e);showToast(`<b style="color:${q.c}">${d.n}</b> [${q.n}]<br>${eqDesc(d)} · 双击脱下`);
+      const d=eqDef(e),q=qOf(e);showToast(`<b style="color:${q.c}">${d.n}</b> [${q.n}]<br>${eqDesc(d,e)} · 双击脱下`);
     }
     return;
   }

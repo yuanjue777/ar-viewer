@@ -9,6 +9,7 @@
  *   shot   布阵阶段 + 中期战斗，各截一张（看布局/模型/特效）
  *   cards  招募卡→转职卡→技能书授予，全流程点一遍并断言
  *   sim    波次平衡快跑（逻辑时钟加速，16秒真实≈700秒逻辑），打印每波掉命
+ *   eq     装备特效体检：真打一场看 proc 有没有触发（只打印数字）
  *   probe  数值体检：只打印数字不截图（改完数值/转职/装备先跑这个，最省 token）
  *   models 九条转职支线的模型与攻击动作，各截「静止/出手」两张（m0_* m1_* m2_*）
  *   crop   只截某块区域放大看（--clip=x,y,w,h）
@@ -125,6 +126,95 @@ const SEED=`
     for(const m of r.marks)console.log(`  w${String(m.wave).padEnd(3)} ${String(m.lives).padEnd(4)} ${String(m.mobs).padEnd(7)} ${m.alive}`);
     console.log('结束:',JSON.stringify(r.end));
 
+  }else if(scene==='eq'){
+    /* 装备特效体检：真打一场，看每个 proc 有没有真的触发（只打印数字） */
+    await p.evaluate(()=>document.querySelectorAll('#cardRow .chcard')[0].click());
+    await p.waitForTimeout(300);
+    await p.evaluate(()=>{
+      gold=99999;wood=99999;heroes.length=0;
+      heroes.push(makeHero('warrior',ROW0,2),makeHero('archer',ROW0+1,1),makeHero('mage',ROW0+2,0));
+      heroes.forEach(h=>{h.lv=10;calc(h);h.hp=h.maxHp;h.mp=h.maxMp;});
+      const eq=(h,ids)=>{h.equips=ids.map(id=>({t:'eq',id}));calc(h);h.hp=h.maxHp;h.mp=h.maxMp;};
+      eq(heroes[0],['banditblade','kill1','warlord','sheepstick','echoblade','titan']);
+      eq(heroes[1],['stormrider','blackblade','thunderedict','infinity','watcher','fullmoon']);
+      eq(heroes[2],['forbidden','abysscurse','holypend','cenarius','goblinhorn','lovebow']);
+      heroes[2].skills={'火球术':3,'闪电链':3};heroes.forEach(h=>calc(h));
+      window.__g0=gold;window.__mob0=null;
+      document.getElementById('launchBtn').click();
+      window.__pk={blood:0,sheep:0,titan:0,storm:0,echo:0};
+      window.__sim=setInterval(()=>{
+        for(let i=0;i<80;i++){update(0.05);
+          if(!window.__mob0&&mobs.length)window.__mob0=mobs[0];
+          const K=window.__pk;   // 叠层每波会清零，所以记整场峰值
+          K.blood=Math.max(K.blood,heroes[0].bloodS||0);
+          K.sheep=Math.max(K.sheep,heroes[0].sheepS||0);
+          K.titan=Math.max(K.titan,heroes[0].titanS||0);
+          K.storm=Math.max(K.storm,heroes[1].stormT||0);
+          K.echo =Math.max(K.echo, heroes[0].echoCd||0);
+        }
+      },16);
+    });
+    await p.waitForTimeout(9000);
+    const r=await p.evaluate(()=>{clearInterval(window.__sim);
+      const H=heroes,O={};
+      O['波次/命']=[wave,lives];
+      /* 平A触发的层数在实战里取决于站位（战士可能一直没摸到怪），
+         所以再补一组**确定性**测试：手动让战士连A一只无敌假怪 30 下 */
+      {const h=H[0];h.bloodS=0;h.sheepS=0;h.echoCd=0;calc(h);
+       const a0=h.atk,g0=gold;let hits=0;
+       const fake={x:h.x+1,y:h.row,row:h.row,r:.3,hp:1e9,maxHp:1e9,atk:0,armor:0,mres:0,
+                   dead:false,reward:0,xp:0,color:'#fff',type:'normal'};
+       mobs.push(fake);
+       const od=damage;window.__hit=0;
+       for(let i=0;i<30;i++){attack(h,h.x,h.row+.5,fake,1);hits++;}
+       O['手动连A30下 → 嗜血/羊刀/攻击(前→后)/攻速/金币']=
+         [h.bloodS,h.sheepS,[a0,h.atk],h.ias,Math.round(gold-g0)];
+       O['假怪剩余最大血(黑刀不在战士身上应=1e9)']=fake.maxHp;
+       fake.dead=true;mobs.splice(mobs.indexOf(fake),1);
+       h.bloodS=0;h.sheepS=0;calc(h);}
+      {const h=H[1];const fake={x:h.x+1,y:h.row,row:h.row,r:.3,hp:1e9,maxHp:1e9,atk:0,armor:10,mres:0,
+                   dead:false,reward:0,xp:0,color:'#fff',type:'normal'};
+       mobs.push(fake);
+       for(let i=0;i<5;i++)attack(h,h.x,h.row+.5,fake,1);
+       O['黑刀连A5下 → 假怪最大血(1e9×0.9^5)/护甲']=[Math.round(fake.maxHp),fake.armor];
+       fake.dead=true;mobs.splice(mobs.indexOf(fake),1);}
+      O['强盗之刃：金币净增(含击杀奖励)']=Math.round(gold-window.__g0);
+      const K=window.__pk;
+      O['峰值层数 嗜血(≤25)/羊刀(≤10)/泰坦(≤50)']=[K.blood,K.sheep,K.titan];
+      O['回响之刃触发(CD峰值应≈2)']=+K.echo.toFixed(2);
+      O['狂涌峰值(应≈3s)']=+K.storm.toFixed(2);
+      O['当前 攻击/护甲/魔抗%']=[H[0].atk,H[0].armor,Math.round(H[0].mres*100)];
+      O['杀人剑当前形态']=eqDef(H[0].equips[1]).n+' ['+QUALS[eqDef(H[0].equips[1]).q].n+'] 进度'+(H[0].equips[1].kills||0);
+      O['狂涌buff剩余/攻速']=[+(H[1].stormT||0).toFixed(2),H[1].ias];
+      O['黑刀：首只怪 最大血/原始血/护甲']=window.__mob0?[Math.round(window.__mob0.maxHp),Math.round(MOBS[window.__mob0.type].hp),window.__mob0.armor]:'no mob';
+      O['禁制匕首：法师沉默/蓝量(满则说明没放技能)']=[H[2].silenced,Math.round(H[2].mp),H[2].maxMp];
+      O['博爱之弩：法师间隔(基础1.6+0.2)']=H[2].bat;
+      O['号角+哥布林：召唤强度×']=+H[2].sumB.toFixed(2);
+      O['圣洁吊坠：治疗强度×']=H[2].healP;
+      /* 单件装备的 DPS 增益排行：Lv15 转职游侠(精灵游侠)，只穿这一件 */
+      {const h=H[1];h.equips=[];h.lv=15;h.tier=1;h.branch=1;h.specLv=5;h.bloodS=0;h.sheepS=0;h.stormT=0;calc(h);
+       const dps=x=>{const cr=(x.critAdd||0);const cm=1.5+(x.critDmg||0);
+         return x.atk*(1+cr*(cm-1))/effInterval(x)*(x.dmgMul||1);};
+       const base=dps(h);
+       const rows=EQUIPS.filter(e=>e.pool!=='evo').map(d=>{
+         h.equips=[{t:'eq',id:d.id}];h.bloodS=d.proc==='blood'?25:0;h.sheepS=d.proc==='sheep'?10:0;
+         h.stormT=d.proc==='storm'?3:0;calc(h);
+         let v=dps(h);
+         if(d.proc==='thunder')v+=(h.str+h.agi+h.int)/effInterval(h);   // 附加魔法伤按满伤算
+         if(d.proc==='echo')v*=1+effInterval(h)/2>2?2:(1+Math.min(1,effInterval(h)/2));
+         const pct=Math.round((v/base-1)*100);
+         return {n:d.n,q:QUALS[d.q].n,c:EQUIP_COST[d.q],p:pct};
+       }).sort((a,b)=>b.p-a.p);
+       h.equips=[];h.bloodS=0;h.sheepS=0;h.stormT=0;calc(h);
+       O['裸DPS(Lv15精灵游侠)']=Math.round(base);
+       O['单件DPS增益排行(%)']=rows.map(r=>`${r.q}${r.n} +${r.p}%`);
+      }
+      return O;});
+    for(const k in r){
+      if(k==='单件DPS增益排行(%)'){console.log(k+':');for(const l of r[k])console.log('   '+l);}
+      else console.log(k+':',JSON.stringify(r[k]));
+    }
+
   }else if(scene==='probe'){
     /* 数值体检：**只打印数字不截图**（文字比图便宜太多，改完数值先跑这个） */
     await p.evaluate(()=>document.querySelectorAll('#cardRow .chcard')[0].click());
@@ -145,14 +235,37 @@ const SEED=`
         h.tier=0;calc(h);
       }
       O['九支线']=bra;
-      // 装备：品质定价 + 雷鸣弓唯一
-      O['装备费 白/绿/蓝/紫/金']=['sword1','hammer','thunderbow','dragonlance','titan']
+      // 装备：池子规模 + 品质定价
+      O['装备池 白/绿/蓝/紫/金']=['common','fine','rare','epic','legend']
+        .map(q=>EQUIPS.filter(e=>e.q===q&&e.pool!=='evo').length);
+      O['商店可roll(白/绿/蓝/紫)']=['common','fine','rare','epic']
+        .map(q=>EQUIPS.filter(e=>e.q===q&&!e.pool).length);
+      O['装备费 白/绿/蓝/紫/金']=['doransword','heavyhammer','willowbow','dragonlance','titan']
         .map(id=>equipCost({t:'eq',id}));
-      const m=heroes[1];m.tier=0;m.equips=[{t:'eq',id:'thunderbow'}];calc(m);const b1=m.bat;
-      m.equips=[{t:'eq',id:'thunderbow'},{t:'eq',id:'thunderbow'}];calc(m);
-      O['雷鸣弓唯一(1把/2把)']=[b1,m.bat];m.equips=[];calc(m);
+      const m=heroes[1];m.tier=0;
+      // 唯一特效：同名只算一件，异名叠加
+      m.equips=[{t:'eq',id:'willowbow'}];calc(m);const b1=m.bat;
+      m.equips=[{t:'eq',id:'willowbow'},{t:'eq',id:'willowbow'}];calc(m);const b2=m.bat;
+      m.equips=[{t:'eq',id:'willowbow'},{t:'eq',id:'phantom'},{t:'eq',id:'fullmoon'}];calc(m);
+      O['间隔唯一(柳月1/柳月2/柳月+幻烁+满月)']=[b1,b2,m.bat];
+      m.equips=[{t:'eq',id:'lovebow'}];calc(m);O['博爱之弩(+0.2间隔)']=m.bat;
+      m.equips=[{t:'eq',id:'rustblade'},{t:'eq',id:'rustblade'},{t:'eq',id:'gloomblade'}];calc(m);
+      O['削甲 锈蚀×2+幽冥(应=5+15)']=m.sunder;
+      m.equips=[{t:'eq',id:'manapend'}];calc(m);
+      O['法力吊坠 全属性+10 力/敏/智']=[m.str,m.agi,m.int];
+      m.equips=[{t:'eq',id:'twig'},{t:'eq',id:'twig'}];calc(m);
+      O['小树枝×2 全属性']=[m.str,m.agi,m.int];
+      m.equips=[];calc(m);
+      // 合成链：6小树枝→大树枝，36小树枝→塞纳留斯的号角
+      inv.length=0;for(let i=0;i<6;i++)inv.push({t:'eq',id:'twig'});renderInv();
+      O['6小树枝→']=inv.map(it=>eqDef(it).n);
+      inv.length=0;for(let i=0;i<36;i++)inv.push({t:'eq',id:'twig'});renderInv();
+      O['36小树枝→']=inv.map(it=>eqDef(it).n);
+      // 杀人剑进化链
+      O['杀人剑进化链']=(()=>{const a=[];let d=EQ_BY_ID['kill1'];
+        while(d){a.push(`${QUALS[d.q].n}${eqDesc(d)}`);d=d.evo?EQ_BY_ID[d.evo]:null;}return a;})();
       // 穿装备扣钱
-      inv.length=0;inv.push({t:'eq',id:'thunderbow'});
+      inv.length=0;inv.push({t:'eq',id:'willowbow'});
       const g0=gold;applyItem(0,heroes[0]);
       O['穿装备扣金']=g0-gold;
       // 经济曲线：交叉点（招人更划算 ⇔ L > W×√(b/a)）
@@ -161,7 +274,7 @@ const SEED=`
       // 召唤物移速应等于英雄推进速度
       O['召唤物移速==HERO_SPD']=Object.values(MINIONS).every(d=>d.spd===HERO_SPD);
       // 背包排布：左4格书 + 竖线 + 装备
-      inv.length=0;inv.push({t:'book',name:'火球术'},{t:'eq',id:'sword1'});renderInv();
+      inv.length=0;inv.push({t:'book',name:'火球术'},{t:'eq',id:'doransword'});renderInv();
       const kids=[...document.getElementById('invItems').children].map(e=>e.className);
       O['背包排布']=kids.join(',');
       O['帧率徽标已删']=!document.getElementById('fps');
