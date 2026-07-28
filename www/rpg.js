@@ -246,10 +246,10 @@ const MOBS={
         步兵=均衡  长矛兵=手长(atkR 1.5，超出战士射程1.15，会先白打一下)
         狂徒=高伤脆皮(攻×3)  重甲兵=高甲高抗 */
   // ⚠️ 这四种的血**试过再×5**（350/300/275/1200），用户实测「打不过」当场回退。别再往上翻倍。
-  normal:{hp:70, spd:1.3,atk:9, reward:8, xp:5, r:.30,lives:1,armor:2, mres:0,  atkR:.62,color:'#c95bff'},
-  lancer:{hp:60, spd:1.3,atk:11,reward:9, xp:6, r:.27,lives:1,armor:0, mres:0,  atkR:1.5, color:'#ff9d4d'},
-  brute: {hp:55, spd:1.3,atk:26,reward:11,xp:8, r:.29,lives:1,armor:0, mres:0,  atkR:.5, color:'#e04c4c'},
-  tank:  {hp:240,spd:1.3,atk:15,reward:16,xp:12,r:.38,lives:2,armor:14,mres:.3, atkR:.85,color:'#8a6bff'},
+  normal:{hp:105,spd:1.3,atk:6, reward:8, xp:5, r:.30,lives:1,armor:2, mres:0,  atkR:.62,color:'#c95bff'},
+  lancer:{hp:90, spd:1.3,atk:7, reward:9, xp:6, r:.27,lives:1,armor:0, mres:0,  atkR:1.5, color:'#ff9d4d'},
+  brute: {hp:80, spd:1.3,atk:17,reward:11,xp:8, r:.29,lives:1,armor:0, mres:0,  atkR:.5, color:'#e04c4c'},
+  tank:  {hp:360,spd:1.3,atk:10,reward:16,xp:12,r:.38,lives:2,armor:14,mres:.3, atkR:.85,color:'#8a6bff'},
   boss:  {hp:700,spd:1.3,atk:30,reward:70,xp:60,r:.47,lives:3,armor:10,mres:.3, atkR:1.05,color:'#ff3860'},
 };
 /* ---- 金矿 / 伐木场：产出 = 工人数 × 等级（每秒）。等级上限10、工人上限5 ----
