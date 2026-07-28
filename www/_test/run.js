@@ -392,6 +392,8 @@ const SEED=`
       const f=document.querySelector('#info .forge').getBoundingClientRect();
       const i=document.getElementById('info').getBoundingClientRect();
       return [Math.round(f.width),Math.round(f.right),Math.round(i.right)];}));
+    console.log('渲染开销 drawCalls/三角形/纹理:',await p.evaluate(()=>{
+      const i=R3.info?R3.info():null;return i||'n/a';}));
     const fps=await p.evaluate(()=>new Promise(r=>{let n=0;const t0=performance.now();
       (function f(){n++;performance.now()-t0<2000?requestAnimationFrame(f):r((n/((performance.now()-t0)/1000)).toFixed(1));})();}));
     console.log('FPS(swiftshader软渲染，只看有没有崩，别当真机参考):',fps);

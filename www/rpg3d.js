@@ -33,14 +33,95 @@ const g_ring=(a,b)=>GEO['r'+a+'|'+b]||(GEO['r'+a+'|'+b]=new T.RingGeometry(a,b,2
 const g_disc=()=>GEO.disc||(GEO.disc=new T.CircleGeometry(1,28));
 const g_torus=(arc)=>GEO['T'+arc]||(GEO['T'+arc]=new T.TorusGeometry(1,.055,6,20,arc));
 
+/* ================= 卡通着色（魔兽3式低模的关键，改这里全场生效） =================
+   1) MeshToonMaterial + 4阶灰度 ramp —— 光照被压成几档，明暗界线清楚，像手绘
+   2) inverted hull 描边 —— 按几何包围盒反算每轴缩放，描边在世界坐标里等宽
+   3) 一张程序化"笔触/斑驳"贴图叠在所有单位上，代替纯色平面
+   ⚠️ 地面/石板仍然用 Lambert（大面积不要分阶，会出难看的色带）。 */
+let outlineOn=true;
+const OL_W=.010;                                  // 描边宽度（世界单位）
+const OL_MIN=.34;                                 // 只给这么大以上的部件描边（否则眼睛/发带会糊成黑块）
+const olMat=new T.MeshBasicMaterial({color:0x10141d,side:T.BackSide});
+const olMeshes=[];                                // 低端机降级时统一隐藏
+let RAMP=null;
+function toonRamp(){
+  if(RAMP)return RAMP;
+  const st=[.42,.62,.82,1];                       // 4阶：暗面不到全黑，亮面留白
+  const c=document.createElement('canvas');c.width=st.length;c.height=1;
+  const x=c.getContext('2d');
+  st.forEach((v,i)=>{const n=Math.round(v*255);x.fillStyle='rgb('+n+','+n+','+n+')';x.fillRect(i,0,1,1);});
+  RAMP=new T.CanvasTexture(c);
+  RAMP.minFilter=RAMP.magFilter=T.NearestFilter;RAMP.generateMipmaps=false;
+  return RAMP;
+}
+/* 单位表面的手绘质感：柔和斑块 + 细笔触，整体接近白色（只扰明暗，不改色相） */
+/* ⚠️ 别做成平铺噪点（试过，小屏上就是一层脏）。
+   这里是**每个面一张**手绘暗角：盒子的每个面 UV 都是 0~1，所以一个面正好吃一张
+   「四周压暗 + 中心提亮 + 底部接触阴影 + 几笔刷痕」——平坦的大面立刻有体积感。 */
+let PTEX=null;
+function texPaint(){
+  if(PTEX)return PTEX;
+  const S=128,c=document.createElement('canvas');c.width=c.height=S;
+  const x=c.getContext('2d');
+  x.fillStyle='#fff';x.fillRect(0,0,S,S);
+  const g=x.createRadialGradient(S*.42,S*.36,S*.06,S*.5,S*.5,S*.72);
+  g.addColorStop(0,'rgba(255,255,255,.16)');
+  g.addColorStop(.55,'rgba(255,255,255,0)');
+  g.addColorStop(1,'rgba(0,0,0,.30)');
+  x.fillStyle=g;x.fillRect(0,0,S,S);
+  const b=x.createLinearGradient(0,S*.7,0,S);     // 底部接触暗部
+  b.addColorStop(0,'rgba(0,0,0,0)');b.addColorStop(1,'rgba(0,0,0,.22)');
+  x.fillStyle=b;x.fillRect(0,0,S,S);
+  for(let i=0;i<14;i++){                          // 几笔刷痕，别多
+    x.globalAlpha=.04+Math.random()*.05;
+    x.strokeStyle=Math.random()<.5?'#000':'#fff';x.lineWidth=1+Math.random()*2;
+    const px=Math.random()*S,py=Math.random()*S,a=(Math.random()-.5)*.7,L=14+Math.random()*30;
+    x.beginPath();x.moveTo(px,py);x.lineTo(px+cos(a)*L,py+sin(a)*L);x.stroke();
+  }
+  x.globalAlpha=1;
+  PTEX=new T.CanvasTexture(c);
+  PTEX.colorSpace=T.SRGBColorSpace;
+  return PTEX;
+}
+/* 配色往魔兽那种高饱和推一点（暴雪的低模全靠饱和度撑起辨识度） */
+const _hsl={},_pc=new T.Color();
+function pop(color){
+  _pc.set(color);_pc.getHSL(_hsl);
+  if(_hsl.s<.05)return _pc.getHex();              // 灰白件不动，动了会发脏
+  _pc.setHSL(_hsl.h,min(1,_hsl.s*1.2),_hsl.l*.97);
+  return _pc.getHex();
+}
+function geoSize(geo){
+  if(!geo.boundingBox)geo.computeBoundingBox();
+  const b=geo.boundingBox;
+  return [b.max.x-b.min.x,b.max.y-b.min.y,b.max.z-b.min.z];
+}
+/* 描边：同一份几何再画一遍背面，按包围盒每轴反算缩放 → 世界坐标里等宽。
+   挂成 mesh 的子节点，所以自动跟着一切动画走。 */
+function outline(m,geo){
+  const d=geoSize(geo);
+  if(max(d[0],max(d[1],d[2]))<OL_MIN)return;      // 只描剪影级的大块：躯干/披风/头/大武器
+  const k=v=>min(1.5,1+2*OL_W/max(v,.02));        // 夹住：薄片(眼睛/刀刃)不夹会膨胀成黑块
+  const o=new T.Mesh(geo,olMat);
+  o.scale.set(k(d[0]),k(d[1]),k(d[2]));
+  o.visible=outlineOn;
+  m.add(o);olMeshes.push(o);
+}
+
 /* 建组：userData 存材质与基础色，方便整体染色（受击闪白/死亡变灰/冰霜） */
 function mk(){const g=new T.Group();g.userData={mats:[],base:[]};return g;}
 function add(g,geo,color,x,y,z,o){
   o=o||{};
-  const mtl=o.glow
-    ? new T.MeshBasicMaterial({color,transparent:o.op!=null,opacity:o.op!=null?o.op:1})
-    : new T.MeshLambertMaterial({color,transparent:o.op!=null,opacity:o.op!=null?o.op:1,
-        emissive:o.em||0x000000});
+  color=o.glow?color:pop(color);
+  let mtl;
+  if(o.glow){
+    mtl=new T.MeshBasicMaterial({color,transparent:o.op!=null,opacity:o.op!=null?o.op:1});
+  }else{
+    const d=geoSize(geo),sz=max(d[0],max(d[1],d[2]));
+    mtl=new T.MeshToonMaterial({color,gradientMap:toonRamp(),
+      map:(o.noTex||sz<.22)?null:texPaint(),          // 太小的零件不贴（看不出还多一次采样）
+      transparent:o.op!=null,opacity:o.op!=null?o.op:1,emissive:o.em||0x000000});
+  }
   const m=new T.Mesh(geo,mtl);
   m.position.set(x,y,z);
   if(o.rx)m.rotation.x=o.rx;
@@ -48,6 +129,7 @@ function add(g,geo,color,x,y,z,o){
   if(o.rz)m.rotation.z=o.rz;
   if(o.s)m.scale.set(o.s[0],o.s[1],o.s[2]);
   m.castShadow=!o.noSh;
+  if(!o.glow&&!o.noSh&&o.op==null&&!o.noOl)outline(m,geo);
   g.add(m);
   if(!o.glow&&!o.noTint){g.userData.mats.push(m);g.userData.base.push(new T.Color(color));}
   return m;
@@ -888,8 +970,9 @@ function init(){
   scene=new T.Scene();
   cam=new T.OrthographicCamera(-1,1,1,-1,.5,CAM_D*2.5);
 
-  scene.add(new T.HemisphereLight(0x8fb4e0,0x1a2233,1.15));
-  dirLight=new T.DirectionalLight(0xfff0d8,1.6);
+  // 卡通着色下环境光要压低，不然所有面都顶到最亮那一阶、分阶看不出来
+  scene.add(new T.HemisphereLight(0x8fb4e0,0x1a2233,.5));
+  dirLight=new T.DirectionalLight(0xfff0d8,1.25);
   dirLight.position.set(COLS/2-5,13,ROWS/2-5);
   dirLight.castShadow=true;
   dirLight.shadow.mapSize.set(2048,1024);
@@ -898,15 +981,28 @@ function init(){
   sc.left=-COLS*.95;sc.right=COLS*.72;             // 左边要罩住挪出去的商店排sc.top=ROWS*2.4;sc.bottom=-ROWS*2.4;sc.near=1;sc.far=34;
   scene.add(dirLight);scene.add(dirLight.target);
   dirLight.target.position.set(COLS/2,0,ROWS/2);
-  const fill=new T.DirectionalLight(0x5f7fb8,.5);fill.position.set(6,4,6);scene.add(fill);
+  const fill=new T.DirectionalLight(0x5f7fb8,.26);fill.position.set(6,4,6);scene.add(fill);
+  // 背光：从战场远侧低角度打过来，给单位勾一道冷色边，跟地面拉开
+  const rim=new T.DirectionalLight(0xa8d4ff,.45);
+  rim.position.set(COLS/2+3,2.6,ROWS+9);scene.add(rim);scene.add(rim.target);
+  rim.target.position.set(COLS/2,.5,ROWS/2);
 
   const glowTex=texGlow(), runeTex=texRune();
+  /* ⚠️ 单位要低环境光才有卡通分阶，可地面跟着压暗就一片死黑。
+     试过用 light.layers 隔离 —— **HemisphereLight 不吃 layers**（它被并进全局 lightProbe），
+     所以改成给地面材质直接加自发光：emissiveMap 用同一张贴图，等于给地面单独提亮。 */
+  const lay=(m,e)=>{
+    const t=m.material;
+    if(t.map){t.emissiveMap=t.map;t.emissive.setHex(e);}
+    else t.emissive.setHex(e);
+    return m;
+  };
 
   /* 连贯的草地大地图（一整张，战斗区只是铺在上面的石板路） */
   const ground=new T.Mesh(new T.PlaneGeometry(COLS+24,ROWS+22),
     new T.MeshLambertMaterial({map:texGrass()}));
   ground.rotation.x=-PI/2;ground.position.set(COLS/2,0,ROWS/2);ground.receiveShadow=true;
-  scene.add(ground);
+  scene.add(lay(ground,0x585858));
 
   /* 战斗区：石板路台面（边缘有厚度，和草地区分开）
      右边一直铺到传送门脚下（BW>COLS），不然屏幕右侧会留一条空草地 */
@@ -916,18 +1012,18 @@ function init(){
   const board=new T.Mesh(new T.BoxGeometry(BW,.14,BD),
     new T.MeshLambertMaterial({color:0x222c3e}));
   board.position.set(BW/2,-.07,BZC);board.receiveShadow=true;
-  scene.add(board);
+  scene.add(lay(board,0x1d2536));
   const road=new T.Mesh(new T.PlaneGeometry(BW,BD),
     new T.MeshLambertMaterial({map:texStone(),color:0xffffff}));
   road.material.map.repeat.set(BW/1.6,BD/1.6);
   road.rotation.x=-PI/2;road.position.set(BW/2,.005,BZC);road.receiveShadow=true;
-  scene.add(road);
+  scene.add(lay(road,0x6e6e6e));
 
   /* 左侧商店广场：碎石地，宽度跟着 shopShift 变（layoutShops 里设），把左边空草地填掉 */
   yard=new T.Mesh(new T.PlaneGeometry(1,1),
     new T.MeshLambertMaterial({map:texDirt()}));
   yard.rotation.x=-PI/2;yard.receiveShadow=true;
-  scene.add(yard);
+  scene.add(lay(yard,0x5a5a5a));
 
   /* 左侧出兵位：不再是色块，改成职业色法阵光圈 */
   for(let c=0;c<HCOLS;c++){
@@ -1309,6 +1405,7 @@ function draw(){
     ftAcc+=performance.now()-t0;ftN++;
     if(ftN>=120){
       if(ftAcc/ftN>17){shadowOn=false;ren.shadowMap.enabled=false;dirLight.castShadow=false;
+        outlineOn=false;for(const o of olMeshes)o.visible=false;
         scene.traverse(o=>{if(o.isMesh)o.castShadow=false;});}
       ftAcc=0;ftN=0;
     }
@@ -1439,9 +1536,10 @@ function cardInit(){
   cardRen.setPixelRatio(min(window.devicePixelRatio||1,2));
   cardRen.setSize(200,240,false);
   cardScene=new T.Scene();
-  cardScene.add(new T.HemisphereLight(0xd6e6ff,0x33405c,1.5));
-  const d1=new T.DirectionalLight(0xfff4e0,1.7);d1.position.set(3,5,4);cardScene.add(d1);
-  const d2=new T.DirectionalLight(0x8fb0ff,.7); d2.position.set(-4,2,-3);cardScene.add(d2);
+  // ⚠️ 卡片场景的灯要和战场同步压低，否则卡通分阶会全顶到最亮那一阶、模型发白
+  cardScene.add(new T.HemisphereLight(0xd6e6ff,0x33405c,.62));
+  const d1=new T.DirectionalLight(0xfff4e0,1.3);d1.position.set(3,5,4);cardScene.add(d1);
+  const d2=new T.DirectionalLight(0x8fb0ff,.34);d2.position.set(-4,2,-3);cardScene.add(d2);
   cardCam=new T.OrthographicCamera(-.62,.62,.86,-.62,.1,20);
   cardCam.position.set(1.5,1.3,3.2);cardCam.lookAt(0,.5,0);
   cardSlot=new T.Group();cardScene.add(cardSlot);
@@ -1471,5 +1569,7 @@ function cardTick(){
   }
 }
 
-return {resize,draw,pick,shopAt,cardShow,cardHide};
+function info(){const r=ren.info.render;
+  return {calls:r.calls,tris:r.triangles,outline:olMeshes.length,textures:ren.info.memory.textures};}
+return {resize,draw,pick,shopAt,cardShow,cardHide,info};
 })();
