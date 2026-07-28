@@ -1443,6 +1443,29 @@ function draw(){
   for(const f of fx)drawFx(f);
 
   /* --- 伤害飘字（覆盖层） --- */
+  /* 伤害统计表：三个英雄的总输出 / 总承伤（召唤物挨的打算主人头上） */
+  if(heroes.length){
+    const fmt=v=>{v=Math.round(v||0);return v>=10000?(v/1e4).toFixed(1)+'万':String(v);};
+    const rowH=13,pad=5,bx=8,by=8,bw=136,bh=pad*2+rowH*(heroes.length+1);
+    octx.globalAlpha=1;
+    octx.fillStyle='rgba(8,12,20,.58)';octx.fillRect(bx,by,bw,bh);
+    octx.strokeStyle='rgba(120,150,190,.32)';octx.lineWidth=1;octx.strokeRect(bx,by,bw,bh);
+    octx.font='600 9.5px -apple-system,sans-serif';
+    octx.fillStyle='#8ea0ba';
+    octx.textAlign='left'; octx.fillText('英雄',bx+pad,by+pad+9);
+    octx.textAlign='right';octx.fillText('输出',bx+bw-48,by+pad+9);
+                           octx.fillText('承伤',bx+bw-pad,by+pad+9);
+    heroes.forEach((h,i)=>{
+      const y=by+pad+9+rowH*(i+1);
+      octx.textAlign='left'; octx.fillStyle=CLASSES[h.cls].color;
+      octx.fillText(dispName(h),bx+pad,y);
+      octx.textAlign='right';
+      octx.fillStyle='#ffd08a';octx.fillText(fmt(h.dmgOut),bx+bw-48,y);
+      octx.fillStyle='#ff9d9d';octx.fillText(fmt(h.dmgTaken),bx+bw-pad,y);
+    });
+    octx.textAlign='center';
+  }
+
   /* Boss 总血条：屏幕正上方一条长条（场上有 Boss 时才显示） */
   {
     let bh=0,bm=0;

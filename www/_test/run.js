@@ -291,8 +291,14 @@ const SEED=`
         .map(q=>EQUIPS.filter(e=>e.q===q&&e.pool!=='evo').length);
       O['商店可roll(白/绿/蓝/紫)']=['common','fine','rare','epic']
         .map(q=>EQUIPS.filter(e=>e.q===q&&!e.pool).length);
-      O['装备roll四档 金+木→出货率']=Object.entries(EQ_TIERS)
-        .map(([k,t])=>`${t.n} ${t.cost}金+${t.wood}木 紫${t.w.epic}%${t.w.legend?' 金'+t.w.legend+'%':''}`);
+      O['装备roll四档 木→出货率']=Object.entries(EQ_TIERS)
+        .map(([k,t])=>`${t.n} ${t.wood}木 紫${t.w.epic}%${t.w.legend?' 金'+t.w.legend+'%':''}`);
+      O['平A应为单体(splash全0)']=[CLASSES.mage.splash,CLASSES.archer.splash,CLASSES.warrior.splash]
+        .concat(Object.values(ADV).flat().map(a=>a.splash))
+        .concat(Object.values(MINIONS).map(m=>m.splash)).every(v=>!v);
+      O['敏→攻速/智→回蓝·法强 (Lv15游侠)']=(()=>{const h=heroes[0];const sv=h.lv;h.lv=15;calc(h);
+        const r=[h.agi,h.ias,h.int,+h.mpRegen.toFixed(2),+h.spellP.toFixed(3)];h.lv=sv;calc(h);return r;})();
+      O['战士初始护甲']=CLASSES.warrior.baseArmor;
       // 顶级档 roll 2000 次，看实际品质分布（金色应≈10%且只出3件金装）
       {const c={},names=new Set();
        for(let i=0;i<2000;i++){const it=rollEquip('top');const d=eqDef(it);

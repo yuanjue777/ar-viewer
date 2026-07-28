@@ -7,11 +7,12 @@ const MAX_SLOTS=4, MAX_SKILL_LV=10, MAX_EQUIP=6, MAX_HERO_LV=15;   // 装备栏2
 const COL_CLASS=['mage','archer','warrior'];
 /* bat=基础攻击间隔s wep=武器基础攻击 main=主属性(加攻) grow=每级属性成长 */
 const CLASSES={
-  mage:  {name:'法师',color:'#4f8dff',hpB:60,wep:6, bat:1.6,baseArmor:1,range:4.5,splash:1.1,main:'int',
+  // ⚠️ splash 全部为 0：**平A一律单体**（用户明确要求），只有学了「攻击溅射」技能才溅射
+  mage:  {name:'法师',color:'#4f8dff',hpB:60,wep:6, bat:1.6,baseArmor:1,range:4.5,splash:0,  main:'int',
           attr:{str:8, agi:12,int:24},grow:{str:1.1,agi:1.4,int:3.2},desc:'远程溅射·主智力'},
   archer:{name:'游侠',color:'#57d474',hpB:70,wep:8, bat:1.4,baseArmor:2,range:6,  splash:0,  main:'agi',
           attr:{str:10,agi:22,int:12},grow:{str:1.4,agi:2.9,int:1.5},desc:'中程速射·主敏捷'},
-  warrior:{name:'战士',color:'#ff5d5d',hpB:90,wep:15,bat:1.5,baseArmor:4,range:1.15,splash:0, main:'str',
+  warrior:{name:'战士',color:'#ff5d5d',hpB:90,wep:15,bat:1.5,baseArmor:8,range:1.15,splash:0, main:'str',
           attr:{str:22,agi:10,int:8}, grow:{str:2.7,agi:1.3,int:1.0},desc:'近战坦克·主力量'},
 };
 /* 转职分支：**每职业3条路线**，各带1个专精天赋（专精用金+木升级，上限Lv10） */
@@ -27,9 +28,9 @@ const ADV={
     {key:'xbow',  name:'弩手',    atk:1.6,hp:1.35,bat:1,  range:1.8,splash:0},
   ],
   mage:[
-    {key:'summoner',name:'召唤师',atk:1.35,hp:1.45,bat:1,range:1,  splash:.2},
-    {key:'priest',  name:'牧师',  atk:1.4, hp:1.5, bat:1,range:1,  splash:.2},
-    {key:'archmage',name:'大法师',atk:1.5, hp:1.35,bat:1,range:1.2,splash:.3},
+    {key:'summoner',name:'召唤师',atk:1.35,hp:1.45,bat:1,range:1,  splash:0},
+    {key:'priest',  name:'牧师',  atk:1.4, hp:1.5, bat:1,range:1,  splash:0},
+    {key:'archmage',name:'大法师',atk:1.5, hp:1.35,bat:1,range:1.2,splash:0},
   ],
 };
 const SPECS={
@@ -70,7 +71,7 @@ const SKB={
   '召唤熊德':  {cat:'int',q:'qblue',  short:'熊德',cd:22,mana:50,desc:'主动(50蓝)：召近战熊灵冲锋接敌，属性随智力成长'},
   '火元素':    {cat:'int',q:'qgreen', short:'火元素',cd:16,mana:30,desc:'主动(30蓝)：召唤1只火元素，远程(2.6格)喷火，每1.2秒造成(7+智×0.5×等级)魔法伤害，HP=70+智×3×等级，持续(10+1.5×等级)秒'},
   '水元素':    {cat:'int',q:'qblue',  short:'水元素',cd:20,mana:40,desc:'主动(40蓝)：召唤2只水元素近战肉盾，各每1.1秒造成(6+智×0.42×等级)物理伤害，各HP=90+智×4×等级，持续(12+2×等级)秒'},
-  '地狱火':    {cat:'int',q:'qpurple',short:'地狱火',cd:30,mana:60,desc:'主动(60蓝)：召唤1只地狱火，每1.4秒造成(16+智×1.1×等级)物理伤害并对1.2格内溅射50%，HP=220+智×9×等级，持续(15+2×等级)秒'},
+  '地狱火':    {cat:'int',q:'qpurple',short:'地狱火',cd:30,mana:60,desc:'主动(60蓝)：召唤1只地狱火，每1.4秒造成(16+智×1.1×等级)单体物理伤害，HP=220+智×9×等级，持续(15+2×等级)秒'},
   '火球术':    {cat:'int',q:'qgreen', short:'火球',cd:7, mana:25,desc:'主动(25蓝)：单体魔法伤害（智力×3×等级+40），弹道线'},
   '冰风暴':    {cat:'int',q:'qpurple',short:'冰风',cd:10,mana:35,desc:'主动(35蓝)：暴风雪，固定区域每0.9秒对圈内全体造成(15+智×0.8×等级)魔法伤+减速，共(3+等级)波'},
   'CD光环':    {cat:'int',q:'qblue',  short:'CD环',cd:0, desc:'被动：主动技能冷却-4%×等级（与装备CD缩减叠加，总上限50%）'},
@@ -90,14 +91,15 @@ function pickBook(pool){
 }
 const CATS={str:{label:'力量',color:'#ff5d5d'},agi:{label:'敏捷',color:'#57d474'},int:{label:'智力',color:'#4f8dff'}};
 /* 技能书走金币（2026-07 用户确认：只是涨价，货币还是金）；装备 roll 才同时吃金+木。 */
-const PACK_COST=200, ROLL_COST=100, PACK_N=4;
+/* ⚠️ 2026-07 用户定的分工：**roll（技能书/装备）只花木头，购买（学技能/穿装备）只花金币**。 */
+const PACK_COST=200, ROLL_COST=100, PACK_N=4;   // 单位=木头
 /* 技能书学习费：roll只出书，真正学到英雄身上时按品质付**金币**（每升一档品质翻倍） */
-const BOOK_COST={qgreen:200,qblue:400,qpurple:800};
+const BOOK_COST={qgreen:150,qblue:300,qpurple:600,qgold:1000};   // 单位=金币
 function bookCost(name){return BOOK_COST[SKB[name].q]||0;}
 /* 出售：只有装备能卖，技能书不能卖；返还压低到roll成本的40~60% */
 const SELL_EQ={common:8,fine:18,rare:40,epic:80,legend:200};
 /* 装备穿上时按品质付费（和技能书的学习费一个思路：roll只是出货，装备要另付钱） */
-const EQUIP_COST={common:15,fine:35,rare:70,epic:140,legend:250};
+const EQUIP_COST={common:50,fine:120,rare:200,epic:600,legend:1000};   // 单位=金币
 /* 已经付过装备费的（存过熔炉的）不再收费，也不再标价 */
 function equipCost(it){return it.paid?0:(EQUIP_COST[eqDef(it).q]||0);}
 function canSell(it){return it.t==='eq';}
@@ -193,10 +195,10 @@ const EQ_BY_ID=Object.fromEntries(EQUIPS.map(e=>[e.id,e]));
    顶级档 800金+800木 不出白，且是**唯一能roll出金色的地方**（10%）——
    前三档仍然 roll 不出金色，宝箱那条路（GOLD_DROP）也照旧。 */
 const EQ_TIERS={
-  low: {n:'低级roll',cost:200, wood:100,w:{common:60,fine:30,rare:9, epic:1}},
-  mid: {n:'中级roll',cost:400, wood:200,w:{common:30,fine:40,rare:24,epic:6}},
-  high:{n:'高级roll',cost:800, wood:400,w:{common:5, fine:30,rare:45,epic:20}},
-  top: {n:'顶级roll',cost:1600,wood:800,w:{common:0, fine:5,  rare:30,epic:55,legend:10}},
+  low: {n:'低级roll',wood:200, w:{common:60,fine:30,rare:9, epic:1}},
+  mid: {n:'中级roll',wood:400, w:{common:30,fine:40,rare:24,epic:6}},
+  high:{n:'高级roll',wood:800, w:{common:5, fine:30,rare:45,epic:20}},
+  top: {n:'顶级roll',wood:1600,w:{common:0, fine:5,  rare:30,epic:55,legend:10}},
 };
 function rollEquip(tier){
   const w=EQ_TIERS[tier].w;
@@ -263,9 +265,9 @@ const MOBS={
         伐木场 5人×Lv10=50木/s（升级6750+工人1100=7850金） */
 const INCOME_MAX=10, WORKER_MAX=5;
 function mineCost(lv){return 60*lv;}            // 金矿升级：60/120/…/540（共2700）
-function millCost(lv){return 150*lv;}           // 伐木场升级：150/300/…/1350（共6750）
+function millCost(lv){return 60*lv;}            // 伐木场升级：和金矿同步（用户要求），60/120/…/540
 function mineWkCost(w){return 250*w;}           // 金矿招工人：250/500/750/1000（共2500）
-function millWkCost(w){return 110*w;}           // 伐木场招工人：110/220/330/440（共1100）
+function millWkCost(w){return 250*w;}           // 伐木场招工人：和金矿同步，250/500/750/1000
 /* 波次节奏：出怪后不限时（只记录战斗用时），清场后进入 REST_TIME 秒备战，倒计时结束才出下一波 */
 const REST_TIME=25;
 /* 整波入场的阵型（按波轮换）：雁形/锋矢/横阵/斜阵/方阵 */
@@ -289,7 +291,7 @@ const MINIONS={
   bear:    {name:'熊灵',  n:1,r:.28,spd:HERO_SPD,rng:.8, ivl:1,  hpB:120,hpI:6,  atkB:8, atkI:.7, dur:l=>12+2*l,   mag:false,splash:0,  color:'#c9a068'},
   fire:    {name:'火元素',n:1,r:.26,spd:HERO_SPD,rng:2.6,ivl:1.2,hpB:70, hpI:3,  atkB:7, atkI:.5, dur:l=>10+1.5*l, mag:true, splash:0,  color:'#ff7a2f'},
   water:   {name:'水元素',n:2,r:.26,spd:HERO_SPD,rng:.85,ivl:1.1,hpB:90, hpI:4,  atkB:6, atkI:.42,dur:l=>12+2*l,   mag:false,splash:0,  color:'#4fc3ff'},
-  infernal:{name:'地狱火',n:1,r:.38,spd:HERO_SPD,rng:1,  ivl:1.4,hpB:220,hpI:9,  atkB:16,atkI:1.1,dur:l=>15+2*l,   mag:false,splash:1.2,color:'#ff4d3d'},
+  infernal:{name:'地狱火',n:1,r:.38,spd:HERO_SPD,rng:1,  ivl:1.4,hpB:220,hpI:9,  atkB:16,atkI:1.1,dur:l=>15+2*l,   mag:false,splash:0,  color:'#ff4d3d'},
 };
 
 /* ================= 四大试炼 =================
@@ -316,6 +318,9 @@ let heroes,mobs,shots,fx,nums,bears,inv,hails,storms,quakes,chests,trialCd;
 let sel=null,invSel=null,speed=1,running=false,started=false,over=false,openShop=null;
 /* 尸体：怪死后不是瞬间消失，留半秒往后仰倒并沉进地里（纯表现，渲染层读它） */
 let corpses=[];
+/* 当前伤害来源英雄。damage()/magDamage() 会读它来 ① 累计伤害统计 ② 吃法术强度。
+   在英雄循环、召唤物循环、弹道结算、AOE 结算前后各设一次；用完置回 null。 */
+let SRC=null;
 /* 熔炉：信息区右边的装备暂存架。只收装备（技能书不收，免得绕过"买新书清旧书"的规则），
    不参与"出售装备"和树枝合成——所以它的用途就是「把好装备存起来别被卖掉/别占背包」。 */
 const FORGE_MAX=8;
@@ -339,7 +344,7 @@ window.addEventListener('resize',()=>setTimeout(resize,60));
 function makeHero(cls,row,col){
   const h={cls,row,col,x:col+.5,lv:1,xp:0,tier:0,branch:-1,specLv:1,autoLearn:autoLearnAll,
     soulInt:0,deathAgi:0,equips:[],
-    skills:{},cds:{},cd:0,flash:0,anim:0,endT:0,endF:0,titanS:0,
+    skills:{},cds:{},cd:0,flash:0,anim:0,endT:0,endF:0,titanS:0,dmgOut:0,dmgTaken:0,
     bloodS:0,sheepS:0,stormT:0,echoCd:0,curseT:0,alive:true};
   calc(h);h.hp=h.maxHp;
   return h;
@@ -402,7 +407,8 @@ function calc(h){
     const r=h.bat*.75+.05*sp;
     h.atk=Math.round(h.atk*(1+r));h.dmgMul=1+r;
   }
-  h.ias=Math.min(400,h.agi+eqAspd+(h.stormT>0?30:0)+(h.sheepS||0)*10);
+  // ⚠️ 用户 2026-07 定：**1敏 = 0.1 攻速点**（原来是 1:1），让装备上的攻速真正值钱
+  h.ias=Math.min(400,h.agi*.1+eqAspd+(h.stormT>0?30:0)+(h.sheepS||0)*10);
   h.interval=h.bat/(1+h.ias/100);
   h.cdr=Math.min(.5,eqCdr+.04*(h.skills['CD光环']||0)+(key==='archmage'?(10+2*sp)/100:0));
   h.block=eqBlock;h.flat=eqFlat;   // block=固定格挡(只挡普攻)，flat=固定减免；当前怪只有普攻，两者效果相同
@@ -419,7 +425,8 @@ function calc(h){
   h.range=b.range+(a?a.range:0)+.3*(h.skills['狙击潜质']||0)+eqRange;
   h.splash=b.splash+(a?a.splash:0);
   h.maxMp=10+h.int*3;
-  h.mpRegen=1+h.int*.04+eqMpre;
+  h.mpRegen=1+h.int*.01+eqMpre;        // 1智 = 0.01 回蓝/s
+  h.spellP=1+h.int*.001;               // 1智 = +0.1% 法术伤害（作用在所有 magDamage 上）
   if(h.mp===undefined)h.mp=h.maxMp;
   h.mp=Math.min(h.mp,h.maxMp);
   if(h.hp!==undefined)h.hp=Math.min(h.hp,h.maxHp);
@@ -435,7 +442,7 @@ function reset(){
   heroes=[];mobs=[];shots=[];fx=[];nums=[];bears=[];inv=[];forge=[];hails=[];storms=[];quakes=[];chests=[];corpses=[];
   trialCd={};for(const k of TRIAL_KEYS)trialCd[k]=0;
   renderTrials();
-  sel=null;invSel=null;over=false;openShop=null;
+  sel=null;invSel=null;over=false;openShop=null;SRC=null;
   closeShop();closeCards();updateHUD();renderInfo();renderInv();refreshHire();
 }
 function waveComp(w){
@@ -580,6 +587,7 @@ function dnum(x,y,val,color){
 }
 function damage(m,d,color){
   if(m.dead)return;
+  if(SRC)SRC.dmgOut=(SRC.dmgOut||0)+Math.max(0,Math.min(d,m.hp));   // 伤害统计（不算溢出）
   m.hp-=d;
   m.knock=Math.min(.2,(m.knock||0)+.09);   // 打击感：被打时往后弹一下并压扁
   dnum(m.x,m.y+.5,d,color);
@@ -649,7 +657,7 @@ function onKill(){
 /* 物理伤害吃怪物护甲，魔法伤害吃怪物魔抗 */
 function mobArmor(m){return Math.max(0,m.armor-(m.sunderT>0?(m.sunder||0):0));}
 function physDamage(m,d,color){damage(m,d*(1-armorRed(mobArmor(m))),color);}
-function magDamage(m,d,color){damage(m,d*(1-m.mres),color);}
+function magDamage(m,d,color){damage(m,d*(SRC&&SRC.spellP?SRC.spellP:1)*(1-m.mres),color);}
 function gainXp(x){
   let leveled=false;
   for(const h of heroes){
@@ -741,14 +749,17 @@ function update(dt){
       m.x-=spd*dt;
     }
     if(m.x< -0.5){m.dead=true;lives-=m.lives;if(lives<=0){lives=0;endGame(false);}updateHUD();}
-    // 几乎重叠时纵向轻推开，避免糊成一团（不影响前进）
+    /* 相互排开：所有怪都想站在离目标 reach 的地方，再加一层各向同性的斥力，
+       结果就是**围着肉盾摊成一道弧**而不是叠成一坨。SEP 略小于两只的体型和，
+       所以允许轻微重叠，但数得清个数。 */
     for(const o of mobs){
       if(o===m||o.dead)continue;
-      if(Math.abs(o.x-m.x)<.38&&Math.abs(o.y-m.y)<.34){
-        const dir=(m.y-o.y)||(Math.random()-.5);
-        m.y=Math.max(-.32,Math.min(ROWS-1+.32,m.y+Math.sign(dir)*.5*dt));
-        break;
-      }
+      const dx=m.x-o.x, dy=m.y-o.y, d2=dx*dx+dy*dy, SEP=m.r+o.r+.24;
+      if(d2>=SEP*SEP)continue;
+      const d=Math.sqrt(d2)||.001;
+      const push=(SEP-d)/SEP*2.2*dt;
+      m.x+=dx/d*push;
+      m.y=Math.max(-.32,Math.min(ROWS-1+.32,m.y+dy/d*push*1.35));   // 纵向推得多一点，弧更明显
     }
     m.row=Math.max(0,Math.min(ROWS-1,Math.round(m.y)));   // 派生所在行
   }
@@ -757,10 +768,15 @@ function update(dt){
     br.t-=dt;
     if(br.t<=0||br.hp<=0){br.dead=true;continue;}
     br.cd-=dt;
-    let best=null;
+    /* ⚠️ 原来是 `m.row!==br.row` 硬筛同一行，导致召唤物从斜下方的怪身边直接走过去。
+       改成纵向 1.6 格的 band + 距离判定，和英雄一个口径。 */
+    SRC=br.own||null;
+    let best=null,bestD=1e9;
     for(const m of mobs){
-      if(m.dead||m.row!==br.row)continue;
-      if(!best||m.x<best.x)best=m;
+      if(m.dead||Math.abs(m.y-br.row)>1.6)continue;
+      const d=Math.hypot(m.x-br.x,m.y-br.row);
+      if(d<=1.1){ if(!best||bestD>1.1||d<bestD){best=m;bestD=d;} }
+      else if(!best||(bestD>1.1&&m.x<best.x)){best=m;bestD=d;}
     }
     const md=MINIONS[br.kind]||MINIONS.bear, by=br.row+.5+(br.oy||0);
     if(!best){br.x=Math.min(br.x+(br.spd||HERO_SPD)*dt,COLS-.5);continue;}   // 本行没敌人：继续往前压
@@ -779,9 +795,11 @@ function update(dt){
       }
     }
   }
+  SRC=null;
   bears=bears.filter(b=>!b.dead);
   /* 暴风雪冰雹：到点落下，小片AOE伤害+减速 */
   for(const hl of hails){
+    SRC=hl.own||null;
     hl.delay-=dt;
     if(hl.delay>0){
       // 落地前0.5秒在区域内撒下一片下落的冰棱
@@ -810,6 +828,7 @@ function update(dt){
   hails=hails.filter(h=>!h.done);
   /* 火焰风暴：延迟1s后在固定区域持续灼烧（每0.5s结算一次） */
   for(const s of storms){
+    SRC=s.own||null;
     if(s.delay>0){
       s.delay-=dt;
       if(s.delay<=0)fx.push({type:'ring',x:s.cx,y:s.cy,rr:s.R,t:.35,max:.35,color:'#ff7a2f'});
@@ -834,6 +853,7 @@ function update(dt){
   storms=storms.filter(s=>!s.done);
   /* 大地震颤：身前矩形地裂，持续DoT + 区域内移速/攻速减益（每0.5s结算伤害） */
   for(const q of quakes){
+    SRC=q.own||null;
     q.t-=dt;q.tick-=dt;q.fxT-=dt;
     if(q.fxT<=0){   // 碎石飞溅
       q.fxT=.05;
@@ -862,6 +882,7 @@ function update(dt){
   chests=chests.filter(c=>!c.dead);
   /* 英雄 */
   for(const h of heroes){
+    SRC=h;               // 这一轮里所有伤害（平A/技能/装备触发）都记到这个英雄头上
     if(!h.alive)continue;
     if(h.flash>0)h.flash-=dt;
     if(h.anim>0)h.anim-=dt;
@@ -912,13 +933,19 @@ function update(dt){
       }
     }
     h.cd-=dt;
-    let best=null;
+    /* 选敌：先按纵向 band 粗筛，再用真实距离判定。
+       ⚠️ band 放宽过（战士 1.15→1.6、游侠 2.3→3.2）：原来贴在斜上/斜下一格的怪
+       会被 band 滤掉，英雄当没看见继续往前走，就出现"和 Boss 擦肩而过"。
+       另外**贴脸的优先**：0.9 格内的敌人直接锁定，不再挑站得最靠左的那只。 */
+    let best=null,bestD=1e9;
     for(const m of mobs){
       if(m.dead)continue;
-      if(h.cls==='archer'&&Math.abs(m.y-h.row)>2.3)continue;
-      if(h.cls==='warrior'&&Math.abs(m.y-h.row)>1.15)continue;
+      const band=h.cls==='warrior'?1.6:(h.cls==='archer'?3.2:3.2);
+      if(Math.abs(m.y-h.row)>band)continue;
       const d=Math.hypot(m.x-hx,(m.y+.5)-hy);
-      if(d<=h.range+m.r&&(!best||m.x<best.x))best=m;
+      if(d>h.range+m.r)continue;
+      if(d<=.9){ if(!best||bestD>.9||d<bestD){best=m;bestD=d;} }        // 贴脸的优先
+      else if(!best||(bestD>.9&&m.x<best.x)){best=m;bestD=d;}
     }
     // 开波后从左往右推进；没敌人时压上去，清场后瞬间传回本阵
     const home=h.col+.5;
@@ -949,6 +976,7 @@ function update(dt){
       }
     }
   }
+  SRC=null;
   /* 子弹 */
   const SPD=10;
   for(const s of shots){
@@ -1059,12 +1087,13 @@ function attack(h,hx,hy,m,mul,color,noEcho){
     shots.push({x:hx,y:hy,target:m,tx:m.x,ty:m.y+.5,a:Math.atan2((m.y+.5)-hy,m.x-hx),
       kind:h.cls==='mage'?'orb':(akey==='xbow'?'quarrel':'arrow'),
       heavy:akey==='xbow'?1:0,
-      dmg,cleave,splash:h.splash,poison,color:c||CLASSES[h.cls].color});
+      dmg,cleave,splash:h.splash,poison,src:h,color:c||CLASSES[h.cls].color});
   }
   /* 回响之刃：每2秒一次，这一下打两遍 */
   if(P.echo&&!noEcho&&(h.echoCd||0)<=0&&!m.dead){h.echoCd=2;attack(h,hx,hy,m,mul,color,1);}
 }
 function shotHit(s,m){
+  SRC=s.src||null;
   physDamage(m,s.dmg,s.color==='#7fe8ff'?'#7fe8ff':(s.color==='#ffd24f'?'#ffd24f':undefined));
   if(s.heavy){                       // 弩手·重弩：单发命中的冲击感
     R3.shake(.13);
@@ -1075,10 +1104,12 @@ function shotHit(s,m){
     if(s.poison)magDamage(m,s.poison,'#7ce87c');
     if(s.cleave)cleaveAround(m,s.dmg,s.cleave);
   }
+  SRC=null;
 }
 function hitUnit(u,m){
   if(u.isBear){
     u.hp-=m.atk;
+    if(u.own)u.own.dmgTaken=(u.own.dmgTaken||0)+m.atk;   // 召唤物承伤算在主人头上
     dnum(u.x,u.row+.5+(u.oy||0),m.atk,'#ff8080');
     return;
   }
@@ -1091,7 +1122,7 @@ function hitUnit(u,m){
     dmg*=1-Math.min(.7,miss*(.25+.08*bb));
   }
   if(h.endT>0)dmg*=1-h.endF;   // 忍受：额外减伤（与其它减伤相乘）
-  h.hp-=dmg;h.flash=.12;
+  h.hp-=dmg;h.flash=.12;h.dmgTaken=(h.dmgTaken||0)+dmg;
   dnum(h.x,h.row+.5,dmg,'#ff8080');
   if(h.titan&&(h.titanS||0)<50){   // 泰坦的坚决：每次受伤叠一层，本波内永久
     h.titanS=(h.titanS||0)+1;
@@ -1121,7 +1152,7 @@ function summon(h,kind,lv){
     const oy=(d.n>1?(i-(d.n-1)/2)*.34:0)+[0,.16,-.16][(cnt+i)%3];   // 纵向错开显示
     const x=h.x+.5+base+i*.35;
     bears.push({isBear:true,kind,owner:h,row:h.row,oy,x,
-      hp,maxHp:hp,atk,rng:d.rng,ivl:d.ivl,spd:d.spd,splash:d.splash,mag:d.mag,r:d.r,
+      own:h,hp,maxHp:hp,atk,rng:d.rng,ivl:d.ivl,spd:d.spd,splash:d.splash,mag:d.mag,r:d.r,
       t:d.dur(lv),cd:0,dead:false});
     fx.push({type:'ring',x,y:h.row+.5+oy,rr:.8,t:.4,max:.4,color:d.color});
   }
@@ -1155,7 +1186,7 @@ function castSkill(h,name,lv,hx,hy){
     const dur=.3+waves*gap;
     fx.push({type:'aoe',x:cx,y:cy,rr:R,t:dur,max:dur,color:'#7fd8ff'});
     for(let i=0;i<waves;i++){
-      hails.push({cx,cy,R,delay:.3+i*gap,
+      hails.push({cx,cy,R,delay:.3+i*gap,own:h,
         dmg:15+h.int*.8*lv,slow:Math.min(.75,.4+.05*lv)});
     }
     return true;
@@ -1165,7 +1196,7 @@ function castSkill(h,name,lv,hx,hy){
     if(!t)return false;
     // 延迟1秒落地，之后每0.5秒灼烧一次，持续 2+0.5×等级 秒
     const R=1.5,dur=2+.5*lv,dps=12+h.int*.55*lv;
-    storms.push({cx:t.x,cy:t.y+.5,R,delay:1,t:dur,tick:0,fxT:0,dps});
+    storms.push({cx:t.x,cy:t.y+.5,R,delay:1,t:dur,tick:0,fxT:0,dps,own:h});
     fx.push({type:'aoe',x:t.x,y:t.y+.5,rr:R,t:1,max:1,color:'#ff7a2f'});   // 1秒预警圈
     return true;
   }
@@ -1183,7 +1214,7 @@ function castSkill(h,name,lv,hx,hy){
     }
     if(!any)return false;
     const dur=3+.5*lv, dps=10+h.str*.4*lv;
-    quakes.push({x0,x1,y0,y1,t:dur,tick:0,fxT:0,dps,slow:.3});
+    quakes.push({x0,x1,y0,y1,t:dur,tick:0,fxT:0,dps,slow:.3,own:h});
     for(let i=0;i<14;i++)fx.push({type:'rock',x:x0+Math.random()*LEN,y:y0+Math.random()*H,
       sz:.9+Math.random()*.9,vx:(Math.random()-.5)*.8,t:.55,max:.55,color:'#c98b4b'});
     return true;
@@ -1648,18 +1679,18 @@ function shopHTML(){
   if(openShop==='skill'){
     return `<div class="card shopHead"><b>技能商店</b></div><div class="shopGrid">`+
       Object.entries(CATS).map(([cat,c])=>
-        `<button class="btn" data-pack="${cat}" data-cost="${PACK_COST}" data-lock="0" ${gold>=PACK_COST?'':'disabled'}>
-          <b style="color:${c.color}">${c.label}</b> <span class="cost">${PACK_COST}金</span>
+        `<button class="btn" data-pack="${cat}" data-cost="0" data-wood="${PACK_COST}" data-lock="0" ${wood>=PACK_COST?'':'disabled'}>
+          <b style="color:${c.color}">${c.label}</b> <span class="costw">${PACK_COST}木</span>
           <span class="sub">随机${PACK_N}本${c.label}系</span></button>`).join('')+
-      `<button class="btn" data-pack="roll" data-cost="${ROLL_COST}" data-lock="0" ${gold>=ROLL_COST?'':'disabled'}>
-        <b style="color:#f0c46a">ROLL</b> <span class="cost">${ROLL_COST}金</span>
+      `<button class="btn" data-pack="roll" data-cost="0" data-wood="${ROLL_COST}" data-lock="0" ${wood>=ROLL_COST?'':'disabled'}>
+        <b style="color:#f0c46a">ROLL</b> <span class="costw">${ROLL_COST}木</span>
         <span class="sub">全池·最便宜（换掉旧书）</span></button></div>`;
   }
   if(openShop==='item'){
     return `<div class="card shopHead"><b>装备商店</b></div><div class="shopGrid eq">`+
       Object.entries(EQ_TIERS).map(([k,t])=>
-        `<button class="btn" data-eqroll="${k}" data-cost="${t.cost}" data-wood="${t.wood||0}" data-lock="0" ${gold>=t.cost&&wood>=(t.wood||0)?'':'disabled'}>
-          <b>${t.n}</b> <span class="cost">${t.cost}金</span>+<span class="costw">${t.wood}木</span>
+        `<button class="btn" data-eqroll="${k}" data-cost="0" data-wood="${t.wood}" data-lock="0" ${wood>=t.wood?'':'disabled'}>
+          <b>${t.n}</b> <span class="costw">${t.wood}木</span>
           <span class="sub">${t.w.common?'白'+t.w.common+'/':''}绿${t.w.fine}/蓝${t.w.rare}/紫${t.w.epic}${t.w.legend?'/<b style="color:var(--gold)">金'+t.w.legend+'</b>':''}%</span></button>`).join('')+
       `</div>`;
   }
@@ -1740,8 +1771,8 @@ function renderTrials(){
 /* ---- 背包（技能书+装备混放）---- */
 function buyPack(cat){
   const cost=cat==='roll'?ROLL_COST:PACK_COST;
-  if(gold<cost)return;
-  gold-=cost;
+  if(wood<cost)return;
+  wood-=cost;
   inv=inv.filter(it=>it.t!=='book');   // 上次没用完的技能书不保留
   const pool=cat==='roll'?Object.keys(SKB):Object.keys(SKB).filter(n=>SKB[n].cat===cat);
   /* 同一次刷新不出重复技能书：抽一本就从本次候选池里拿掉（池子不够 PACK_N 本才重新填） */
@@ -1777,9 +1808,9 @@ function autoLearnPass(){
   if(got.length)showToast('自动学习：'+got.join('、'));
 }
 function buyEquip(tier){
-  const t=EQ_TIERS[tier],cost=t.cost,wd=t.wood||0;
-  if(gold<cost||wood<wd)return;
-  gold-=cost;wood-=wd;
+  const wd=EQ_TIERS[tier].wood||0;
+  if(wood<wd)return;
+  wood-=wd;
   for(let i=0;i<4;i++)inv.push(rollEquip(tier));   // 每档固定roll4件
   updateHUD();renderInfo();renderInv();
 }
