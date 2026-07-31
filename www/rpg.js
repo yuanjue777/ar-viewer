@@ -45,9 +45,12 @@ const SPECS={
   archmage: {n:'奥术专精',d:lv=>`技能CD-${10+2*lv}%`},
 };
 function advOf(h){return h.tier?ADV[h.cls][h.branch]:null;}
-function specCost(lv){return {g:60+40*(lv-1),w:40+25*(lv-1)};}   // 专精升级费用（当前级→下一级）
+/* 专精升级费用（当前级→下一级）。金和木同价；Lv1→Lv10 共 9 次，合计正好各 1500。
+   用表不用公式：要「等差 + 两边都是整数 + 总和恰好 1500」在数学上无解。 */
+const SPEC_COST=[60,85,110,140,165,190,220,250,280];
+function specCost(lv){const c=SPEC_COST[lv-1]||SPEC_COST[SPEC_COST.length-1];return {g:c,w:c};}
 const SPEC_MAX=10;
-const ADV_LV=5, ADV_GOLD=400, ADV_WOOD=250;
+const ADV_LV=5, ADV_GOLD=500, ADV_WOOD=500;
 /* 英雄递增定价：第1个免费(开局卡片选)、第2个100、第3个200 */
 const HERO_COSTS=[0,100,200];   // 开局送1个，之后100/200
 function heroCost(){return HERO_COSTS[Math.min(heroes.length,HERO_COSTS.length-1)];}
@@ -1409,7 +1412,7 @@ function openHireCards(){
     el.innerHTML=`<div class="hcName" style="color:${b.color}">${b.name}</div>
       <canvas width="200" height="240"></canvas>
       <div class="hcStats">${attrRows(b.attr,b.grow,b.main)}</div>
-      <div class="hcBuy">${full?'该职业已满':!afford?'金币不足':free?'免费获得':cost+' 金'}</div>`;
+      <div class="hcBuy">${full?'该职业已满':!afford?'金币不足':free?'选择':'选择 · '+cost+'金'}</div>`;
     if(ok)el.onclick=()=>{
       const row=freeRow(col);
       if(row<0)return;
@@ -1453,7 +1456,7 @@ function openAdvCards(h){
       <div class="hcStats">${attrRows(na,ng,b.main)}</div>
       <div class="hcTal"><div class="tn">【天赋】${sp.n}</div>
         <div class="td">${sp.d(1)}</div></div>
-      <div class="hcBuy">${can?'选择这条路':'资源不足'}</div>`;
+      <div class="hcBuy">${can?'选择':'资源不足'}</div>`;
     if(can)el.onclick=()=>{
       if(gold<ADV_GOLD||wood<ADV_WOOD)return;
       gold-=ADV_GOLD;wood-=ADV_WOOD;
