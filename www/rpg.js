@@ -343,7 +343,7 @@ window.addEventListener('resize',()=>setTimeout(resize,60));
 /* ================= 英雄 ================= */
 function makeHero(cls,row,col){
   const h={cls,row,col,x:col+.5,lv:1,xp:0,tier:0,branch:-1,specLv:1,autoLearn:autoLearnAll,
-    soulInt:0,deathAgi:0,equips:[],
+    soulInt:0,equips:[],
     skills:{},cds:{},cd:0,flash:0,anim:0,endT:0,endF:0,titanS:0,dmgOut:0,dmgTaken:0,
     bloodS:0,sheepS:0,stormT:0,echoCd:0,curseT:0,alive:true};
   calc(h);h.hp=h.maxHp;
@@ -383,7 +383,7 @@ function calc(h){
   h.aura=aura;
   const ts=h.titanS||0;   // 泰坦的坚决层数
   h.str=Math.round((b.attr.str+b.grow.str*(h.lv-1))*am)+eqStr+(b.main==='str'?aura:0);
-  h.agi=Math.round((b.attr.agi+b.grow.agi*(h.lv-1))*am)+eqAgi+Math.round(h.deathAgi||0)+(b.main==='agi'?aura:0);
+  h.agi=Math.round((b.attr.agi+b.grow.agi*(h.lv-1))*am)+eqAgi+(b.main==='agi'?aura:0);
   h.int=Math.round((b.attr.int+b.grow.int*(h.lv-1))*am)+eqInt+Math.round(h.soulInt||0)+(b.main==='int'?aura:0);
   h.atk=Math.round(b.wep*(a?a.atk:1)+h[b.main]+eqAtk+ts*10+(h.bloodS||0)*5);
   h.maxHp=Math.round((b.hpB+h.str*8)*(a?a.hp:1)+eqHp);
@@ -688,6 +688,17 @@ function levelFx(x,y){
 
 /* ================= 更新 ================= */
 function update(dt){
+  tickWorld(dt);
+  tickMobs(dt);
+  tickMinions(dt);
+  tickAreas(dt);
+  tickHeroes(dt);
+  tickShots(dt);
+  tickCleanup(dt);
+  tickWaveEnd();
+}
+/* 每帧：资源产出 / 波次计时 / 自动试炼 / 0.25s 一次的 HUD 与光环重算 */
+function tickWorld(dt){
   if(started){   // 点▶启动后才产资源、走波次
     incomeT+=dt;
     while(incomeT>=1){
@@ -716,6 +727,8 @@ function update(dt){
     if(heroes.some(h=>h.skills['主属光环']||(h.tier&&advOf(h).key==='guard')))
       for(const h of heroes){const rt=h.hp/h.maxHp;calc(h);h.hp=h.maxHp*rt;}
   }
+}
+function tickMobs(dt){
   /* 怪物：视野外向左推进；**进入仇恨范围就直接扑向最近的英雄/召唤物**（不是擦着走过去），
      进攻击范围停下开打。所以只要英雄不死，上下两行的怪也会被拉过来，理论上不漏。 */
   for(const m of mobs){
@@ -768,6 +781,8 @@ function update(dt){
     }
     m.row=Math.max(0,Math.min(ROWS-1,Math.round(m.y)));   // 派生所在行
   }
+}
+function tickMinions(dt){
   /* 熊灵 */
   for(const br of bears){
     br.t-=dt;
@@ -802,6 +817,9 @@ function update(dt){
   }
   SRC=null;
   bears=bears.filter(b=>!b.dead);
+}
+/* 区域技能（冰雹/火焰风暴/大地震颤）+ 试炼CD + 宝箱 */
+function tickAreas(dt){
   /* 暴风雪冰雹：到点落下，小片AOE伤害+减速 */
   for(const hl of hails){
     SRC=hl.own||null;
@@ -885,6 +903,8 @@ function update(dt){
   for(const k of TRIAL_KEYS)if(trialCd[k]>0)trialCd[k]=Math.max(0,trialCd[k]-dt);
   for(const ch of chests)ch.t+=dt;
   chests=chests.filter(c=>!c.dead);
+}
+function tickHeroes(dt){
   /* 英雄 */
   for(const h of heroes){
     SRC=h;               // 这一轮里所有伤害（平A/技能/装备触发）都记到这个英雄头上
@@ -983,6 +1003,8 @@ function update(dt){
     }
   }
   SRC=null;
+}
+function tickShots(dt){
   /* 子弹 */
   const SPD=10;
   for(const s of shots){
@@ -996,6 +1018,9 @@ function update(dt){
       }else if(s.target&&!s.target.dead)shotHit(s,s.target);
     }else{s.a=Math.atan2(dy,dx);s.x+=dx/l*SPD*dt;s.y+=dy/l*SPD*dt;}
   }
+}
+/* 每帧收尾：尸体/怪/弹道/特效/飘字 的倒计时与回收 */
+function tickCleanup(dt){
   for(const c of corpses)c.t-=dt;
   corpses=corpses.filter(c=>c.t>0);
   mobs=mobs.filter(m=>!m.dead);
@@ -1004,6 +1029,9 @@ function update(dt){
   fx=fx.filter(f=>f.t>0);
   for(const n of nums){n.t-=dt;n.y-=.7*dt;}
   nums=nums.filter(n=>n.t>0);
+}
+/* 场上清空 → 结算这一波、复活英雄、进入备战 */
+function tickWaveEnd(){
   const empty=!queue.length&&!mobs.length;
   if(!empty)cleared=false;
   else if(!cleared&&wave>0){

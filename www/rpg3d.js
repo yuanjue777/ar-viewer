@@ -246,213 +246,11 @@ function buildHero(cls,tier,branch){
     add(g,g_sph(.03,6),0xf0a898,.163,HY-.055,.115,{glow:1,op:.55,noSh:1});
   };
 
-  if(cls==='mage'){
-    add(g,g_cone(.245,.44,10),bk==='priest'?0xe8e4d8:c,0,.22,0);   // 长袍下摆（牧师=白袍）
-    add(g,g_cyl(.145,.185,.22,10),bk==='priest'?0xf2efe4:lt,0,.44,0);
-    add(g,g_box(.09,.2,.075),c,.02,.46,-.19);                // 袖
-    add(g,g_box(.09,.2,.075),c,.02,.46,.19);
-    if(bk==='priest')add(g,g_box(.05,.22,.05),GOLD,.15,.44,0);     // 胸前圣纹
-    face();
-    add(g,g_sph(.21,10),HAIR,-.03,HY+.03,0,{s:[.92,.9,1.04]}); // 头发
-    add(g,g_box(.1,.3,.075),HAIR,-.11,HY-.16,-.15);            // 两侧长发
-    add(g,g_box(.1,.3,.075),HAIR,-.11,HY-.16,.15);
-    if(bk==='priest'){                                       // 牧师：白兜帽 + 头顶光环
-      add(g,g_cone(.235,.3,10),0xf2efe4,-.09,HY+.17,0,{rz:.3});
-      const halo=add(g,g_torus(6.28),0xffe9a8,0,HY+.36,0,{rx:PI/2,glow:1,op:.8,noSh:1});
-      halo.scale.setScalar(.17);
-      g.userData.halo=halo;
-    }else{                                                   // 尖帽（大法师更高更尖，帽上缀星）
-      const ht=bk==='archmage'?.62:tier?.46:.36;
-      add(g,g_cyl(.265,.265,.028,12),dk,0,HY+.21,0);         // 帽檐（抬到头顶之上，不挡脸）
-      add(g,g_cone(.2,ht,10),bk==='summoner'?shade3(c,.72):dk,0,HY+.23+ht/2,0);
-      add(g,g_sph(tier?.06:.045,7),0xffe9a8,0,HY+.25+ht,0,{glow:1});
-      if(bk==='archmage')for(let i=0;i<3;i++)
-        add(g,g_tet(.042),0xffe9a8,.09,HY+.36+i*.15,.09-i*.07,{glow:1});
-      if(bk==='summoner')                                    // 召唤师：帽上兽角
-        for(const zz of [-.17,.17])add(g,g_cone(.05,.2,5),0xe8e2d0,-.02,HY+.34,zz,{rx:zz>0?.6:-.6});
-    }
-    /* ---- 法杖：牧师=十字圣杖 / 召唤师=兽首图腾杖 / 大法师=巨型奥术宝珠 ---- */
-    add(g,g_cyl(.024,.028,.94,7),bk==='priest'?0xe8e4d8:0x8a6a44,.24,.47,.2,{rz:-.1});
-    let orb;
-    if(bk==='priest'){
-      orb=add(g,g_box(.05,.3,.05),0xfff2c4,.29,1,.2,{glow:1});
-      add(g,g_box(.05,.05,.22),0xfff2c4,.29,1.05,.2,{glow:1});
-      add(g,g_sph(.17,10),0xffe9a8,.29,1,.2,{glow:1,op:.26,noSh:1});
-    }else if(bk==='summoner'){
-      orb=add(g,g_sph(.09,9),0x8ef0a8,.29,.97,.2,{glow:1});
-      add(g,g_cone(.05,.19,5),0xe8e2d0,.29,1.07,.13,{rx:-.55,glow:1});
-      add(g,g_cone(.05,.19,5),0xe8e2d0,.29,1.07,.27,{rx:.55,glow:1});
-      add(g,g_sph(.2,10),0x4fe08a,.29,.97,.2,{glow:1,op:.28,noSh:1});
-    }else{
-      const rr=bk==='archmage'?.125:tier?.105:.08;
-      orb=add(g,g_sph(rr,10),0xcfe8ff,.29,.97,.2,{glow:1});
-      add(g,g_sph(rr*1.85,10),0x4fa8ff,.29,.97,.2,{glow:1,op:.3,noSh:1});
-    }
-    if(tier){                                                // 宝珠环绕光环
-      const rc=bk==='priest'?0xffe9a8:bk==='summoner'?0x8ef0a8:0x9fd4ff;
-      const ring=add(g,g_torus(6.28),rc,.29,.97,.2,{rx:PI/2,glow:1,op:.7,noSh:1});
-      ring.scale.setScalar(bk==='archmage'?.26:.2);
-      g.userData.orbit=ring;
-      if(bk==='archmage'){                                   // 大法师：第二道垂直符文环
-        const r2=add(g,g_torus(6.28),0xc9a8ff,.29,.97,.2,{rz:PI/2,glow:1,op:.5,noSh:1});
-        r2.scale.setScalar(.22);g.userData.orbit2=r2;
-      }
-    }
-    g.userData.wep=null;g.userData.orb=orb;g.userData.akind='cast';
-  }else if(cls==='archer'){
-    add(g,g_cone(.235,.3,9),dk,0,.17,0);                     // 短披风下摆
-    add(g,g_cyl(.14,.175,.24,10),c,0,.42,0);                 // 身体
-    add(g,g_box(.16,.06,.4),shade3(c,.4),0,.34,0);           // 腰带
-    add(g,g_box(.085,.19,.07),lt,.02,.46,-.185);
-    add(g,g_box(.085,.19,.07),lt,.02,.46,.185);
-    face();
-    add(g,g_sph(.212,10),HAIR,-.02,HY+.035,0,{s:[.95,.92,1.02]});
-    add(g,g_cone(.1,.42,7),HAIR,-.2,HY-.02,0,{rz:1.15});     // 马尾
-    add(g,g_sph(.08,7),HAIR,-.13,HY+.1,0);
-    if(!tier)add(g,g_cone(.205,.27,9),c,-.11,HY+.17,0,{rz:.32});  // 兜帽（往后戴，露脸）
-    else if(bk==='musket'){                                  // 火枪兵：三角帽 + 肩绶
-      add(g,g_cyl(.27,.27,.03,12),0x2f3a4a,-.02,HY+.2,0);
-      add(g,g_cyl(.15,.1,.13,10),0x2f3a4a,-.02,HY+.27,0);
-      add(g,g_box(.05,.09,.3),0x2f3a4a,-.2,HY+.24,0,{rz:-.35});
-      add(g,g_sph(.04,7),GOLD,.19,HY+.23,0,{glow:1});
-      add(g,g_box(.045,.3,.06),0xe8e4d8,.13,.44,-.1,{rz:.5});
-    }else if(bk==='elf'){                                    // 精灵游侠：尖长耳 + 叶冠
-      add(g,g_cone(.055,.3,5),SKIN,-.03,HY+.09,-.2,{rx:-.75});
-      add(g,g_cone(.055,.3,5),SKIN,-.03,HY+.09,.2,{rx:.75});
-      add(g,g_box(.03,.035,.36),0x8ef0a8,.14,HY+.17,0,{glow:1});
-      add(g,g_cone(.038,.13,5),0x8ef0a8,.04,HY+.25,-.09,{rz:-.35,rx:-.3,glow:1});
-      add(g,g_cone(.038,.13,5),0x8ef0a8,.04,HY+.25,.09,{rz:-.35,rx:.3,glow:1});
-    }else{                                                   // 弩手：额上护目镜 + 皮盔
-      add(g,g_cyl(.205,.2,.14,10),shade3(c,.45),-.02,HY+.15,0);
-      add(g,g_box(.035,.07,.32),0x2f3a4a,.15,HY+.17,0);
-      add(g,g_sph(.05,7),0xff9a5a,.175,HY+.17,-.09,{glow:1});
-      add(g,g_sph(.05,7),0xff9a5a,.175,HY+.17,.09,{glow:1});
-    }
-    /* ---- 武器 ---- */
-    if(bk==='musket'){                                       // 火枪：长枪管 + 枪托，枪口有火光
-      const gun=mk();
-      add(gun,g_cyl(.032,.032,.66,8),0x3a4350,.14,0,0,{rz:PI/2});
-      add(gun,g_cyl(.043,.043,.14,8),0x2a3240,.44,0,0,{rz:PI/2});
-      add(gun,g_box(.18,.11,.07),0x7a5230,-.22,-.03,0,{rz:.14});
-      add(gun,g_box(.06,.1,.06),0x7a5230,-.05,-.08,0);
-      add(gun,g_box(.03,.035,.03),GOLD,.22,.05,0);
-      const fl=add(gun,g_cone(.11,.26,6),0xffd27a,.64,0,0,{rz:-PI/2,glow:1,op:.92,noSh:1});
-      const fl2=add(gun,g_sph(.13,8),0xfff2c4,.56,0,0,{glow:1,op:.7,noSh:1});
-      gun.position.set(.15,.53,.13);gun.rotation.z=.06;gun.rotation.y=.36;
-      attach(gun);
-      g.userData.wep=gun;g.userData.muzzle=fl;g.userData.muzzle2=fl2;
-      fl.visible=fl2.visible=false;
-      g.userData.akind='gun';
-      add(g,g_box(.11,.13,.09),0x6b4a2c,-.13,.4,.16);        // 弹药袋
-    }else if(bk==='xbow'){                                   // 重弩：横臂 + 待发弩矢
-      const cb=mk();
-      add(cb,g_box(.44,.06,.08),0x6b4a2c,.02,0,0);
-      add(cb,g_box(.07,.05,.56),0x4a5560,.13,.04,0);
-      add(cb,g_box(.05,.035,.15),0x2f3a4a,.11,.04,-.28,{ry:.55});
-      add(cb,g_box(.05,.035,.15),0x2f3a4a,.11,.04,.28,{ry:-.55});
-      add(cb,g_cyl(.02,.014,.36,5),0x4a3a28,.16,.08,0,{rz:PI/2});
-      add(cb,g_cone(.034,.09,5),0xb9c6d6,.35,.08,0,{rz:-PI/2});
-      add(cb,g_box(.075,.13,.06),0x3a4350,-.15,-.08,0,{rz:.28});
-      add(cb,g_sph(.035,6),GOLD,.02,.05,0,{glow:1});
-      cb.position.set(.18,.54,.1);
-      attach(cb);
-      g.userData.wep=cb;g.userData.akind='xbow';
-      add(g,g_cyl(.06,.06,.26,6),0x6b4a2c,-.16,.54,.14,{rz:.45});   // 弩矢筒
-      for(let i=0;i<3;i++)add(g,g_cone(.024,.1,5),0x8a94a4,-.18,.71,.11+i*.045,{rz:.45});
-    }else{                                                   // 弓（精灵游侠更大、带绿光）
-      const el=bk==='elf';
-      const bow=add(g,g_torus(2.5),el?0xdcefb0:0xb98a4e,.24,.5,0,{});
-      bow.rotation.set(0,-PI/2,0);bow.scale.setScalar(el?.33:.28);
-      if(el){
-        add(g,g_box(.035,.16,.05),0x6b4a2c,.245,.5,0);       // 弓把
-        add(g,g_sph(.045,7),0x8ef0a8,.235,.5,0,{glow:1});
-      }else if(tier)add(g,g_sph(.045,7),GOLD,.24,.5,0,{glow:1});
-      g.userData.wep=bow;g.userData.wx=.24;g.userData.akind='draw';
-      add(g,g_cyl(.055,.055,.28,6),0x6b4a2c,-.15,.55,.13,{rz:.45});  // 箭袋
-      for(let i=0;i<3;i++)add(g,g_cone(.022,.11,5),0xd8c9a8,-.17,.72,.1+i*.045,{rz:.45});
-    }
-  }else{
-    add(g,g_box(.19,.16,.24),shade3(c,.42),0,.19,0);         // 战裙
-    add(g,g_box(.29,.26,.25),c,0,.4,0);                      // 胸甲
-    add(g,g_box(.3,.05,.26),GOLD,0,.29,0);                   // 腰带
-    add(g,g_sph(.105,8),lt,0,.52,-.185);                     // 护肩
-    add(g,g_sph(.105,8),lt,0,.52,.185);
-    face();
-    add(g,g_sph(.208,10),HAIR,-.02,HY+.04,0,{s:[.94,.94,1.02]});
-    if(bk!=='guard')for(let i=0;i<3;i++)                     // 竖起的短发
-      add(g,g_cone(.06,.17,5),HAIR,-.02+i*.045,HY+.22,(i-1)*.1,{rz:-.25});
-    if(bk==='berserker'){                                    // 狂战士：双角 + 战纹
-      add(g,g_box(.035,.045,.34),0xb9c6d6,.16,HY+.1,0);
-      add(g,g_cone(.055,.3,6),0xe8e2d0,.03,HY+.19,-.19,{rx:-.6});
-      add(g,g_cone(.055,.3,6),0xe8e2d0,.03,HY+.19,.19,{rx:.6});
-      add(g,g_box(.02,.05,.16),0xd8434a,.185,HY+.09,0,{glow:1,op:.85,noSh:1});
-    }else if(bk==='guard'){                                  // 护卫：开面盔 + 红盔冠
-      add(g,g_cyl(.212,.196,.17,10),0xb9c6d6,-.02,HY+.13,0);
-      add(g,g_box(.15,.1,.05),0xd8434a,-.03,HY+.26,0);
-      add(g,g_box(.045,.055,.36),GOLD,.15,HY+.08,0);
-      add(g,g_box(.05,.16,.05),0xb9c6d6,.16,HY-.03,0);       // 护鼻
-    }else if(bk==='bandit'){                                 // 强盗：兜帽 + 面巾
-      add(g,g_cone(.225,.3,9),shade3(c,.5),-.1,HY+.18,0,{rz:.3});
-      add(g,g_box(.075,.1,.31),0x2f3a4a,.145,HY-.08,0);
-      add(g,g_box(.03,.04,.2),0x2f3a4a,.1,HY-.14,0,{rz:.5});
-      add(g,g_box(.035,.045,.34),0x2f3a4a,.16,HY+.1,0);      // 黑额带
-    }else add(g,g_box(.035,.045,.34),0xb9c6d6,.16,HY+.1,0);  // 未转职：额带
-    /* ---- 武器：狂战士=双斧 / 强盗=匕首 / 其余(未转职·护卫)=剑+盾 ---- */
-    if(bk==='berserker'){
-      /* 斧刃朝前（+X，敌人方向），俯视和卡片正视都看得出是斧头 */
-      const axe=()=>{const a=mk();
-        add(a,g_cyl(.026,.031,.64,6),0x6b4a2c,0,.11,0);      // 长斧柄（手上下都露出来）
-        add(a,g_cyl(.036,.036,.05,6),0x8a94a4,0,.4,0);       // 斧箍
-        add(a,g_box(.08,.16,.05),0x8a94a4,.055,.4,0);        // 斧颈
-        add(a,g_box(.14,.26,.06),0xc3cede,.15,.4,0);         // 斧身
-        add(a,g_box(.05,.3,.032),0xeef4fc,.235,.4,0);        // 刃口
-        add(a,g_cone(.048,.15,4),0x9aa6b6,-.08,.4,0,{rz:PI/2});   // 后刺
-        add(a,g_box(.028,.32,.014),0xff6a4a,.262,.4,0,{glow:1,op:.65,noSh:1});
-        a.rotation.z=.3;return attach(a);};
-      const a1=axe();a1.position.set(.09,.5,.24);a1.rotation.y=-.6;   // 两把斧刃向外张开
-      const a2=axe();a2.position.set(.09,.5,-.24);a2.rotation.y=.6;
-      g.userData.wep=a1;g.userData.wep2=a2;g.userData.akind='axes';
-    }else if(bk==='bandit'){
-      add(g,g_sph(.075,7),0x6b4a2c,-.1,.34,-.2);             // 腰间钱袋
-      add(g,g_box(.03,.2,.05),0x8a94a4,-.1,.42,-.24,{rz:.4});// 备用短刀
-      const kn=mk();                                         // 匕首（刃朝 +X，往前捅）
-      add(kn,g_box(.3,.055,.075),0xeef4fc,.15,0,0);
-      add(kn,g_cone(.06,.17,4),0xeef4fc,.37,0,0,{rz:-PI/2});
-      add(kn,g_box(.04,.1,.19),GOLD,-.01,0,0);               // 护手
-      add(kn,g_cyl(.032,.032,.16,6),0x5a3b22,-.11,0,0,{rz:PI/2});
-      add(kn,g_sph(.035,6),GOLD,-.2,0,0);                    // 柄尾
-      add(kn,g_box(.32,.02,.02),0xfff2c4,.16,.04,0,{glow:1,op:.55,noSh:1});
-      kn.position.set(.14,.47,.2);kn.rotation.y=.3;
-      attach(kn);
-      g.userData.wep=kn;g.userData.akind='stab';
-    }else{
-      const gd=bk==='guard';
-      const sh=mk();                                         // 盾（护卫的更大、带金色十字）
-      add(sh,g_box(.05,gd?.4:.28,gd?.3:.24),0xc3cede,0,0,0);
-      add(sh,g_box(.03,gd?.33:.2,gd?.23:.17),shade3(c,.85),.036,0,0);
-      if(gd){
-        add(sh,g_box(.022,.42,.06),GOLD,.045,0,0);
-        add(sh,g_box(.022,.08,.32),GOLD,.045,0,0);
-        add(sh,g_sph(.055,8),GOLD,.055,0,0,{glow:1});
-        add(sh,g_cone(.06,.1,4),0xc3cede,0,-.24,0,{rz:PI});   // 下端尖角（鸢盾）
-      }else if(tier)add(sh,g_sph(.05,7),GOLD,.04,0,0,{glow:1});
-      sh.position.set(gd?-.05:-.11,gd?.46:.44,-.24);
-      attach(sh);
-      const sw=mk();                                         // 剑（绕肩挥砍）
-      add(sw,g_box(.045,gd?.42:(tier?.56:.46),gd?.1:.1),0xeef4fc,0,gd?.24:(tier?.29:.24),0);
-      if(gd){
-        add(sw,g_box(.052,.34,.03),0xb9c6d6,0,.24,0);         // 血槽
-        add(sw,g_cone(.07,.13,4),0xeef4fc,0,.51,0);
-      }
-      add(sw,g_box(.055,.055,gd?.24:.22),GOLD,0,.02,0);
-      add(sw,g_cyl(.028,.028,.12,6),0x5a3b22,0,-.06,0);
-      if(tier)add(sw,g_box(.075,gd?.46:.5,.13),0xffd98a,0,gd?.26:.3,0,{glow:1,op:.32,noSh:1});
-      sw.position.set(.11,.5,.23);sw.rotation.z=.25;
-      attach(sw);
-      g.userData.wep=sw;g.userData.akind='swing';
-      if(gd)g.userData.aux=sh;                               // 护卫：挥砍时盾牌同步前顶
-    }
-  }
+  /* 三个职业的外观各自成函数，改哪个职业就只 sed 哪一个 */
+  const X={g,cls,tier,branch,c,dk,lt,SKIN,EYE,GOLD,HAIR,bk,CLOAK,HY,attach,face};
+  if(cls==='mage')heroMage(X);
+  else if(cls==='archer')heroArcher(X);
+  else heroWarrior(X);
 
   /* ---- 转职通用：披风 + 肩章 ---- */
   if(tier){
@@ -462,6 +260,221 @@ function buildHero(cls,tier,branch){
     add(g,g_sph(.055,7),GOLD,-.06,.56,.2);
   }
   return g;
+}
+/* 法师系：长袍+尖帽+法杖（牧师=白袍圣杖光环 / 召唤师=兽首杖 / 大法师=巨珠双符文环） */
+function heroMage(X){
+  const {g,cls,tier,branch,c,dk,lt,SKIN,EYE,GOLD,HAIR,bk,CLOAK,HY,attach,face}=X;
+  add(g,g_cone(.245,.44,10),bk==='priest'?0xe8e4d8:c,0,.22,0);   // 长袍下摆（牧师=白袍）
+  add(g,g_cyl(.145,.185,.22,10),bk==='priest'?0xf2efe4:lt,0,.44,0);
+  add(g,g_box(.09,.2,.075),c,.02,.46,-.19);                // 袖
+  add(g,g_box(.09,.2,.075),c,.02,.46,.19);
+  if(bk==='priest')add(g,g_box(.05,.22,.05),GOLD,.15,.44,0);     // 胸前圣纹
+  face();
+  add(g,g_sph(.21,10),HAIR,-.03,HY+.03,0,{s:[.92,.9,1.04]}); // 头发
+  add(g,g_box(.1,.3,.075),HAIR,-.11,HY-.16,-.15);            // 两侧长发
+  add(g,g_box(.1,.3,.075),HAIR,-.11,HY-.16,.15);
+  if(bk==='priest'){                                       // 牧师：白兜帽 + 头顶光环
+    add(g,g_cone(.235,.3,10),0xf2efe4,-.09,HY+.17,0,{rz:.3});
+    const halo=add(g,g_torus(6.28),0xffe9a8,0,HY+.36,0,{rx:PI/2,glow:1,op:.8,noSh:1});
+    halo.scale.setScalar(.17);
+    g.userData.halo=halo;
+  }else{                                                   // 尖帽（大法师更高更尖，帽上缀星）
+    const ht=bk==='archmage'?.62:tier?.46:.36;
+    add(g,g_cyl(.265,.265,.028,12),dk,0,HY+.21,0);         // 帽檐（抬到头顶之上，不挡脸）
+    add(g,g_cone(.2,ht,10),bk==='summoner'?shade3(c,.72):dk,0,HY+.23+ht/2,0);
+    add(g,g_sph(tier?.06:.045,7),0xffe9a8,0,HY+.25+ht,0,{glow:1});
+    if(bk==='archmage')for(let i=0;i<3;i++)
+      add(g,g_tet(.042),0xffe9a8,.09,HY+.36+i*.15,.09-i*.07,{glow:1});
+    if(bk==='summoner')                                    // 召唤师：帽上兽角
+      for(const zz of [-.17,.17])add(g,g_cone(.05,.2,5),0xe8e2d0,-.02,HY+.34,zz,{rx:zz>0?.6:-.6});
+  }
+  /* ---- 法杖：牧师=十字圣杖 / 召唤师=兽首图腾杖 / 大法师=巨型奥术宝珠 ---- */
+  add(g,g_cyl(.024,.028,.94,7),bk==='priest'?0xe8e4d8:0x8a6a44,.24,.47,.2,{rz:-.1});
+  let orb;
+  if(bk==='priest'){
+    orb=add(g,g_box(.05,.3,.05),0xfff2c4,.29,1,.2,{glow:1});
+    add(g,g_box(.05,.05,.22),0xfff2c4,.29,1.05,.2,{glow:1});
+    add(g,g_sph(.17,10),0xffe9a8,.29,1,.2,{glow:1,op:.26,noSh:1});
+  }else if(bk==='summoner'){
+    orb=add(g,g_sph(.09,9),0x8ef0a8,.29,.97,.2,{glow:1});
+    add(g,g_cone(.05,.19,5),0xe8e2d0,.29,1.07,.13,{rx:-.55,glow:1});
+    add(g,g_cone(.05,.19,5),0xe8e2d0,.29,1.07,.27,{rx:.55,glow:1});
+    add(g,g_sph(.2,10),0x4fe08a,.29,.97,.2,{glow:1,op:.28,noSh:1});
+  }else{
+    const rr=bk==='archmage'?.125:tier?.105:.08;
+    orb=add(g,g_sph(rr,10),0xcfe8ff,.29,.97,.2,{glow:1});
+    add(g,g_sph(rr*1.85,10),0x4fa8ff,.29,.97,.2,{glow:1,op:.3,noSh:1});
+  }
+  if(tier){                                                // 宝珠环绕光环
+    const rc=bk==='priest'?0xffe9a8:bk==='summoner'?0x8ef0a8:0x9fd4ff;
+    const ring=add(g,g_torus(6.28),rc,.29,.97,.2,{rx:PI/2,glow:1,op:.7,noSh:1});
+    ring.scale.setScalar(bk==='archmage'?.26:.2);
+    g.userData.orbit=ring;
+    if(bk==='archmage'){                                   // 大法师：第二道垂直符文环
+      const r2=add(g,g_torus(6.28),0xc9a8ff,.29,.97,.2,{rz:PI/2,glow:1,op:.5,noSh:1});
+      r2.scale.setScalar(.22);g.userData.orbit2=r2;
+    }
+  }
+  g.userData.wep=null;g.userData.orb=orb;g.userData.akind='cast';
+}
+/* 游侠系：兜帽马尾+弓（火枪兵=火枪三角帽 / 精灵游侠=长弓尖耳 / 弩手=重弩护目镜） */
+function heroArcher(X){
+  const {g,cls,tier,branch,c,dk,lt,SKIN,EYE,GOLD,HAIR,bk,CLOAK,HY,attach,face}=X;
+  add(g,g_cone(.235,.3,9),dk,0,.17,0);                     // 短披风下摆
+  add(g,g_cyl(.14,.175,.24,10),c,0,.42,0);                 // 身体
+  add(g,g_box(.16,.06,.4),shade3(c,.4),0,.34,0);           // 腰带
+  add(g,g_box(.085,.19,.07),lt,.02,.46,-.185);
+  add(g,g_box(.085,.19,.07),lt,.02,.46,.185);
+  face();
+  add(g,g_sph(.212,10),HAIR,-.02,HY+.035,0,{s:[.95,.92,1.02]});
+  add(g,g_cone(.1,.42,7),HAIR,-.2,HY-.02,0,{rz:1.15});     // 马尾
+  add(g,g_sph(.08,7),HAIR,-.13,HY+.1,0);
+  if(!tier)add(g,g_cone(.205,.27,9),c,-.11,HY+.17,0,{rz:.32});  // 兜帽（往后戴，露脸）
+  else if(bk==='musket'){                                  // 火枪兵：三角帽 + 肩绶
+    add(g,g_cyl(.27,.27,.03,12),0x2f3a4a,-.02,HY+.2,0);
+    add(g,g_cyl(.15,.1,.13,10),0x2f3a4a,-.02,HY+.27,0);
+    add(g,g_box(.05,.09,.3),0x2f3a4a,-.2,HY+.24,0,{rz:-.35});
+    add(g,g_sph(.04,7),GOLD,.19,HY+.23,0,{glow:1});
+    add(g,g_box(.045,.3,.06),0xe8e4d8,.13,.44,-.1,{rz:.5});
+  }else if(bk==='elf'){                                    // 精灵游侠：尖长耳 + 叶冠
+    add(g,g_cone(.055,.3,5),SKIN,-.03,HY+.09,-.2,{rx:-.75});
+    add(g,g_cone(.055,.3,5),SKIN,-.03,HY+.09,.2,{rx:.75});
+    add(g,g_box(.03,.035,.36),0x8ef0a8,.14,HY+.17,0,{glow:1});
+    add(g,g_cone(.038,.13,5),0x8ef0a8,.04,HY+.25,-.09,{rz:-.35,rx:-.3,glow:1});
+    add(g,g_cone(.038,.13,5),0x8ef0a8,.04,HY+.25,.09,{rz:-.35,rx:.3,glow:1});
+  }else{                                                   // 弩手：额上护目镜 + 皮盔
+    add(g,g_cyl(.205,.2,.14,10),shade3(c,.45),-.02,HY+.15,0);
+    add(g,g_box(.035,.07,.32),0x2f3a4a,.15,HY+.17,0);
+    add(g,g_sph(.05,7),0xff9a5a,.175,HY+.17,-.09,{glow:1});
+    add(g,g_sph(.05,7),0xff9a5a,.175,HY+.17,.09,{glow:1});
+  }
+  /* ---- 武器 ---- */
+  if(bk==='musket'){                                       // 火枪：长枪管 + 枪托，枪口有火光
+    const gun=mk();
+    add(gun,g_cyl(.032,.032,.66,8),0x3a4350,.14,0,0,{rz:PI/2});
+    add(gun,g_cyl(.043,.043,.14,8),0x2a3240,.44,0,0,{rz:PI/2});
+    add(gun,g_box(.18,.11,.07),0x7a5230,-.22,-.03,0,{rz:.14});
+    add(gun,g_box(.06,.1,.06),0x7a5230,-.05,-.08,0);
+    add(gun,g_box(.03,.035,.03),GOLD,.22,.05,0);
+    const fl=add(gun,g_cone(.11,.26,6),0xffd27a,.64,0,0,{rz:-PI/2,glow:1,op:.92,noSh:1});
+    const fl2=add(gun,g_sph(.13,8),0xfff2c4,.56,0,0,{glow:1,op:.7,noSh:1});
+    gun.position.set(.15,.53,.13);gun.rotation.z=.06;gun.rotation.y=.36;
+    attach(gun);
+    g.userData.wep=gun;g.userData.muzzle=fl;g.userData.muzzle2=fl2;
+    fl.visible=fl2.visible=false;
+    g.userData.akind='gun';
+    add(g,g_box(.11,.13,.09),0x6b4a2c,-.13,.4,.16);        // 弹药袋
+  }else if(bk==='xbow'){                                   // 重弩：横臂 + 待发弩矢
+    const cb=mk();
+    add(cb,g_box(.44,.06,.08),0x6b4a2c,.02,0,0);
+    add(cb,g_box(.07,.05,.56),0x4a5560,.13,.04,0);
+    add(cb,g_box(.05,.035,.15),0x2f3a4a,.11,.04,-.28,{ry:.55});
+    add(cb,g_box(.05,.035,.15),0x2f3a4a,.11,.04,.28,{ry:-.55});
+    add(cb,g_cyl(.02,.014,.36,5),0x4a3a28,.16,.08,0,{rz:PI/2});
+    add(cb,g_cone(.034,.09,5),0xb9c6d6,.35,.08,0,{rz:-PI/2});
+    add(cb,g_box(.075,.13,.06),0x3a4350,-.15,-.08,0,{rz:.28});
+    add(cb,g_sph(.035,6),GOLD,.02,.05,0,{glow:1});
+    cb.position.set(.18,.54,.1);
+    attach(cb);
+    g.userData.wep=cb;g.userData.akind='xbow';
+    add(g,g_cyl(.06,.06,.26,6),0x6b4a2c,-.16,.54,.14,{rz:.45});   // 弩矢筒
+    for(let i=0;i<3;i++)add(g,g_cone(.024,.1,5),0x8a94a4,-.18,.71,.11+i*.045,{rz:.45});
+  }else{                                                   // 弓（精灵游侠更大、带绿光）
+    const el=bk==='elf';
+    const bow=add(g,g_torus(2.5),el?0xdcefb0:0xb98a4e,.24,.5,0,{});
+    bow.rotation.set(0,-PI/2,0);bow.scale.setScalar(el?.33:.28);
+    if(el){
+      add(g,g_box(.035,.16,.05),0x6b4a2c,.245,.5,0);       // 弓把
+      add(g,g_sph(.045,7),0x8ef0a8,.235,.5,0,{glow:1});
+    }else if(tier)add(g,g_sph(.045,7),GOLD,.24,.5,0,{glow:1});
+    g.userData.wep=bow;g.userData.wx=.24;g.userData.akind='draw';
+    add(g,g_cyl(.055,.055,.28,6),0x6b4a2c,-.15,.55,.13,{rz:.45});  // 箭袋
+    for(let i=0;i<3;i++)add(g,g_cone(.022,.11,5),0xd8c9a8,-.17,.72,.1+i*.045,{rz:.45});
+  }
+}
+/* 战士系：红甲+额带（狂战士=双斧双角 / 护卫=片手剑大盾 / 强盗=匕首兜帽面巾） */
+function heroWarrior(X){
+  const {g,cls,tier,branch,c,dk,lt,SKIN,EYE,GOLD,HAIR,bk,CLOAK,HY,attach,face}=X;
+  add(g,g_box(.19,.16,.24),shade3(c,.42),0,.19,0);         // 战裙
+  add(g,g_box(.29,.26,.25),c,0,.4,0);                      // 胸甲
+  add(g,g_box(.3,.05,.26),GOLD,0,.29,0);                   // 腰带
+  add(g,g_sph(.105,8),lt,0,.52,-.185);                     // 护肩
+  add(g,g_sph(.105,8),lt,0,.52,.185);
+  face();
+  add(g,g_sph(.208,10),HAIR,-.02,HY+.04,0,{s:[.94,.94,1.02]});
+  if(bk!=='guard')for(let i=0;i<3;i++)                     // 竖起的短发
+    add(g,g_cone(.06,.17,5),HAIR,-.02+i*.045,HY+.22,(i-1)*.1,{rz:-.25});
+  if(bk==='berserker'){                                    // 狂战士：双角 + 战纹
+    add(g,g_box(.035,.045,.34),0xb9c6d6,.16,HY+.1,0);
+    add(g,g_cone(.055,.3,6),0xe8e2d0,.03,HY+.19,-.19,{rx:-.6});
+    add(g,g_cone(.055,.3,6),0xe8e2d0,.03,HY+.19,.19,{rx:.6});
+    add(g,g_box(.02,.05,.16),0xd8434a,.185,HY+.09,0,{glow:1,op:.85,noSh:1});
+  }else if(bk==='guard'){                                  // 护卫：开面盔 + 红盔冠
+    add(g,g_cyl(.212,.196,.17,10),0xb9c6d6,-.02,HY+.13,0);
+    add(g,g_box(.15,.1,.05),0xd8434a,-.03,HY+.26,0);
+    add(g,g_box(.045,.055,.36),GOLD,.15,HY+.08,0);
+    add(g,g_box(.05,.16,.05),0xb9c6d6,.16,HY-.03,0);       // 护鼻
+  }else if(bk==='bandit'){                                 // 强盗：兜帽 + 面巾
+    add(g,g_cone(.225,.3,9),shade3(c,.5),-.1,HY+.18,0,{rz:.3});
+    add(g,g_box(.075,.1,.31),0x2f3a4a,.145,HY-.08,0);
+    add(g,g_box(.03,.04,.2),0x2f3a4a,.1,HY-.14,0,{rz:.5});
+    add(g,g_box(.035,.045,.34),0x2f3a4a,.16,HY+.1,0);      // 黑额带
+  }else add(g,g_box(.035,.045,.34),0xb9c6d6,.16,HY+.1,0);  // 未转职：额带
+  /* ---- 武器：狂战士=双斧 / 强盗=匕首 / 其余(未转职·护卫)=剑+盾 ---- */
+  if(bk==='berserker'){
+    /* 斧刃朝前（+X，敌人方向），俯视和卡片正视都看得出是斧头 */
+    const axe=()=>{const a=mk();
+      add(a,g_cyl(.026,.031,.64,6),0x6b4a2c,0,.11,0);      // 长斧柄（手上下都露出来）
+      add(a,g_cyl(.036,.036,.05,6),0x8a94a4,0,.4,0);       // 斧箍
+      add(a,g_box(.08,.16,.05),0x8a94a4,.055,.4,0);        // 斧颈
+      add(a,g_box(.14,.26,.06),0xc3cede,.15,.4,0);         // 斧身
+      add(a,g_box(.05,.3,.032),0xeef4fc,.235,.4,0);        // 刃口
+      add(a,g_cone(.048,.15,4),0x9aa6b6,-.08,.4,0,{rz:PI/2});   // 后刺
+      add(a,g_box(.028,.32,.014),0xff6a4a,.262,.4,0,{glow:1,op:.65,noSh:1});
+      a.rotation.z=.3;return attach(a);};
+    const a1=axe();a1.position.set(.09,.5,.24);a1.rotation.y=-.6;   // 两把斧刃向外张开
+    const a2=axe();a2.position.set(.09,.5,-.24);a2.rotation.y=.6;
+    g.userData.wep=a1;g.userData.wep2=a2;g.userData.akind='axes';
+  }else if(bk==='bandit'){
+    add(g,g_sph(.075,7),0x6b4a2c,-.1,.34,-.2);             // 腰间钱袋
+    add(g,g_box(.03,.2,.05),0x8a94a4,-.1,.42,-.24,{rz:.4});// 备用短刀
+    const kn=mk();                                         // 匕首（刃朝 +X，往前捅）
+    add(kn,g_box(.3,.055,.075),0xeef4fc,.15,0,0);
+    add(kn,g_cone(.06,.17,4),0xeef4fc,.37,0,0,{rz:-PI/2});
+    add(kn,g_box(.04,.1,.19),GOLD,-.01,0,0);               // 护手
+    add(kn,g_cyl(.032,.032,.16,6),0x5a3b22,-.11,0,0,{rz:PI/2});
+    add(kn,g_sph(.035,6),GOLD,-.2,0,0);                    // 柄尾
+    add(kn,g_box(.32,.02,.02),0xfff2c4,.16,.04,0,{glow:1,op:.55,noSh:1});
+    kn.position.set(.14,.47,.2);kn.rotation.y=.3;
+    attach(kn);
+    g.userData.wep=kn;g.userData.akind='stab';
+  }else{
+    const gd=bk==='guard';
+    const sh=mk();                                         // 盾（护卫的更大、带金色十字）
+    add(sh,g_box(.05,gd?.4:.28,gd?.3:.24),0xc3cede,0,0,0);
+    add(sh,g_box(.03,gd?.33:.2,gd?.23:.17),shade3(c,.85),.036,0,0);
+    if(gd){
+      add(sh,g_box(.022,.42,.06),GOLD,.045,0,0);
+      add(sh,g_box(.022,.08,.32),GOLD,.045,0,0);
+      add(sh,g_sph(.055,8),GOLD,.055,0,0,{glow:1});
+      add(sh,g_cone(.06,.1,4),0xc3cede,0,-.24,0,{rz:PI});   // 下端尖角（鸢盾）
+    }else if(tier)add(sh,g_sph(.05,7),GOLD,.04,0,0,{glow:1});
+    sh.position.set(gd?-.05:-.11,gd?.46:.44,-.24);
+    attach(sh);
+    const sw=mk();                                         // 剑（绕肩挥砍）
+    add(sw,g_box(.045,gd?.42:(tier?.56:.46),gd?.1:.1),0xeef4fc,0,gd?.24:(tier?.29:.24),0);
+    if(gd){
+      add(sw,g_box(.052,.34,.03),0xb9c6d6,0,.24,0);         // 血槽
+      add(sw,g_cone(.07,.13,4),0xeef4fc,0,.51,0);
+    }
+    add(sw,g_box(.055,.055,gd?.24:.22),GOLD,0,.02,0);
+    add(sw,g_cyl(.028,.028,.12,6),0x5a3b22,0,-.06,0);
+    if(tier)add(sw,g_box(.075,gd?.46:.5,.13),0xffd98a,0,gd?.26:.3,0,{glow:1,op:.32,noSh:1});
+    sw.position.set(.11,.5,.23);sw.rotation.z=.25;
+    attach(sw);
+    g.userData.wep=sw;g.userData.akind='swing';
+    if(gd)g.userData.aux=sh;                               // 护卫：挥砍时盾牌同步前顶
+  }
 }
 /* 怪物：面向 -X（往左推进）。单位空间半径≈1，绘制时按 m.r 缩放 */
 function buildMob(type){
@@ -1198,6 +1211,39 @@ function draw(){
   octx.clearRect(0,0,W,H);
   octx.textAlign='center';
 
+  drawWorld();
+  drawGroundFx();
+  drawHeroes();
+  drawMinions();
+  drawMobs();
+  drawProps();
+  drawOverlay();
+  sweep();tmpHide();
+  if(shk>0){                                          // 屏幕震动：正交相机直接抖位置
+    cam.position.set(camBase.x+(Math.random()-.5)*shk,
+                     camBase.y+(Math.random()-.5)*shk,
+                     camBase.z+(Math.random()-.5)*shk*.4);
+    shk=max(0,shk-min(.05,max(0,gt-lastGt))*3.4);
+    if(shk<=0)cam.position.copy(camBase);
+  }
+  lastGt=gt;
+  ren.render(scene,cam);
+  cardTick();
+
+  /* 低端机自动降级：连续掉帧就关阴影 */
+  if(shadowOn){
+    ftAcc+=performance.now()-t0;ftN++;
+    if(ftN>=120){
+      if(ftAcc/ftN>17){shadowOn=false;ren.shadowMap.enabled=false;dirLight.castShadow=false;
+        outlineOn=false;for(const o of olMeshes)o.visible=false;
+        scene.traverse(o=>{if(o.isMesh)o.castShadow=false;});}
+      ftAcc=0;ftN=0;
+    }
+  }
+}
+
+/* 场景层：选中框 / 法阵 / 传送门 / 商店建筑 + 工人 + 建筑名牌 */
+function drawWorld(){
   /* --- 选中格 --- */
   if(sel){selGroup.visible=true;selGroup.position.set(sel.col+.5,0,sel.row+.5);}
   else selGroup.visible=false;
@@ -1261,7 +1307,9 @@ function draw(){
       octx.fillText(sub,sp[0],sp[1]+fs*.95);
     }
   }
-
+}
+/* 地面区域效果：火焰风暴光盘 / 大地震颤裂缝 */
+function drawGroundFx(){
   /* --- 地面区域效果：火焰风暴 / 大地震颤 --- */
   for(const s of storms){
     if(s.delay>0)continue;
@@ -1286,7 +1334,9 @@ function draw(){
       cr.position.z=((i-.5)/5-.5)*hh;cr.material.opacity=.5*fl;
     }
   }
-
+}
+/* 英雄：模型动作 + 脚下环 + 血蓝经验条 */
+function drawHeroes(){
   /* --- 英雄 --- */
   for(const h of heroes){
     const g=bind(h,'H'+h.cls+h.tier+h.branch,()=>buildHero(h.cls,h.tier,h.branch));
@@ -1370,7 +1420,8 @@ function draw(){
         h.lv>=MAX_HERO_LV?1:min(h.xp/xpNeed(h.lv),1),'#b070ff');
     }
   }
-
+}
+function drawMinions(){
   /* --- 召唤物 --- */
   for(const br of bears){
     const kind=br.kind||'bear', z=br.row+.5+(br.oy||0);
@@ -1382,7 +1433,9 @@ function draw(){
     const u=ppu(br.x,.5,z),sp=proj(br.x,r*2.5,z);
     bar(sp[0],sp[1]-6,.6*u,.08*u,br.hp/br.maxHp,'#6ee7a0');
   }
-
+}
+/* 怪物 + 尸体 */
+function drawMobs(){
   /* --- 怪物 --- */
   for(const m of mobs){
     const z=m.y+.5;
@@ -1419,7 +1472,9 @@ function draw(){
     g.rotation.y=c.rot||0;
     tint(g,false,true,false);
   }
-
+}
+/* 宝箱 / 弹道 / 特效 */
+function drawProps(){
   /* --- 宝箱 --- */
   for(const ch of chests){
     if(ch.dead)continue;
@@ -1441,7 +1496,9 @@ function draw(){
 
   /* --- 特效 --- */
   for(const f of fx)drawFx(f);
-
+}
+/* 覆盖层：右上角伤害统计表 + 伤害飘字 */
+function drawOverlay(){
   /* --- 伤害飘字（覆盖层） --- */
   /* 伤害统计表：三个英雄的总输出 / 总承伤（召唤物挨的打算主人头上） */
   if(heroes.length){
@@ -1478,29 +1535,6 @@ function draw(){
     octx.fillText(n.txt,sp[0],sp[1]);
   }
   octx.globalAlpha=1;
-
-  sweep();tmpHide();
-  if(shk>0){                                          // 屏幕震动：正交相机直接抖位置
-    cam.position.set(camBase.x+(Math.random()-.5)*shk,
-                     camBase.y+(Math.random()-.5)*shk,
-                     camBase.z+(Math.random()-.5)*shk*.4);
-    shk=max(0,shk-min(.05,max(0,gt-lastGt))*3.4);
-    if(shk<=0)cam.position.copy(camBase);
-  }
-  lastGt=gt;
-  ren.render(scene,cam);
-  cardTick();
-
-  /* 低端机自动降级：连续掉帧就关阴影 */
-  if(shadowOn){
-    ftAcc+=performance.now()-t0;ftN++;
-    if(ftN>=120){
-      if(ftAcc/ftN>17){shadowOn=false;ren.shadowMap.enabled=false;dirLight.castShadow=false;
-        outlineOn=false;for(const o of olMeshes)o.visible=false;
-        scene.traverse(o=>{if(o.isMesh)o.castShadow=false;});}
-      ftAcc=0;ftN=0;
-    }
-  }
 }
 
 /* ================= 特效分支 ================= */
