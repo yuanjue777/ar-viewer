@@ -1466,21 +1466,7 @@ function draw(){
     octx.textAlign='center';
   }
 
-  /* Boss 总血条：屏幕正上方一条长条（场上有 Boss 时才显示） */
-  {
-    let bh=0,bm=0;
-    for(const m of mobs)if(m.type==='boss'&&!m.dead){bh+=m.hp;bm+=m.maxHp;}
-    if(bm>0){
-      const bw=min(W*.6,520), bx=W/2, by=13, bhh=15;
-      octx.globalAlpha=1;
-      octx.fillStyle='rgba(8,12,20,.78)';octx.fillRect(bx-bw/2-4,by-4,bw+8,bhh+8);
-      octx.strokeStyle='#ff5d5d';octx.lineWidth=1.5;octx.strokeRect(bx-bw/2-4,by-4,bw+8,bhh+8);
-      octx.fillStyle='#3a1420';octx.fillRect(bx-bw/2,by,bw,bhh);
-      octx.fillStyle='#ff3860';octx.fillRect(bx-bw/2,by,bw*max(0,bh/bm),bhh);
-      octx.fillStyle='#fff';octx.font='700 11px -apple-system,sans-serif';
-      octx.fillText('BOSS  '+Math.ceil(bh).toLocaleString()+' / '+Math.ceil(bm).toLocaleString(),bx,by+11.5);
-    }
-  }
+  /* BOSS 总血条已挪到顶栏 DOM（rpg.js 的 updateBossBar），这里不再画，免得挡战斗 */
 
   for(const n of nums){
     const u=ppu(n.x,.9,n.y),sp=proj(n.x,.95,n.y);

@@ -421,6 +421,9 @@ const SEED=`
     await p.evaluate(()=>setShop('skill'));       // 技能商店现在花木头
     await p.waitForTimeout(250);
     await shot('s6_skillshop',{x:0,y:H-86,width:W,height:86});
+    await p.evaluate(()=>setShop('mine'));        // 金矿/伐木场：两个按钮文字形式应一致
+    await p.waitForTimeout(250);
+    await shot('s6b_incshop',{x:0,y:H-86,width:W,height:86});
     await p.evaluate(()=>{closeShop();mobs.length=0;wave=9;startWave();});   // → 第10波 BOSS关
     await p.waitForTimeout(900);
     await shot('s7_boss',{x:0,y:0,width:W,height:120});                      // Boss总血条

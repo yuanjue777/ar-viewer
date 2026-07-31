@@ -516,8 +516,7 @@ function startWave(){
     const e=list[li], sl=slots[si];
     spawnMob(e.t,{dx:sl.dx,lane:sl.lane,elite:e.elite,mul:e.mul,hmul:e.hmul,rs:e.rs});
   });
-  if(isBossWave(wave))showToast(`<b style="color:#ff5d5d">第 ${wave} 波 · BOSS关</b>　只有Boss，但数值极高`);
-  else if(isEliteWave(wave))showToast(`<b style="color:#f0c46a">第 ${wave} 波 · 精英波</b>　混入精英怪`);
+  if(isEliteWave(wave)&&!isBossWave(wave))showToast(`<b style="color:#f0c46a">第 ${wave} 波 · 精英波</b>　混入精英怪`);
   updateHUD();renderInfo();
 }
 function spawnMob(type,opt){
@@ -1019,7 +1018,8 @@ function update(dt){
     updateHUD();
     if(wave>=TOTAL_WAVES){endGame(true);return;}
     resting=true;waveT=REST_TIME;
-    showToast(`第 ${wave} 波清空（用时 ${Math.round(battleT)}s）<br>备战 <b style="color:#8ab8d8">${REST_TIME}s</b> 后出下一波，可点右上角 <b style="color:var(--gold)">⏩</b> 提前开波换金币`);
+    showToast(`第 ${wave} 波清空（用时 ${Math.round(battleT)}s）<br>备战 <b style="color:#8ab8d8">${REST_TIME}s</b> 后出下一波，可点右上角 <b style="color:var(--gold)">⏩</b> 提前开波换金币`
+      +(isBossWave(wave+1)?`<br><b style="color:#ff5d5d">⚠ 第 ${wave+1} 波 · BOSS 关卡即将来临</b>`:''));
     renderInfo();
   }
 }
@@ -1296,7 +1296,18 @@ function begin(){
 const uiMoney=document.getElementById('uiMoney'),uiWood=document.getElementById('uiWood'),
       uiLife=document.getElementById('uiLife'),uiWave=document.getElementById('uiWave'),
       info=document.getElementById('info'),invEl=document.getElementById('invItems'),
-      toast=document.getElementById('toast'),ghost=document.getElementById('dragGhost');
+      toast=document.getElementById('toast'),ghost=document.getElementById('dragGhost'),
+      uiBoss=document.getElementById('uiBoss'),
+      uiBossFill=uiBoss.querySelector('i'),uiBossTxt=uiBoss.querySelector('span');
+/* BOSS 总血条：画在顶栏（金币那一行）中段，每帧刷新，场上没 Boss 就隐藏 */
+function updateBossBar(){
+  let bh=0,bm=0;
+  for(const m of mobs)if(m.type==='boss'&&!m.dead){bh+=m.hp;bm+=m.maxHp;}
+  if(bm<=0){uiBoss.classList.remove('on');return;}
+  uiBoss.classList.add('on');
+  uiBossFill.style.transform='scaleX('+Math.max(0,bh/bm).toFixed(4)+')';
+  uiBossTxt.textContent='BOSS  '+Math.ceil(bh).toLocaleString()+' / '+Math.ceil(bm).toLocaleString();
+}
 let toastT=null;
 function showToast(msg){
   toast.innerHTML=msg;toast.classList.add('show');
@@ -1709,14 +1720,15 @@ function shopHTML(){
     <span>Lv${lv}/${INCOME_MAX} · 工人 ${w}/${WORKER_MAX}</span>
     <span style="color:var(--${isMine?'gold':'wood'})">现产 +${w*lv} ${unit}/s</span></div>`;
   const up=lv>=INCOME_MAX
-    ? `<button class="btn" disabled><b>工人效率</b> 已满</button>`
+    ? `<button class="btn" disabled><b>升级工人效率</b> 已满</button>`
     : `<button class="btn" data-shop="${openShop}" data-cost="${cost}" data-lock="0" ${gold>=cost?'':'disabled'}>
         <b>升级工人效率</b> Lv${lv+1} <span class="cost">${cost}金</span>
         <span class="sub">每个工人 ${lv} → ${lv+1} ${unit}/s</span></button>`;
   const hire=w>=WORKER_MAX
-    ? `<button class="btn" disabled><b>工人数量</b> 已满</button>`
+    ? `<button class="btn" disabled><b>增加工人数量</b> 已满</button>`
     : `<button class="btn" data-worker="${openShop}" data-cost="${wcost}" data-lock="0" ${gold>=wcost?'':'disabled'}>
-        <b>增加工人数量</b> ${w+1}/${WORKER_MAX} <span class="cost">${wcost}金</span></button>`;
+        <b>增加工人数量</b> ${w+1}/${WORKER_MAX} <span class="cost">${wcost}金</span>
+        <span class="sub">总产出 ${w*lv} → ${(w+1)*lv} ${unit}/s</span></button>`;
   return head+`<div class="shopGrid inc">${up}${hire}</div>`;
 }
 /* 点熔炉里的装备 = 取回背包（再点背包就能选英雄穿） */
@@ -2135,6 +2147,7 @@ function loop(now){
   const dt=Math.min((now-last)/1000,.05);last=now;
   gt+=dt;
   if(running&&!over)update(dt*speed);
+  updateBossBar();
   R3.draw();
 }
 reset();resize();

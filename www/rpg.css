@@ -33,6 +33,16 @@
   .stat{display:flex;align-items:baseline;gap:3px}
   .stat b{font-family:ui-monospace,"SF Mono",Menlo,monospace;font-size:14px;font-weight:600;font-variant-numeric:tabular-nums}
   .stat small{font-size:10px;color:var(--ink-dim)}
+  /* BOSS 总血条：占据顶栏中段的空白，不再画在战场上方挡视野 */
+  #uiBoss{display:none;flex:1;min-width:110px;max-width:340px;height:16px;position:relative;
+    border:1px solid #ff5d5d;border-radius:3px;background:#3a1420;overflow:hidden}
+  #uiBoss.on{display:block}
+  #uiBoss i{position:absolute;left:0;top:0;bottom:0;width:100%;transform-origin:left center;
+    background:linear-gradient(180deg,#ff6b82,#e01c46)}
+  #uiBoss span{position:absolute;left:0;right:0;top:0;bottom:0;
+    display:flex;align-items:center;justify-content:center;
+    font:700 10px ui-monospace,"SF Mono",Menlo,monospace;color:#fff;
+    text-shadow:0 1px 2px rgba(0,0,0,.75)}
   .money b{color:var(--gold)} .woodS b{color:var(--wood)} .life b{color:var(--hp)} .wave b{color:#8ab8d8}
   header .hbtn{
     background:none;border:1px solid var(--line);color:#8ab8d8;
