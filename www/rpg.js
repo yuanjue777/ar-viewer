@@ -483,10 +483,29 @@ function calc(h){
   h.mp=Math.min(h.mp,h.maxMp);
   if(h.hp!==undefined)h.hp=Math.min(h.hp,h.maxHp);
 }
-/* 英雄面板上的羁绊标签（激活了才显示）＋灵魂数 */
+/* 某个技能属于哪几条羁绊（目前一个技能只进一条，写成数组以后好扩展） */
+function bondsOfSkill(nm){const r=[];for(const k in BONDS)if(BONDS[k].sk.indexOf(nm)>=0)r.push(k);return r;}
+/* 羁绊详情（英雄面板 toast / 卡片层左侧详情 共用）：
+   组成技能逐个列出——已学 ✦金色、还缺 ○灰色——再跟一行效果文案。
+   传了 h 就多显示「x/y 已激活/未激活」。 */
+function bondInfo(k,h){
+  const b=BONDS[k],sk=(h&&h.skills)||{};
+  const have=b.sk.filter(n=>sk[n]).length,on=have>=b.sk.length;
+  const list=b.sk.map(n=>`<span style="color:${sk[n]?'#f0c46a':'#6f6688'}">${sk[n]?'✦':'○'} ${n}</span>`)
+                 .join('<span style="color:#6f6688"> ＋ </span>');
+  return `<b style="color:${on?'#f0c46a':'#c9bcda'}">⚜ 羁绊·${b.n}</b>`
+    +(h?` <span style="color:${on?'#6ee7a0':'#8b809f'}">${have}/${b.sk.length} ${on?'已激活':'未激活'}</span>`:'')
+    +`<div class="bsk">${list}</div><div class="bd">${b.d}</div>`;
+}
+/* 英雄面板名字行后面的羁绊徽章：只要沾边（学了其中任意一个技能）就显示，
+   没集齐也显示进度；点一下弹 toast 看组成技能和效果。＋灵魂数 */
 function bondTxt(h){
   let t='';
-  for(const k in BONDS)if(h.bond&&h.bond[k])t+=` <b style="color:#f0c46a">羁绊·${BONDS[k].n}</b>`;
+  for(const k in BONDS){
+    const b=BONDS[k],have=b.sk.filter(n=>h.skills&&h.skills[n]).length;
+    if(!have)continue;
+    t+=` <b class="bondTag${have>=b.sk.length?' on':''}" data-lpb="${k}">羁绊·${b.n} ${have}/${b.sk.length}</b>`;
+  }
   if(h.souls>0)t+=` <b style="color:#b070ff">灵魂 ${Math.round(h.souls)}</b>`;
   return t;
 }
@@ -1350,7 +1369,7 @@ function updateBossBar(){
   if(bm<=0){uiBoss.classList.remove('on');return;}
   uiBoss.classList.add('on');
   uiBossFill.style.transform='scaleX('+Math.max(0,bh/bm).toFixed(4)+')';
-  uiBossTxt.textContent='BOSS  '+Math.ceil(bh).toLocaleString()+' / '+Math.ceil(bm).toLocaleString();
+  uiBossTxt.textContent='BOSS  '+Math.ceil(bh).toLocaleString();
 }
 let toastT=null;
 function showToast(msg){
@@ -1527,7 +1546,8 @@ function openGiveCards(idx){
     cardInfo.innerHTML=`<div class="in" style="color:${CATS[d.cat].color}">${nm}</div>
       <div class="iq"><span style="color:${QC[d.q]}">[${QN[d.q]}]</span> <span style="color:${CATS[d.cat].color}">${CATS[d.cat].label}系</span></div>
       <div class="id">${d.desc}</div>
-      <div class="ix">学习费 <b style="color:var(--gold)">${bookCost(nm)}金</b><br>同名书可升级，上限 Lv${MAX_SKILL_LV}<br>每位英雄 ${MAX_SLOTS} 个技能位</div>`;
+      <div class="ix">学习费 <b style="color:var(--gold)">${bookCost(nm)}金</b><br>同名书可升级，上限 Lv${MAX_SKILL_LV}<br>每位英雄 ${MAX_SLOTS} 个技能位</div>`
+      +bondsOfSkill(nm).map(k=>`<div class="ib">${bondInfo(k,null)}</div>`).join('');
   }else{
     const d=eqDef(it),q=qOf(it);
     cardInfo.innerHTML=`<div class="in" style="color:${q.c}">${d.n}</div>
@@ -1552,12 +1572,19 @@ function openGiveCards(idx){
       else why='';
     }else if(gold<equipCost(it))why='金币不足';
     const ok=!why;
+    // 这本书属于某条羁绊 → 卡片上标出「该英雄现在 x/y → 学完 y/y」
+    const bondRow=hh=>!isBook?'':bondsOfSkill(nm).map(k=>{
+      const bd=BONDS[k],have=bd.sk.filter(n=>hh.skills[n]).length;
+      const after=hh.skills[nm]?have:Math.min(bd.sk.length,have+1);
+      return `<div class="hcBond${after>=bd.sk.length?' on':''}">${bd.n} ${have}/${bd.sk.length}`
+        +(after>have?`→${after}/${bd.sk.length}`:'')+`</div>`;
+    }).join('');
     const el=document.createElement('div');
     el.className='chcard'+(ok?'':' no');
     const cur=isBook?(h.skills[nm]||0):h.equips.length;
     el.innerHTML=`<div class="hcName" style="color:${b.color}">${a?a.name:b.name} <span style="opacity:.7;font-size:10px">Lv${h.lv}</span></div>
       <canvas width="200" height="240"></canvas>
-      <div class="hcStats">${attrRows({str:h.str,agi:h.agi,int:h.int},b.grow,b.main)}</div>
+      <div class="hcStats">${attrRows({str:h.str,agi:h.agi,int:h.int},b.grow,b.main)}</div>${bondRow(h)}
       <div class="hcBuy">${why||(isBook?(cur?`升到 Lv${cur+1}`:'学习'):`装备（${cur}/${MAX_EQUIP}）`)}</div>`;
     if(ok)el.onclick=()=>{
       closeCards();
@@ -1652,7 +1679,7 @@ function renderInfo(){
               :`<div class="slot" data-eqslot="${i}">空</div>`);
     }
     html=`<div class="hcard">
-      <div><b style="color:${b.color}">${dispName(h)}</b> <span class="dim">Lv${h.lv} · ${xpTxt}</span>${bondTxt(h)}</div>
+      <div class="hrow1"><b style="color:${b.color}">${dispName(h)}</b> <span class="dim">Lv${h.lv} · ${xpTxt}</span>${bondTxt(h)}</div>
       <div class="hgrid">
         <span>HP <b id="hpVal">${Math.ceil(h.hp)}/${h.maxHp}</b> +${h.hpRegen.toFixed(1)}/s</span>
         <span>MP <b id="mpVal">${Math.floor(h.mp)}/${h.maxMp}</b> +${h.mpRegen.toFixed(1)}/s</span>
@@ -2029,6 +2056,8 @@ window.addEventListener('pointerup',ev=>{
 let lastTap={t:0,key:''};
 info.addEventListener('click',ev=>{
   // 点击技能栏/装备栏查看介绍；双击装备=脱下退回背包
+  const bt=ev.target.closest('[data-lpb]');
+  if(bt){showToast(bondInfo(bt.dataset.lpb,selHero()));return;}
   const s=ev.target.closest('[data-lps],[data-lpe]');
   if(s){
     const h=selHero();if(!h)return;

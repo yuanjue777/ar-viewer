@@ -73,7 +73,7 @@
   #uiBoss i{position:absolute;left:1px;top:1px;bottom:1px;right:1px;width:auto;transform-origin:left center;
     background:linear-gradient(180deg,#ff7a8e,#e01c46 60%,#8e0c26)}
   /* 血条上的刻度：像刻在石槽上的一道道凿痕 */
-  #uiBoss span{position:absolute;left:0;right:0;top:0;bottom:0;
+  #uiBoss span{position:absolute;left:0;right:0;top:0;bottom:0;white-space:nowrap;
     display:flex;align-items:center;justify-content:center;
     font:700 10px ui-monospace,"SF Mono",Menlo,monospace;color:#fff;letter-spacing:.16em;
     background:repeating-linear-gradient(90deg,transparent 0 15px,rgba(0,0,0,.42) 15px 16px);
@@ -240,6 +240,12 @@
   #info .btn.grow{flex:1;text-align:left}
   /* 英雄面板：左属性 | 4技能栏 | 2×3装备栏 */
   .hcard{flex:1;min-width:0;font-size:10px;line-height:1.4}
+  .hcard .hrow1{white-space:nowrap;overflow:hidden}
+  /* 羁绊徽章：沾边就显示（暗），集齐变金；点一下弹详情 */
+  .bondTag{font-size:9.5px;padding:0 4px;margin-left:2px;border-radius:2px;cursor:pointer;
+    border:1px solid #4a3f63;color:#9a8fb0;background:rgba(255,255,255,.03);font-weight:600}
+  .bondTag.on{border-color:var(--gold);color:#ffe6a8;background:rgba(240,196,106,.14);
+    box-shadow:0 0 6px rgba(240,196,106,.32)}
   .hcard .dim{color:var(--ink-dim);font-size:9.5px}
   .hgrid{display:grid;grid-template-columns:repeat(4,max-content);gap:1px 10px;
     font-size:9.5px;color:var(--ink-dim);margin-top:3px}
@@ -401,6 +407,11 @@
   #cardInfo .in{font-family:var(--serif);font-size:13px;font-weight:700;line-height:1.3;letter-spacing:.04em}
   #cardInfo .iq{font-size:9.5px;margin-top:2px}
   #cardInfo .id{font-size:10px;color:#a99cb8;line-height:1.45;margin-top:5px}
+  /* 技能书详情下面的羁绊块（组成技能 + 效果） */
+  #cardInfo .ib{margin-top:6px;padding-top:5px;font-size:9.5px;line-height:1.4;
+    border-top:1px solid rgba(240,196,106,.28)}
+  #cardInfo .ib .bsk{margin-top:2px;font-size:9px;line-height:1.35}
+  #cardInfo .ib .bd{margin-top:2px;font-size:9px;color:#a99cb8;line-height:1.35}
   #cardInfo .ix{font-size:9.5px;color:#8b809f;line-height:1.4;margin-top:6px;
     border-top:1px solid rgba(240,196,106,.25);padding-top:5px}
   /* 右侧：该英雄的技能栏(1×4) / 装备栏(6行) */
@@ -472,6 +483,10 @@
   }
   .chcard .hcTal .tn{font-size:10.5px;font-weight:700;color:#d3bcff}
   .chcard .hcTal .td{font-size:9px;color:#a99cb8;line-height:1.35;margin-top:2px}
+  /* 英雄卡上的羁绊进度（学完会不会点亮） */
+  .chcard .hcBond{margin:0 6px 4px;padding:2px 3px;border-radius:2px;font-size:8.5px;text-align:center;
+    border:1px solid #4a3f63;color:#a99cb8;line-height:1.25}
+  .chcard .hcBond.on{border-color:var(--gold);color:#ffe6a8;background:rgba(240,196,106,.16)}
   .chcard .hcBuy{
     margin:auto 6px 6px;padding:5px;border-radius:3px;text-align:center;
     font-family:var(--serif);letter-spacing:.14em;
