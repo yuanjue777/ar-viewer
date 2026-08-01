@@ -28,8 +28,8 @@
 - **文件已拆分**（为省 token，别再合回单文件）：
   - `www/rpg.html`（约60行）= DOM 骨架：header(左=资源数值 + **`#uiBoss` BOSS总血条**，右=`.hright` 按钮组：3个自动开关+倍速+`#hireBtn`招募+`#nextBtn`+启动) / canvas / **`#dock` = 4个 `.tile.trial` + `#inv`背包（同一行）** / `#bottom` = `#info`信息区（独占一行） / `#cards`卡片层 / `#overlay`开始页
   - `www/rpg.css`（约240行）= 全部样式，`:root` 里是配色变量
-  - `www/rpg.js`（约2180行）= **纯逻辑**（数值/技能/AI/波次/商店/UI），不含任何绘制代码
-  - `www/rpg3d.js`（约1700行）= **纯渲染**（Three.js 3D 场景/模型/特效/血条），逻辑层不用管
+  - `www/rpg.js`（约2200行）= **纯逻辑**（数值/技能/AI/波次/商店/UI），不含任何绘制代码
+  - `www/rpg3d.js`（约1680行）= **纯渲染**（Three.js 3D 场景/模型/特效/血条），逻辑层不用管
   - ⚠️ **2026-07 已按职责把几个巨型函数拆开**（`update`→`tick*`、`draw`→`draw*`、`buildHero`→`hero*`），目的就是让以后每次改动只 sed 几十行。**别再合回大函数**；新加逻辑也往对应的小函数里放。现在最长的函数也只有 ~130 行。
   - `www/vendor/three.min.js`（706KB）= Three.js r180 打包产物
 - **改动方式**：查下面的"改什么→去哪里"表拿 grep 锚点 → `grep -n` 定位 → `sed -n` 只读那一小段 → 替换。**表里不再写行号**（改了太多轮，行号全漂了，写上去只会让人 sed 读错位置）；**锚点是稳定的**。改完 `node --check` + `sh www/_test/go.sh`。
@@ -49,7 +49,7 @@
 | 尸体 `corpses[]` | `type` `x` `y` `r` `t/max`(0.6s) —— 怪死时在 `damage()` 里生成，纯表现 |
 | 闪电链 `chains[]` | `own` `cur`(当前目标) `px,py` `left`(剩余跳数) `cd` `dmg` `hit`(Set) |
 
-### 改什么 → 去哪里 · `www/rpg.js`（逻辑，约2180行）
+### 改什么 → 去哪里 · `www/rpg.js`（逻辑，约2200行）
 | 想改的东西 | 去哪里（grep 锚点） |
 |---|---|
 | 职业基础属性/射程/成长 | `const CLASSES=` |
@@ -118,7 +118,7 @@
 | **点击战场（选英雄/点宝箱/点建筑）+ 英雄拖动换行** | `cv.addEventListener('pointerdown'` / `let hDrag` |
 | 启动/倍速/**提前开波**按钮 | `launchBtn` / `speedBtn` / `nextBtn`+`nextBonus` |
 
-### 改什么 → 去哪里 · `www/rpg3d.js`（3D 渲染，约1700行）
+### 改什么 → 去哪里 · `www/rpg3d.js`（3D 渲染，约1680行）
 | 想改的东西 | 去哪里（grep 锚点） |
 |---|---|
 | **相机俯角/投影方式** | `const TILT=` |
@@ -394,17 +394,33 @@
 **标准流程**（正常 4~6 次工具调用收工）
 1. 查「改什么→去哪里」锚点表拿 grep 锚点 → `grep -n "锚点" www/rpg3d.js` 定位 →
    `sed -n 'a,bp'` **只读要改的那 10~40 行**。函数再长也只 sed 你要动的那个分支。
-2. 所有改动写成**一个** `python3 - <<PYEOF`：`(old,new)` 列表 + 逐条 `assert old in s` + 统一写盘，再 `node --check`。
+2. 所有改动写成**一个** `python3 - <<PYEOF`：`(old,new)` 列表 + 逐条 `assert s.count(old)==1` + 统一写盘，再 `node --check`。
+   ⚠️ 用 `count(old)==1` 而不是 `old in s`——锚点撞车时 `replace` 会插错地方，`in` 检查不出来。
 3. 验证只跑 `sh www/_test/go.sh <场景>`（见下面的对照表），**别手写 playwright**。
 4. 顺手更新本文件；**锚点文字被改动时必须同步改**——失效的锚点比没有锚点更坑。
 5. 回复只讲结论和数字，不贴代码。用户会攒一批需求一起说，**一次做完再回**。
 
-**渲染/模型代码尤其要克制（`rpg3d.js` 1500 行，整读一次就是几万 token）**
+**渲染/模型代码尤其要克制（`rpg3d.js` 1680 行，整读一次就是几万 token）**
 - 改一个单位的模型 → 怪物只 sed `buildMob` 里那**一个 `else if(type===...)` 分支**；英雄直接进 `heroMage`/`heroArcher`/`heroWarrior`（各 50~80 行），别读 `buildHero` 全家。
 - 改一条支线的攻击动作 → 只 sed `drawHeroes()` 里 `akind` 那一段。
 - 改材质/光照 → 锚点是 `function add(` / `function init(`，各只有十几行要看。
 - **加新分支时把相邻分支当模板，靠记忆写风格**（`add(g, g_xxx(...), color, x,y,z, {...})`），不用把整段抄进上下文。
 - 布局/相机/正交范围这类，**先把公式算出来写进注释**，别靠「改一点→截图→再改」的循环——那是最烧 token 的一种。
+
+**大改动（整表替换 / 换一整个函数 / 加一整套机制）的省 token 打法**
+> 2026-08 换整个技能池那轮的经验：改了 4 个文件、上千行，全程没有 Read 过任何一个大文件。
+- **别手抄「结尾那几行」当替换锚点**。整表替换用 `head + 之后第一个 "\n};\n"` 定位：
+  `i=s.index("const SKB={"); j=s.index("\n};\n",i)+4; s=s[:i]+新表+s[j:]`。
+  （踩过：手抄 `const SKB` 最后一行当 tail，肉眼一模一样但就是 `index` 不到，白花一轮。）
+- **换整个函数**用花括号配平取 span（正则找 `^function 名\s*\(`，再从第一个 `{` 数到配平），
+  这样**完全不用把旧函数正文抄进上下文**。`repl_fn(name, 附加在后面的新函数)` 一次能顺带插入新增函数。
+- **大段新代码写进 scratchpad 文件**（用 Write 工具），python 里 `io.open(路径).read()` 读进来再拼。
+  好处有两个：① 新代码只在输出里出现一次，不会因为 heredoc 转义问题重发；② 中文/引号混排不会炸。
+- **数据表和实现分批提交**：先换表 → `node --check` → 再改引用它的函数。一批炸了不会连累已确认的那批。
+- ⚠️ **改数据表的名字（技能名/装备名/召唤物 kind）要顺手 `grep -n 名字 www/_test/run.js`**：
+  run.js 的 SEED 和几个断言里**硬编码了技能名**，漏改会在跑测试时才炸（踩过两次）。
+- ⚠️ **测试断言要确定性**：靠实战采样的断言（例：回响之刃 CD 峰值）会因为怪一击就死而变成 0，
+  看起来像 bug 其实是采样问题。这类断言一律改成「打一只打不死的假怪」。
 
 **永远不做的事**
 - ❌ Read `www/vendor/three.min.js`（706KB 压缩代码，一次几十万 token）。Three.js API 按记忆写；换版本跑 `python3 www/vendor/_fetch_three.py [版本号]`。
@@ -420,6 +436,7 @@
 - 别把 `python3 ... && git add && git commit && git push` 串成一条：python 语法错时后面照样跑，会把没改完的状态提交上去。**脚本和 git 分两次执行。**
 
 **JS 侧踩过的坑**
+- 顶层 `const`（例 `DC`/`SKB`/`BONDS`）不会挂到 `window`，但**在 playwright 的 `page.evaluate` 里能直接用**（同一个全局词法作用域），所以 probe 断言可以直接引用它们。
 - CSS 里写了 `display:none` 的元素，JS 里 `style.display=空字符串` **不会显示**（清空 inline 样式=退回 CSS 的 none），必须写 `block`。
 - `light.layers` 对 `HemisphereLight` 无效（它被并进全局 lightProbe），想单独给地面提亮只能改材质的 `emissive/emissiveMap`。
 
