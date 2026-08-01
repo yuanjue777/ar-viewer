@@ -35,9 +35,9 @@ const SEED=`
     heroes.push(makeHero('warrior',ROW0,2),makeHero('archer',ROW0+1,1),makeHero('mage',ROW0+2,0));
   }
   heroes.forEach(h=>{h.lv=8;h.tier=1;h.branch=0;h.specLv=3;calc(h);h.hp=h.maxHp;h.mp=h.maxMp;});
-  heroes[2].skills={'火球术':3,'冰风暴':3,'召唤熊德':2,'地狱火':2};
-  heroes[1].skills={'剑雨':3,'多重射击':3,'致命一击':2};
-  heroes[0].skills={'大地震颤':3,'忍受':3,'荆棘光环':2};
+  heroes[2].skills={'幽邃之握':3,'幽邃光环':3,'幽邃灵魂':3,'幽邃恐惧':3};
+  heroes[1].skills={'多重射击':3,'嗜血狂战':3,'攻击溅射':3,'敏捷传承':2};
+  heroes[0].skills={'主属光环':3,'减甲光环':3,'狂风光环':3,'奉献光环':2};
   heroes.forEach(h=>calc(h));
   updateHUD();renderInfo();
 `;
@@ -181,7 +181,7 @@ const SEED=`
       eq(heroes[0],['banditblade','kill1','warlord','sheepstick','echoblade','titan']);
       eq(heroes[1],['stormrider','blackblade','thunderedict','infinity','watcher','fullmoon']);
       eq(heroes[2],['forbidden','abysscurse','holypend','cenarius','goblinhorn','lovebow']);
-      heroes[2].skills={'火球术':3,'闪电链':3};heroes.forEach(h=>calc(h));
+      heroes[2].skills={'闪电链':3,'森之呼唤':3};heroes.forEach(h=>calc(h));
       window.__g0=gold;window.__mob0=null;
       document.getElementById('launchBtn').click();
       window.__pk={blood:0,sheep:0,titan:0,storm:0,echo:0};
@@ -208,8 +208,9 @@ const SEED=`
        const fake={x:h.x+1,y:h.row,row:h.row,r:.3,hp:1e9,maxHp:1e9,atk:0,armor:0,mres:0,
                    dead:false,reward:0,xp:0,color:'#fff',type:'normal'};
        mobs.push(fake);
-       const od=damage;window.__hit=0;
-       for(let i=0;i<30;i++){attack(h,h.x,h.row+.5,fake,1);hits++;}
+       const od=damage;window.__hit=0;let ec=0;
+       for(let i=0;i<30;i++){attack(h,h.x,h.row+.5,fake,1);ec=Math.max(ec,h.echoCd||0);hits++;}
+       window.__pk.echo=Math.max(window.__pk.echo,ec);   // 实战里目标可能一击就死，用打不死的假怪才确定
        O['手动连A30下 → 嗜血/羊刀/攻击(前→后)/攻速/金币']=
          [h.bloodS,h.sheepS,[a0,h.atk],h.ias,Math.round(gold-g0)];
        O['假怪剩余最大血(黑刀不在战士身上应=1e9)']=fake.maxHp;
@@ -350,10 +351,39 @@ const SEED=`
       // 经济曲线：交叉点（招人更划算 ⇔ L > W×√(b/a)）
       O['金矿 升级/工人']=[[1,2,3].map(mineCost),[1,2,3,4].map(mineWkCost)];
       O['伐木场 升级/工人']=[[1,2,3].map(millCost),[1,2,3,4].map(millWkCost)];
-      // 召唤物移速应等于英雄推进速度
-      O['召唤物移速==HERO_SPD']=Object.values(MINIONS).every(d=>d.spd===HERO_SPD);
+      // 召唤物：树人和英雄同速，远古树不动，小精灵更快
+      O['召唤物 移速/持续']=Object.keys(MINIONS).map(k=>k+':'+MINIONS[k].spd.toFixed(2));
+      /* ---- 新技能池 + 羁绊 ---- */
+      O['技能池 数量/品质']=[Object.keys(SKB).length,
+        ['qgreen','qblue','qpurple','qgold'].map(q=>q+Object.values(SKB).filter(d=>d.q===q).length).join('/')];
+      O['分系可roll数(每系≥4才不重复)']=['str','agi','int'].map(c=>c+Object.values(SKB).filter(d=>d.cat===c).length);
+      O['羁绊表']=Object.keys(BONDS).map(k=>BONDS[k].n+'('+BONDS[k].sk.length+')');
+      /* 伤害飘字配色：物理=橙 / 法术=天蓝 / 次级=浅色 / 暴击=红且 big */
+      {
+        const fake={x:5,y:2,hp:1e9,maxHp:1e9,armor:0,mres:0,dead:false,r:.3,knock:0};
+        nums.length=0;SRC=heroes[0];
+        physDamage(fake,100);magDamage(fake,100);
+        physDamage(fake,20,DC.pMin);magDamage(fake,20,DC.mMin);
+        physDamage(fake,300,DC.crit,1);
+        SRC=null;
+        O['飘字 物/法/次物/次法/暴击']=nums.map(n=>n.color+(n.big?'(大)':''));
+      }
+      {
+        const hb=heroes[0];
+        hb.skills={'多重射击':5,'嗜血狂战':5};calc(hb);
+        O['羁绊·狂猎 是否激活']=!!hb.bond.hunt;
+        const ha=heroes[1];
+        ha.skills={'幽邃之握':3,'幽邃光环':3,'幽邃灵魂':3,'幽邃恐惧':3};calc(ha);
+        O['幽邃4件套 激活/灵魂(3×3×2)']=[!!ha.bond.abyss,ha.souls];
+        ha.skills={'幽邃灵魂':3};calc(ha);
+        O['只带幽邃灵魂 灵魂(3×3)']=ha.souls;
+        const hc=heroes[2];
+        hc.skills={'主属光环':4,'减甲光环':4,'狂风光环':4,'奉献光环':4};calc(hc);
+        O['我为人人 激活/主属光环加成']=[!!hc.bond.all4one,hc.aura];
+        heroes.forEach(h=>{h.skills={};calc(h);});
+      }
       // 背包排布：左4格书 + 竖线 + 装备
-      inv.length=0;inv.push({t:'book',name:'火球术'},{t:'eq',id:'doransword'});renderInv();
+      inv.length=0;inv.push({t:'book',name:'闪电链'},{t:'eq',id:'doransword'});renderInv();
       const kids=[...document.getElementById('invItems').children].map(e=>e.className);
       O['背包排布']=kids.join(',');
       O['帧率徽标已删']=!document.getElementById('fps');
@@ -406,6 +436,16 @@ const SEED=`
     await p.evaluate(()=>{wave=12;trialCd.elite=0;startTrial('elite');});
     await p.waitForTimeout(3000);
     await shot('s2_trial',cl);                        // 精英试炼+宝箱
+    // 新召唤物（小树人/远古树/小精灵）+ 伤害飘字配色
+    await p.evaluate(()=>{
+      heroes[2].skills={'森之呼唤':3,'古树智慧':3};calc(heroes[2]);
+      heroes[2].mp=heroes[2].maxMp;heroes[2].cds={};
+      summon(heroes[2],'treant',3);summon(heroes[2],'ancient',3);
+      for(const b of bears)if(b.fixed)b.spawnCd=.1;
+    });
+    await p.waitForTimeout(1600);
+    await shot('s2b_summon',{x:0,y:60,width:W*.62,height:250});
+    console.log('场上召唤物:',await p.evaluate(()=>bears.map(b=>b.kind)));
     // 底栏 UI：技能商店 2×2 + 背包两行（只截底栏那一条，省得看全屏）
     await p.evaluate(()=>{gold=99999;wood=99999;setShop('skill');buyPack('agi');buyEquip('low');renderInv();});
     await p.waitForTimeout(400);

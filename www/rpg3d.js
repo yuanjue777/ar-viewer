@@ -538,38 +538,36 @@ function buildMob(type){
 /* 召唤物：单位空间半径≈1，按 MINIONS[kind].r 缩放 */
 function buildMinion(kind){
   const g=mk(),c=MINIONS[kind].color,dk=shade3(c,.6),lt=shade3(c,1.4);
-  if(kind==='bear'){
-    for(const [x,z] of [[.4,-.34],[.4,.34],[-.3,-.34],[-.3,.34]])
-      add(g,g_cyl(.19,.21,.45,6),dk,x,.22,z);
-    add(g,g_sph(.62,9),c,.05,.85,0,{s:[1.2,.9,.95]});
-    add(g,g_sph(.4,9),lt,-.68,1.02,0);
-    add(g,g_sph(.16,6),dk,-.6,1.35,-.26);
-    add(g,g_sph(.16,6),dk,-.6,1.35,.26);
-    add(g,g_sph(.12,6),0x2a1a10,-1.02,.96,0,{glow:1});
-  }else if(kind==='fire'){
-    add(g,g_cone(.5,1.5,8),c,0,.72,0,{glow:1,op:.85});
-    add(g,g_cone(.32,1,7),0xffc24d,0,1.05,0,{glow:1,op:.9});
-    add(g,g_sph(.3,8),0xfff0b0,0,.62,0,{glow:1});
-    add(g,g_cone(.16,.6,6),0xff8a3d,-.42,.85,.2,{glow:1,op:.7});
-    add(g,g_cone(.16,.6,6),0xff8a3d,.42,.85,-.2,{glow:1,op:.7});
-  }else if(kind==='water'){
-    add(g,g_sph(.6,10),c,0,.72,0,{op:.62,s:[1,1.15,1]});
-    add(g,g_sph(.38,9),lt,0,1.45,0,{op:.7});
-    add(g,g_sph(.13,7),0xffffff,-.3,1.5,-.14,{glow:1});
-    add(g,g_sph(.13,7),0xffffff,-.3,1.5,.14,{glow:1});
-    add(g,g_sph(.26,8),lt,-.5,.7,0,{op:.5});
-    add(g,g_sph(.26,8),lt,.5,.7,0,{op:.5});
-  }else{                                                        // 地狱火
-    add(g,g_cyl(.26,.3,.6,6),0x3a2a26,.2,.3,-.36);
-    add(g,g_cyl(.26,.3,.6,6),0x3a2a26,.2,.3,.36);
-    add(g,g_oct(.85),0x4a3330,0,1.2,0,{s:[.95,1.1,.9]});        // 岩石躯干
-    add(g,g_sph(.42,8),0x3a2a26,-.3,2,0);
-    add(g,g_sph(.16,7),c,-.6,2.02,-.18,{glow:1});               // 熔岩眼
-    add(g,g_sph(.16,7),c,-.6,2.02,.18,{glow:1});
-    add(g,g_box(.12,.5,.12),c,-.4,1.25,-.5,{glow:1,op:.85});    // 裂缝
-    add(g,g_box(.12,.44,.12),c,.3,1.35,.48,{glow:1,op:.85});
-    add(g,g_sph(.3,7),0x4a3330,-.15,1.75,-.75);
-    add(g,g_sph(.3,7),0x4a3330,-.15,1.75,.75);
+  if(kind==='treant'){                                          // 小树人：树桩身子 + 枝条手臂
+    add(g,g_cyl(.2,.26,.34,6),0x6b4a2c,0,.17,-.2);
+    add(g,g_cyl(.2,.26,.34,6),0x6b4a2c,0,.17,.2);
+    add(g,g_cyl(.42,.5,.95,7),0x7a5433,0,.82,0);                // 树干
+    add(g,g_sph(.5,9),c,0,1.45,0,{s:[1.15,.85,1.05]});          // 树冠
+    add(g,g_sph(.3,8),lt,-.25,1.72,.2);
+    add(g,g_sph(.26,8),lt,.2,1.66,-.26);
+    add(g,g_sph(.11,6),0x2f1c10,-.42,1.02,-.16,{glow:1});       // 眼
+    add(g,g_sph(.11,6),0x2f1c10,-.42,1.02,.16,{glow:1});
+    add(g,g_cyl(.09,.09,.72,5),0x6b4a2c,-.5,.95,-.42,{rz:.5});  // 枝条手臂
+    add(g,g_cyl(.09,.09,.72,5),0x6b4a2c,-.5,.95,.42,{rz:.5});
+  }else if(kind==='ancient'){                                   // 远古树：不动的大树，树洞会吐小精灵
+    add(g,g_cyl(.62,.85,.5,8),0x5a3f24,0,.25,0);                // 根盘
+    add(g,g_cyl(.42,.56,1.5,8),0x6b4a2c,0,1.1,0);               // 粗树干
+    add(g,g_sph(.95,10),c,0,2.15,0,{s:[1.15,.8,1.1]});          // 大树冠
+    add(g,g_sph(.55,9),lt,-.5,2.5,.35);
+    add(g,g_sph(.5,9),lt,.45,2.42,-.4);
+    add(g,g_sph(.34,9),shade3(c,1.7),0,2.05,-.75,{glow:1,op:.8});
+    add(g,g_sph(.14,7),0xffe9a8,-.42,1.35,-.2,{glow:1});        // 眼
+    add(g,g_sph(.14,7),0xffe9a8,-.42,1.35,.2,{glow:1});
+    add(g,g_sph(.26,8),0x2a1d10,-.5,.85,0,{glow:1,op:.9});      // 树洞
+    add(g,g_cyl(.11,.11,1.1,5),0x6b4a2c,-.62,1.6,-.6,{rz:.65}); // 大枝条
+    add(g,g_cyl(.11,.11,1.1,5),0x6b4a2c,-.62,1.6,.6,{rz:.65});
+  }else{                                                        // 小精灵：会自爆的光球
+    add(g,g_sph(.62,10),c,0,.85,0,{glow:1,op:.85});
+    add(g,g_sph(.34,9),0xffffff,0,.9,0,{glow:1,op:.9});
+    add(g,g_cone(.2,.5,6),lt,.45,.85,0,{rz:-1.57,glow:1,op:.7});// 拖尾
+    add(g,g_ring(.7,.92),lt,0,.85,0,{rx:-PI/2,glow:1,op:.6,noSh:1});
+    add(g,g_sph(.13,6),0xdfffe8,-.3,1.25,-.28,{glow:1,op:.8});
+    add(g,g_sph(.13,6),0xdfffe8,.28,1.3,.3,{glow:1,op:.8});
   }
   return g;
 }
@@ -1212,7 +1210,6 @@ function draw(){
   octx.textAlign='center';
 
   drawWorld();
-  drawGroundFx();
   drawHeroes();
   drawMinions();
   drawMobs();
@@ -1308,33 +1305,6 @@ function drawWorld(){
     }
   }
 }
-/* 地面区域效果：火焰风暴光盘 / 大地震颤裂缝 */
-function drawGroundFx(){
-  /* --- 地面区域效果：火焰风暴 / 大地震颤 --- */
-  for(const s of storms){
-    if(s.delay>0)continue;
-    const fl=.75+.25*sin(gt*13+s.cx);
-    const d=take('sto',()=>{const g=mk();
-      add(g,g_disc(),0xff7a2f,0,0,0,{rx:-PI/2,glow:1,op:.2,noSh:1});
-      add(g,g_ring(.9,1),0xffb04f,0,.005,0,{rx:-PI/2,glow:1,op:.55,noSh:1});return g;});
-    d.position.set(s.cx,.03,s.cy);d.scale.setScalar(s.R);
-    d.children[0].material.opacity=.2*fl;d.children[1].material.opacity=.55*fl;
-  }
-  for(const q of quakes){
-    const w=q.x1-q.x0,hh=q.y1-q.y0,fl=.7+.3*sin(gt*17+q.x0);
-    const d=take('qk',()=>{const g=mk();
-      add(g,new T.PlaneGeometry(1,1),0xa86b32,0,0,0,{rx:-PI/2,glow:1,op:.18,noSh:1});
-      for(let i=0;i<5;i++)add(g,g_box(1,.01,.03),0x5a3b22,0,.004,(i-2)*.19,{glow:1,op:.5,noSh:1});
-      return g;});
-    d.position.set(q.x0+w/2,.028,q.y0+hh/2);
-    d.children[0].scale.set(w,hh,1);
-    d.children[0].material.opacity=.18*fl;
-    for(let i=1;i<d.children.length;i++){
-      const cr=d.children[i];cr.scale.set(w*.92,1,hh/3);
-      cr.position.z=((i-.5)/5-.5)*hh;cr.material.opacity=.5*fl;
-    }
-  }
-}
 /* 英雄：模型动作 + 脚下环 + 血蓝经验条 */
 function drawHeroes(){
   /* --- 英雄 --- */
@@ -1393,15 +1363,25 @@ function drawHeroes(){
       r.scale.setScalar(.33+.02*sin(gt*3));
       r.children[0].material.opacity=.3+.2*sin(gt*3);
     }
-    /* 忍受：金色护盾罩 */
-    if(!dead&&h.endT>0){
-      const s=take('shd',()=>{const g2=mk();
-        add(g2,g_sph(1,12),0xffd24f,0,0,0,{glow:1,op:.16,noSh:1});
-        add(g2,g_ring(.93,1),0xffd24f,0,0,0,{rx:-PI/2,glow:1,op:.5,noSh:1});return g2;});
+    /* 嗜血狂战：赤红气场 */
+    if(!dead&&h.bhT>0){
+      const s=take('bh',()=>{const g2=mk();
+        add(g2,g_sph(1,12),0xff3b3b,0,0,0,{glow:1,op:.16,noSh:1});
+        add(g2,g_ring(.93,1),0xff5d5d,0,0,0,{rx:-PI/2,glow:1,op:.5,noSh:1});return g2;});
       s.position.set(h.x,.42,h.row+.5);
-      s.scale.setScalar(.46*sz);
-      const pp=.75+.25*sin(gt*9);
-      s.children[0].material.opacity=.14*pp;s.children[1].material.opacity=.5*pp;
+      s.scale.setScalar(.5*sz);
+      const pp=.75+.25*sin(gt*11);
+      s.children[0].material.opacity=.16*pp;s.children[1].material.opacity=.5*pp;
+    }
+    /* 幽邃恐惧：灵魂绕着英雄飘（最多画 12 个，再多就只是数字了） */
+    if(!dead&&h.fearT>0){
+      const ns=min(12,Math.round(h.souls||0));
+      for(let i=0;i<ns;i++){
+        const a=gt*1.5+i*6.283/max(1,ns);
+        const so=take('soul',()=>{const g2=mk();
+          add(g2,g_sph(.075,7),0xb070ff,0,0,0,{glow:1,op:.85,noSh:1});return g2;});
+        so.position.set(h.x+cos(a)*.55,.55+sin(gt*3+i)*.12,h.row+.5+sin(a)*.4);
+      }
     }
     /* 覆盖层：血条/蓝条/等级/经验 */
     if(!dead){
@@ -1443,9 +1423,11 @@ function drawMobs(){
     const ph=gt*6+m.x*2.2;
     /* 打击感：挨打瞬间往后弹一下并被压扁（knock 由逻辑层在 damage() 里置位） */
     const kn=m.knock||0, S=m.r*1.32;
-    g.position.set(m.x+kn,abs(sin(ph))*.05*m.r,z);
-    g.scale.set(S*(1+kn*1.2),S*(1-kn*1.4),S*(1+kn*1.2));
-    g.rotation.z=sin(ph)*.05+kn*1.1;
+    /* 挥击：和英雄共用 swing() 三段曲线，怪面朝 -X 所以往左扑 */
+    const at=m.anim>0?swing(1-m.anim/.42):0;
+    g.position.set(m.x+kn-at*.24,abs(sin(ph))*.05*m.r+at*.05,z);
+    g.scale.set(S*(1+kn*1.2-at*.05),S*(1-kn*1.4+at*.09),S*(1+kn*1.2-at*.05));
+    g.rotation.z=sin(ph)*.05+kn*1.1-at*.28;
     tint(g,m.flash>0,false,m.frost>0);
     /* 脚下光环：试炼色环 / 精英金环 */
     if(m.trial||m.elite){
@@ -1529,8 +1511,10 @@ function drawOverlay(){
     const u=ppu(n.x,.9,n.y),sp=proj(n.x,.95,n.y);
     octx.globalAlpha=min(1,n.t/n.max*1.6);
     octx.fillStyle=n.color;
-    octx.font='700 '+max(10,.3*u).toFixed(1)+'px -apple-system,sans-serif';
-    octx.lineWidth=3;octx.strokeStyle='rgba(0,0,0,.65)';
+    /* 暴击(big)：字号 ×1.55 + 更粗的描边，一眼看得出来 */
+    const fs=max(10,.3*u)*(n.big?1.55:1);
+    octx.font=(n.big?'800 ':'700 ')+fs.toFixed(1)+'px -apple-system,sans-serif';
+    octx.lineWidth=n.big?4.5:3;octx.strokeStyle='rgba(0,0,0,.65)';
     octx.strokeText(n.txt,sp[0],sp[1]);
     octx.fillText(n.txt,sp[0],sp[1]);
   }

@@ -59,34 +59,68 @@ function xpNeed(lv){return 40+45*(lv-1);}
 function armorRed(a){const v=a*.06;return v>0?v/(1+v):0;}
 
 /* ================= 技能书 ================= */
+/* ================= 技能池（2026-08 用户整池重做） =================
+   4 条羁绊 + 5 个通用技能。一个英雄集齐某条羁绊里的**全部**技能就激活羁绊效果
+   （技能位只有 4 格，所以 4 技能的羁绊会占满这个英雄）。羁绊表 = 下面的 BONDS。
+   字段：bond=所属羁绊 / fixed=CD 不吃冷却缩减 / bondCd=激活羁绊后的 CD 增量（负数=减） */
 const SKB={
-  '狂战士之血':{cat:'str',q:'qblue',  short:'狂血',cd:0, desc:'被动：血越低回血越快、受伤越少（血量50%时约每秒回2%×等级）'},
-  '荆棘光环':  {cat:'str',q:'qgreen', short:'荆棘',cd:0, desc:'被动：反弹15%×等级伤害，附加0.4×力量×等级（魔法伤害）'},
-  '攻击溅射':  {cat:'str',q:'qpurple',short:'溅射',cd:0, desc:'被动：普攻对目标1.5格内溅射(25+5×等级)%伤害，多重射击的额外攻击同样触发'},
-  '大地震颤':  {cat:'str',q:'qpurple',short:'震颤',cd:14,mana:25,desc:'主动(25蓝)：震裂身前3×4.5格矩形地面，每0.5秒造成一次伤害，持续(3+0.5×等级)秒，每秒(10+力量×0.4×等级)魔法伤害，区域内敌人移速与攻速-30%'},
-  '主属光环':  {cat:'str',q:'qpurple',short:'主属',cd:0, desc:'被动光环：3格内的友方英雄（含自己）各获得 20×等级 点自身主属性（多个光环不叠加，取最高）'},
-  '忍受':      {cat:'str',q:'qblue',  short:'忍受',cd:18,mana:20,desc:'主动(20蓝)：进入忍受状态，持续(3+等级)秒，期间受到的伤害减少(20+3×等级)%（与其它减伤相乘），附近有敌人时自动开启'},
-  '多重射击':  {cat:'agi',q:'qblue',  short:'多重',cd:0, desc:'被动：普攻额外射击 等级×0.5 个敌人（70%伤害）'},
-  '沁毒射击':  {cat:'agi',q:'qgreen', short:'沁毒',cd:0, desc:'被动：普攻附带毒伤=敏捷×(0.35+0.15×等级)（魔法伤害）'},
-  '剑雨':      {cat:'agi',q:'qgreen', short:'剑雨',cd:8, mana:25,desc:'主动(25蓝)：天降剑雨，对半径2格内所有敌人造成(20+敏捷×0.5×等级)魔法伤害'},
-  '狙击潜质':  {cat:'agi',q:'qpurple',short:'狙击',cd:0, desc:'被动：射程+0.3格×等级（同时加长主动技能释放距离）'},
-  '致命一击':  {cat:'agi',q:'qpurple',short:'致命',cd:0, desc:'被动：(15+5×等级)%几率暴击，造成(140+10×等级)%伤害，金色飘字'},
-  '召唤熊德':  {cat:'int',q:'qblue',  short:'熊德',cd:22,mana:50,desc:'主动(50蓝)：召近战熊灵冲锋接敌，属性随智力成长'},
-  '火元素':    {cat:'int',q:'qgreen', short:'火元素',cd:16,mana:30,desc:'主动(30蓝)：召唤1只火元素，远程(2.6格)喷火，每1.2秒造成(7+智×0.5×等级)魔法伤害，HP=70+智×3×等级，持续(10+1.5×等级)秒'},
-  '水元素':    {cat:'int',q:'qblue',  short:'水元素',cd:20,mana:40,desc:'主动(40蓝)：召唤2只水元素近战肉盾，各每1.1秒造成(6+智×0.42×等级)物理伤害，各HP=90+智×4×等级，持续(12+2×等级)秒'},
-  '地狱火':    {cat:'int',q:'qpurple',short:'地狱火',cd:30,mana:60,desc:'主动(60蓝)：召唤1只地狱火，每1.4秒造成(16+智×1.1×等级)单体物理伤害，HP=220+智×9×等级，持续(15+2×等级)秒'},
-  '火球术':    {cat:'int',q:'qgreen', short:'火球',cd:7, mana:25,desc:'主动(25蓝)：单体魔法伤害（智力×3×等级+40），弹道线'},
-  '冰风暴':    {cat:'int',q:'qpurple',short:'冰风',cd:10,mana:35,desc:'主动(35蓝)：暴风雪，固定区域每0.9秒对圈内全体造成(15+智×0.8×等级)魔法伤+减速，共(3+等级)波'},
-  'CD光环':    {cat:'int',q:'qblue',  short:'CD环',cd:0, desc:'被动：主动技能冷却-4%×等级（与装备CD缩减叠加，总上限50%）'},
-  '火焰风暴':  {cat:'int',q:'qblue',  short:'火风',cd:12,mana:40,desc:'主动(40蓝)：延迟1秒后在半径1.5格区域燃起烈焰，每0.5秒灼烧一次，持续(2+0.5×等级)秒，每秒(12+智×0.55×等级)魔法伤害'},
-  '闪电链':    {cat:'int',q:'qblue',  short:'闪电',cd:4, mana:16,desc:'主动(16蓝)：短CD低耗蓝，闪电跳(2+等级)个目标，各(12+智×0.45×等级)魔法伤害'},
-  '魂吸':      {cat:'int',q:'qpurple',short:'魂吸',cd:0, desc:'被动：每有敌方单位死亡+0.5智力，上限10+5×(等级-1)'},
+  /* ---- 羁绊·狂猎 ---- */
+  '多重射击':{cat:'agi',q:'qpurple',short:'多重',bond:'hunt',cd:0,
+    desc:'被动：普攻额外攻击 2 个目标（Lv4/7/10 时各再多 1 个），次要目标受到 (30+5×等级)% 伤害'},
+  '嗜血狂战':{cat:'agi',q:'qblue',short:'嗜血',bond:'hunt',cd:20,fixed:1,bondCd:-4,mana:30,
+    desc:'主动(30蓝·固定CD20s)：持续 (6+等级) 秒，期间自身受到伤害 +60%，攻击间隔 -(0.1+0.01×等级)，攻速 +(20+3×等级)'},
+  /* ---- 羁绊·我为人人 ---- */
+  '主属光环':{cat:'str',q:'qpurple',short:'主属',bond:'all4one',cd:0,
+    desc:'被动光环：3格内友方英雄（含自己）各获得 (30+15×等级) 点自身主属性（不叠加，取最高）'},
+  '减甲光环':{cat:'str',q:'qgreen',short:'减甲',bond:'all4one',cd:0,
+    desc:'被动光环：4格内敌人的护甲 -(10+等级)%'},
+  '狂风光环':{cat:'agi',q:'qgreen',short:'狂风',bond:'all4one',cd:0,
+    desc:'被动光环：3格内友方英雄 +(15+3×等级) 攻速'},
+  '奉献光环':{cat:'str',q:'qgold',short:'奉献',bond:'all4one',cd:0,
+    desc:'被动：每秒熔掉自己身上的装备，给全体队友每秒 (1+0.1×等级) 点主属性（永久累积）。绿装可熔5秒、蓝9秒、紫18秒、金30秒，熔完即消失'},
+  /* ---- 羁绊·幽邃深渊 ---- */
+  '幽邃之握':{cat:'int',q:'qblue',short:'幽握',bond:'abyss',cd:9,bondCd:-5,mana:35,
+    desc:'主动(35蓝)：单体 (500+智力×等级×灵魂数) 魔法伤害（灵魂数最低按 1 算）；被它杀死的敌人 +1 灵魂'},
+  '幽邃光环':{cat:'int',q:'qpurple',short:'幽环',bond:'abyss',cd:0,
+    desc:'被动光环：4格内敌人的魔抗 -(10+2×等级)%'},
+  '幽邃灵魂':{cat:'int',q:'qpurple',short:'幽魂',bond:'abyss',cd:0,
+    desc:'被动：灵魂在你的各个技能之间共通；并直接获得 3×等级 点灵魂'},
+  '幽邃恐惧':{cat:'int',q:'qgold',short:'幽惧',bond:'abyss',cd:60,mana:80,
+    desc:'主动(80蓝)：放出全部灵魂在身周飘荡，每个灵魂每 3 秒攻击一次附近敌人，每次 (智力×灵魂数×等级×0.25) 魔法伤害，被杀死的敌人 +1 灵魂；持续 (18+等级) 秒'},
+  /* ---- 羁绊·森林 ---- */
+  '森之呼唤':{cat:'int',q:'qgreen',short:'森唤',bond:'forest',cd:18,mana:40,
+    desc:'主动(40蓝)：召唤 4 只小树人，属性随智力与等级成长'},
+  '古树智慧':{cat:'int',q:'qpurple',short:'古树',bond:'forest',cd:40,mana:70,
+    desc:'主动(70蓝)：在本阵最左侧种下一棵不能移动的远古树，每 3 秒放出一只小精灵，小精灵冲向敌人自爆，伤害随智力与等级成长'},
+  /* ---- 通用 ---- */
+  '攻击溅射':{cat:'agi',q:'qblue',short:'溅射',cd:0,
+    desc:'被动：普攻对目标 1 格内的其它敌人溅射 (35+4×等级)% 伤害'},
+  '力量传承':{cat:'str',q:'qgold',short:'力承',cd:0,desc:'被动：每承受 10 次攻击，永久获得 0.5×等级 点力量'},
+  '敏捷传承':{cat:'agi',q:'qgold',short:'敏承',cd:0,desc:'被动：每普攻 5 次，永久获得 0.5×等级 点敏捷'},
+  '智力传承':{cat:'int',q:'qgold',short:'智承',cd:0,desc:'被动：每施放 3 次技能，永久获得 0.5×等级 点智力'},
+  '闪电链':{cat:'int',q:'qblue',short:'闪电',cd:3,mana:20,
+    desc:'主动(20蓝)：闪电每 0.35 秒跳向下一个目标，共 (4+等级) 跳，每跳造成 (智力×等级×0.2) 魔法伤害'},
 };
-const QC={qgreen:'#5ad48a',qblue:'#4fa8ff',qpurple:'#b070ff'};
+/* 羁绊：集齐 sk 里的全部技能就激活（判定 hasBond，结果缓存在 h.bond） */
+const BONDS={
+  hunt:   {n:'狂猎',      sk:['多重射击','嗜血狂战'],
+           d:'多重射击的次要目标额外 +30% 伤害；嗜血狂战再 -0.1 攻击间隔、CD -4 秒'},
+  all4one:{n:'我为人人',  sk:['主属光环','减甲光环','狂风光环','奉献光环'],
+           d:'主属光环额外 +100 主属性；减甲光环额外 -10% 护甲；狂风光环额外 -0.1 攻击间隔；奉献光环成长速率翻倍，并自动熔背包里的装备'},
+  abyss:  {n:'幽邃深渊',  sk:['幽邃之握','幽邃光环','幽邃灵魂','幽邃恐惧'],
+           d:'幽邃之握 CD -5 秒；幽邃光环覆盖全场并额外 -10% 魔抗；任意来源获得的灵魂翻倍；幽邃恐惧的灵魂攻击间隔减半'},
+  forest: {n:'森林的羁绊',sk:['森之呼唤','古树智慧'],
+           d:'小树人 +200 攻速；小精灵产出间隔 -1 秒、自爆范围 +0.5 格'},
+};
+function hasBond(h,key){const b=BONDS[key];return !!b&&b.sk.every(n=>h.skills&&h.skills[n]);}
+const AURA_R=3;          // 友方光环半径（敌方减益光环 = AURA_R+1）
+/* 奉献光环：一件装备能被熔多少秒（按品质） */
+const MELT_T={common:3,fine:5,rare:9,epic:18,legend:30};
+const QC={qgreen:'#5ad48a',qblue:'#4fa8ff',qpurple:'#b070ff',qgold:'#f0c46a'};
 const QN={qgreen:'绿',qblue:'蓝',qpurple:'紫'};
 /* 技能书按品质加权roll：绿3/蓝2/紫1 */
 function pickBook(pool){
-  const w=n=>({qgreen:3,qblue:2,qpurple:1})[SKB[n].q]||1;
+  const w=n=>({qgreen:3,qblue:2,qpurple:1,qgold:.35})[SKB[n].q]||1;
   let tot=0;for(const n of pool)tot+=w(n);
   let r=Math.random()*tot;
   for(const n of pool){r-=w(n);if(r<0)return n;}
@@ -291,10 +325,11 @@ const HERO_SPD=1.3;   // 和怪物统一（用户指定），召唤物也跟着�
    hp/atk = 基础 + 智力×系数×技能等级；rng=攻击距离 ivl=攻击间隔 splash=溅射半径
    ⚠️ spd 统一 = HERO_SPD：召唤物不能比英雄跑得快（原来 1.4~1.8，会一路冲到最前面送死） */
 const MINIONS={
-  bear:    {name:'熊灵',  n:1,r:.28,spd:HERO_SPD,rng:.8, ivl:1,  hpB:120,hpI:6,  atkB:8, atkI:.7, dur:l=>12+2*l,   mag:false,splash:0,  color:'#c9a068'},
-  fire:    {name:'火元素',n:1,r:.26,spd:HERO_SPD,rng:2.6,ivl:1.2,hpB:70, hpI:3,  atkB:7, atkI:.5, dur:l=>10+1.5*l, mag:true, splash:0,  color:'#ff7a2f'},
-  water:   {name:'水元素',n:2,r:.26,spd:HERO_SPD,rng:.85,ivl:1.1,hpB:90, hpI:4,  atkB:6, atkI:.42,dur:l=>12+2*l,   mag:false,splash:0,  color:'#4fc3ff'},
-  infernal:{name:'地狱火',n:1,r:.38,spd:HERO_SPD,rng:1,  ivl:1.4,hpB:220,hpI:9,  atkB:16,atkI:1.1,dur:l=>15+2*l,   mag:false,splash:0,  color:'#ff4d3d'},
+  treant: {name:'小树人',n:4,r:.24,spd:HERO_SPD,     rng:.8,ivl:1.1,hpB:80, hpI:4, atkB:6,atkI:.5,dur:l=>14+2*l,mag:false,splash:0,color:'#6fae52'},
+  /* 远古树：不移动、不普攻，只负责每隔几秒放一只小精灵 */
+  ancient:{name:'远古树',n:1,r:.42,spd:0,            rng:0, ivl:99,hpB:400,hpI:14,atkB:0,atkI:0, dur:l=>26+3*l,mag:false,splash:0,color:'#4f7a3a',fixed:1,spawn:'wisp'},
+  /* 小精灵：冲向最近的敌人自爆 */
+  wisp:   {name:'小精灵',n:1,r:.18,spd:HERO_SPD*1.4, rng:.5,ivl:99,hpB:40, hpI:1, atkB:0,atkI:0, dur:l=>12,    mag:true, splash:0,color:'#9ff0c0',boom:1},
 };
 
 /* ================= 四大试炼 =================
@@ -317,7 +352,7 @@ let gold,wood,lives,wave,queue,spawnT,incomeT,waveT,battleT,resting,cleared,hudA
 let mineLv,millLv,mineW,millW;                  // 等级 / 工人数
 /* 右上角三个自动开关（跨局保留，不在 reset 里清） */
 let autoLearnAll=false,autoTrial=false,autoNext=false,autoTrialT=0;
-let heroes,mobs,shots,fx,nums,bears,inv,hails,storms,quakes,chests,trialCd;
+let heroes,mobs,shots,fx,nums,bears,inv,chains,chests,trialCd;
 let sel=null,invSel=null,speed=1,running=false,started=false,over=false,openShop=null;
 /* 尸体：怪死后不是瞬间消失，留半秒往后仰倒并沉进地里（纯表现，渲染层读它） */
 let corpses=[];
@@ -346,8 +381,10 @@ window.addEventListener('resize',()=>setTimeout(resize,60));
 /* ================= 英雄 ================= */
 function makeHero(cls,row,col){
   const h={cls,row,col,x:col+.5,lv:1,xp:0,tier:0,branch:-1,specLv:1,autoLearn:autoLearnAll,
-    soulInt:0,equips:[],
-    skills:{},cds:{},cd:0,flash:0,anim:0,endT:0,endF:0,titanS:0,dmgOut:0,dmgTaken:0,
+    equips:[],
+    /* 新技能池的累积量：灵魂 / 奉献光环给的主属性 / 三系传承 / 各自的计数器 */
+    soulK:0,devA:0,legS:0,legA:0,legI:0,hitN:0,atkN:0,castN:0,bhT:0,fearT:0,fearCd:0,fearLv:0,
+    skills:{},cds:{},cd:0,flash:0,anim:0,titanS:0,dmgOut:0,dmgTaken:0,
     bloodS:0,sheepS:0,stormT:0,echoCd:0,curseT:0,alive:true};
   calc(h);h.hp=h.maxHp;
   return h;
@@ -374,20 +411,27 @@ function calc(h){
     if(d.proc)proc[d.proc]=1;
   }
   h.procs=proc;
-  // 装备加的力/敏一样吃派生；魂吸智力/死神收割敏捷是击杀累积
-  // 主属光环：3格内友方英雄（含自己）提供 20×等级 点各自主属性，不叠加取最高
-  let aura=0;
+  /* 羁绊：集齐一条羁绊的全部技能就激活，缓存起来（下面到处要用） */
+  h.bond={};
+  for(const k in BONDS)if(hasBond(h,k))h.bond[k]=1;
+  /* 灵魂：幽邃灵魂被动给 3×等级 + 击杀累积；羁绊激活后所有来源翻倍 */
+  h.souls=((h.skills['幽邃灵魂']||0)*3+(h.soulK||0))*(h.bond.abyss?2:1);
+  /* 友方光环（不叠加取最高）：主属光环=主属性，狂风光环=攻速（羁绊再减间隔） */
+  let aura=0,windIas=0,windBat=0;
   for(const o of heroes){
-    const lv=o.skills&&o.skills['主属光环'];
-    if(!lv||!o.alive)continue;
-    if(o!==h&&Math.hypot((o.x||0)-(h.x||0),o.row-h.row)>3)continue;
-    aura=Math.max(aura,20*lv);
+    if(!o.alive)continue;
+    if(o!==h&&Math.hypot((o.x||0)-(h.x||0),o.row-h.row)>AURA_R)continue;
+    const ml=o.skills&&o.skills['主属光环'];
+    if(ml)aura=Math.max(aura,30+15*ml+(hasBond(o,'all4one')?100:0));
+    const wl=o.skills&&o.skills['狂风光环'];
+    if(wl){windIas=Math.max(windIas,15+3*wl);if(hasBond(o,'all4one'))windBat=.1;}
   }
   h.aura=aura;
+  const devA=Math.round(h.devA||0);   // 奉献光环累积给的主属性
   const ts=h.titanS||0;   // 泰坦的坚决层数
-  h.str=Math.round((b.attr.str+b.grow.str*(h.lv-1))*am)+eqStr+(b.main==='str'?aura:0);
-  h.agi=Math.round((b.attr.agi+b.grow.agi*(h.lv-1))*am)+eqAgi+(b.main==='agi'?aura:0);
-  h.int=Math.round((b.attr.int+b.grow.int*(h.lv-1))*am)+eqInt+Math.round(h.soulInt||0)+(b.main==='int'?aura:0);
+  h.str=Math.round((b.attr.str+b.grow.str*(h.lv-1))*am)+eqStr+Math.round(h.legS||0)+(b.main==='str'?aura+devA:0);
+  h.agi=Math.round((b.attr.agi+b.grow.agi*(h.lv-1))*am)+eqAgi+Math.round(h.legA||0)+(b.main==='agi'?aura+devA:0);
+  h.int=Math.round((b.attr.int+b.grow.int*(h.lv-1))*am)+eqInt+Math.round(h.legI||0)+(b.main==='int'?aura+devA:0);
   h.atk=Math.round(b.wep*(a?a.atk:1)+h[b.main]+eqAtk+ts*10+(h.bloodS||0)*5);
   h.maxHp=Math.round((b.hpB+h.str*8)*(a?a.hp:1)+eqHp);
   // 护卫专精·护甲光环：3格内友方英雄 +5+lv 甲，护卫自己双倍（不叠加取最高）
@@ -401,7 +445,10 @@ function calc(h){
   h.mres=Math.min(.75,.25+eqMres+ts*.01);
   // 魔兽/DotA公式：每秒攻击=(1+攻速/100)/BAT；1敏=1攻速；上限400⇒最多5/BAT次每秒
   // 精灵游侠专精：迅捷额外降BAT
-  const bat=Math.max(.35,b.bat*(a?a.bat:1)-eqBat-(key==='elf'?.1+.01*sp:0));
+  /* 嗜血狂战：开启期间减攻击间隔 + 加攻速（羁绊再多减 0.1） */
+  const bhLv=h.skills['嗜血狂战']||0, bhOn=h.bhT>0&&bhLv>0;
+  const bhBat=bhOn?.1+.01*bhLv+(h.bond.hunt?.1:0):0;
+  const bat=Math.max(.35,b.bat*(a?a.bat:1)-eqBat-windBat-bhBat-(key==='elf'?.1+.01*sp:0));
   h.bat=Math.round(bat*100)/100;   // 基础攻击间隔(BAT)：只含职业/转职/装备/迅捷，不含攻速
   /* 弩手·重弩：间隔+0.2s，换来「攻击间隔×75% + 5%×等级」的攻击力和最终伤害加成 */
   h.dmgMul=1;
@@ -411,9 +458,9 @@ function calc(h){
     h.atk=Math.round(h.atk*(1+r));h.dmgMul=1+r;
   }
   // ⚠️ 用户 2026-07 定：**1敏 = 0.5 攻速点**（1:1 → 0.3 → 现定在 0.5）
-  h.ias=Math.min(400,h.agi*.5+eqAspd+(h.stormT>0?30:0)+(h.sheepS||0)*10);
+  h.ias=Math.min(400,h.agi*.5+eqAspd+windIas+(bhOn?20+3*bhLv:0)+(h.stormT>0?30:0)+(h.sheepS||0)*10);
   h.interval=h.bat/(1+h.ias/100);
-  h.cdr=Math.min(.5,eqCdr+.04*(h.skills['CD光环']||0)+(key==='archmage'?(10+2*sp)/100:0));
+  h.cdr=Math.min(.5,eqCdr+(key==='archmage'?(10+2*sp)/100:0));
   h.block=eqBlock;h.flat=eqFlat;   // block=固定格挡(只挡普攻)，flat=固定减免；当前怪只有普攻，两者效果相同
   h.blockP=Math.min(.8,eqBlockP/100);   // 穷鬼盾：普攻伤害百分比减免（上限80%）
   h.critAdd=eqCrit/100;      // 装备额外暴击率
@@ -426,7 +473,7 @@ function calc(h){
   h.silenced=!!proc.silence; // 禁制匕首：沉默携带者
   h.lifesteal=proc.blood?(h.bloodS||0)*.01:0;   // 战争领主的嗜血
   h.sizeMul=1+ts*.02;        // 体型随层数变大
-  h.range=b.range+(a?a.range:0)+.3*(h.skills['狙击潜质']||0)+eqRange+(key==='musket'?1+.1*sp:0);
+  h.range=b.range+(a?a.range:0)+eqRange+(key==='musket'?1+.1*sp:0);
   h.splash=b.splash+(a?a.splash:0);
   h.maxMp=10+h.int*3;
   h.hpRegen=h.str*.3;                  // 1力 = 0.3 生命回复/s（用户 2026-07 加，英雄原本完全不回血）
@@ -436,6 +483,13 @@ function calc(h){
   h.mp=Math.min(h.mp,h.maxMp);
   if(h.hp!==undefined)h.hp=Math.min(h.hp,h.maxHp);
 }
+/* 英雄面板上的羁绊标签（激活了才显示）＋灵魂数 */
+function bondTxt(h){
+  let t='';
+  for(const k in BONDS)if(h.bond&&h.bond[k])t+=` <b style="color:#f0c46a">羁绊·${BONDS[k].n}</b>`;
+  if(h.souls>0)t+=` <b style="color:#b070ff">灵魂 ${Math.round(h.souls)}</b>`;
+  return t;
+}
 function heroAt(c,r){return heroes.find(h=>h.col===c&&h.row===r);}
 function dispName(h){return h.tier?advOf(h).name:CLASSES[h.cls].name;}
 
@@ -444,7 +498,7 @@ function reset(){
   gold=350;wood=300;lives=10;wave=0;queue=[];spawnT=0;incomeT=0;
   waveT=0;battleT=0;resting=false;cleared=true;hudAcc=0;
   mineLv=1;millLv=1;mineW=1;millW=1;autoTrialT=0;
-  heroes=[];mobs=[];shots=[];fx=[];nums=[];bears=[];inv=[];forge=[];hails=[];storms=[];quakes=[];chests=[];corpses=[];
+  heroes=[];mobs=[];shots=[];fx=[];nums=[];bears=[];inv=[];forge=[];chains=[];chests=[];corpses=[];
   trialCd={};for(const k of TRIAL_KEYS)trialCd[k]=0;
   renderTrials();
   sel=null;invSel=null;over=false;openShop=null;SRC=null;
@@ -585,16 +639,19 @@ function startTrial(k){
 }
 
 /* ================= 伤害 ================= */
-function dnum(x,y,val,color){
+/* 伤害飘字配色（用户 2026-08 定）：法术=天蓝 / 物理=橙 / 次级(溅射等)=同类浅色 / 暴击=红且更大 */
+const DC={phys:'#ff9d4f',mag:'#5fd0ff',pMin:'#ffd2ab',mMin:'#b7e9ff',crit:'#ff3b3b',hurt:'#ff8080'};
+function dnum(x,y,val,color,big){
   if(nums.length>70)nums.shift();
-  nums.push({x,y:y-.25,txt:String(Math.max(1,Math.round(val))),color:color||'#fff',t:.8,max:.8});
+  nums.push({x,y:y-.25,txt:String(Math.max(1,Math.round(val))),color:color||'#fff',
+             t:big?1.05:.8,max:big?1.05:.8,big:big?1:0});
 }
-function damage(m,d,color){
+function damage(m,d,color,big){
   if(m.dead)return;
   if(SRC)SRC.dmgOut=(SRC.dmgOut||0)+Math.max(0,Math.min(d,m.hp));   // 伤害统计（不算溢出）
   m.hp-=d;
   m.knock=Math.min(.2,(m.knock||0)+.09);   // 打击感：被打时往后弹一下并压扁
-  dnum(m.x,m.y+.5,d,color);
+  dnum(m.x,m.y+.5,d,color,big);
   if(m.hp<=0){
     m.dead=true;
     if(corpses.length<24)corpses.push({type:m.type,x:m.x,y:m.y,r:m.r,rot:0,t:.6,max:.6});
@@ -633,15 +690,10 @@ function openChest(ch){
   showToast(`宝箱开启：<b style="color:${q.c}">${d.n}</b> [${q.n}]<br>${eqDesc(d)}`);
   renderInv();
 }
-/* 敌人死亡触发：魂吸(+智,上限随等级)、死神收割(+敏,上限随专精) */
+/* 敌人死亡触发：装备的击杀效果（风暴骑手狂涌 / 杀人剑进化） */
 function onKill(){
   let dirty=false;
   for(const h of heroes){
-    const sk=h.skills['魂吸'];
-    if(sk){
-      const cap=10+5*(sk-1);
-      if(h.soulInt<cap){h.soulInt=Math.min(cap,h.soulInt+.5);calc(h);dirty=true;}
-    }
     if(h.procs&&h.procs.storm){h.stormT=3;calc(h);}   // 风暴骑手的狂涌：击杀刷新3秒攻速
     /* 杀人剑：击杀数记在装备实例上（每把独立），够 evoN 就进化一档 */
     for(const e of h.equips){
@@ -662,10 +714,25 @@ function onKill(){
 function mobArmor(m){
   const a=Math.max(0,m.armor-(m.sunderT>0?(m.sunder||0):0));
   const pen=(SRC&&SRC.armorPen)||0;   // 百分比无视护甲（火枪兵天赋），来源英雄走全局 SRC
-  return a*(1-pen);
+  return a*(1-pen)*(1-debuffAura(m,'减甲光环',10,1,'all4one',0));
 }
-function physDamage(m,d,color){damage(m,d*(1-armorRed(mobArmor(m))),color);}
-function magDamage(m,d,color){damage(m,d*(SRC&&SRC.spellP?SRC.spellP:1)*(1-m.mres),color);}
+function physDamage(m,d,color,big){damage(m,d*(1-armorRed(mobArmor(m))),color||DC.phys,big);}
+function magDamage(m,d,color,big){
+  const mr=m.mres*(1-debuffAura(m,'幽邃光环',10,2,'abyss',1));   // 幽邃光环削魔抗
+  damage(m,d*(SRC&&SRC.spellP?SRC.spellP:1)*(1-mr),color||DC.mag,big);
+}
+/* 敌人身上的减益光环：AURA_R+1 格内取最高；all=1 的光环激活羁绊后覆盖全场 */
+function debuffAura(m,skill,base,per,bond,all){
+  let p=0;
+  for(const h of heroes){
+    const lv=h.skills&&h.skills[skill];
+    if(!lv||!h.alive)continue;
+    const B=hasBond(h,bond);
+    if(!(all&&B)&&Math.hypot(h.x-m.x,h.row-m.y)>AURA_R+1)continue;
+    p=Math.max(p,(base+per*lv)/100+(B?.1:0));
+  }
+  return Math.min(.9,p);
+}
 function gainXp(x){
   let leveled=false;
   for(const h of heroes){
@@ -727,7 +794,7 @@ function tickWorld(dt){
   if(hudAcc>=.25){
     hudAcc=0;updateHUD();
     // 主属光环按距离生效，英雄会推进，所以定期重算一次属性
-    if(heroes.some(h=>h.skills['主属光环']||(h.tier&&advOf(h).key==='guard')))
+    if(heroes.some(h=>h.skills['主属光环']||h.skills['狂风光环']||(h.tier&&advOf(h).key==='guard')))
       for(const h of heroes){const rt=h.hp/h.maxHp;calc(h);h.hp=h.maxHp*rt;}
   }
 }
@@ -736,6 +803,7 @@ function tickMobs(dt){
      进攻击范围停下开打。所以只要英雄不死，上下两行的怪也会被拉过来，理论上不漏。 */
   for(const m of mobs){
     if(m.knock>0)m.knock=Math.max(0,m.knock-dt*1.1);
+    if(m.anim>0)m.anim-=dt;   // 怪物挥击动作倒计时（渲染层读）
     if(m.slowT>0)m.slowT-=dt;
     if(m.frost>0)m.frost-=dt;        // 冰霜覆层显示时长
     if(m.asT>0)m.asT-=dt;            // 攻速减益（大地震颤）
@@ -758,7 +826,7 @@ function tickMobs(dt){
     if(tgt&&td<=reach){          // 进入攻击范围：站定输出，不再贴靠
       m.fight=true;
       m.cd-=dt*(m.asT>0?1-m.asF:1);
-      if(m.cd<=0){m.cd=1;hitUnit(tgt,m);}
+      if(m.cd<=0){m.cd=1;m.anim=.42;hitUnit(tgt,m);}
       continue;
     }
     // 仇恨内=追击目标；仇恨外=继续向左推进（各走各的，不排队等同伴）
@@ -786,14 +854,22 @@ function tickMobs(dt){
   }
 }
 function tickMinions(dt){
-  /* 熊灵 */
   for(const br of bears){
     br.t-=dt;
     if(br.t<=0||br.hp<=0){br.dead=true;continue;}
-    br.cd-=dt;
-    /* ⚠️ 原来是 `m.row!==br.row` 硬筛同一行，导致召唤物从斜下方的怪身边直接走过去。
-       改成纵向 1.6 格的 band + 距离判定，和英雄一个口径。 */
     SRC=br.own||null;
+    const md=MINIONS[br.kind]||MINIONS.treant, by=br.row+.5+(br.oy||0);
+    const B=(br.own&&br.own.bond)||{};
+    /* 远古树：钉在原地，只按间隔放小精灵 */
+    if(br.fixed){
+      br.spawnCd-=dt;
+      if(br.spawnCd<=0){
+        br.spawnCd=B.forest?2:3;
+        spawnWisp(br);
+      }
+      continue;
+    }
+    /* 选敌：纵向 1.6 格 band + 距离判定，和英雄一个口径 */
     let best=null,bestD=1e9;
     for(const m of mobs){
       if(m.dead||Math.abs(m.y-br.row)>1.6)continue;
@@ -801,107 +877,69 @@ function tickMinions(dt){
       if(d<=1.1){ if(!best||bestD>1.1||d<bestD){best=m;bestD=d;} }
       else if(!best||(bestD>1.1&&m.x<best.x)){best=m;bestD=d;}
     }
-    const md=MINIONS[br.kind]||MINIONS.bear, by=br.row+.5+(br.oy||0);
-    if(!best){br.x=Math.min(br.x+(br.spd||HERO_SPD)*dt,COLS-.5);continue;}   // 本行没敌人：继续往前压
-    {
-      const gap=best.x-br.x;
-      if(gap>(br.rng||.8)){br.x=Math.min(br.x+(br.spd||HERO_SPD)*dt,COLS-.5);}   // 一直向前推进，不再被召唤点限制
-      else if(br.cd<=0){
-        br.cd=br.ivl||1;
-        if(br.mag)magDamage(best,br.atk,md.color);else physDamage(best,br.atk,md.color);
-        if(br.splash)for(const o of mobs){
-          if(o!==best&&!o.dead&&Math.hypot(o.x-best.x,o.y-best.y)<=br.splash+o.r)physDamage(o,br.atk*.5,md.color);
-        }
-        if((br.rng||.8)>1.2)   // 远程：喷射弹道
-          fx.push({type:'bolt',x1:br.x+.2,y1:by,x2:best.x,y2:best.y+.5,t:.25,max:.25,color:md.color});
-        fx.push({type:'ring',x:best.x,y:best.y+.5,rr:br.splash||.3,t:.15,max:.15,color:md.color});
+    /* 小精灵：一路冲过去自爆 */
+    if(br.boom){
+      if(!best){br.x=Math.min(br.x+br.spd*dt,COLS-.5);continue;}
+      const dx=best.x-br.x, dy=(best.y)-br.row, L=Math.hypot(dx,dy)||1;
+      if(L>.45){br.x+=dx/L*br.spd*dt;br.oy=(br.oy||0)+dy/L*br.spd*dt*.6;continue;}
+      const R=.8+(B.forest?.5:0);
+      fx.push({type:'aoe',x:br.x,y:by,rr:R,t:.3,max:.3,color:'#9ff0c0'});
+      for(let i=0;i<7;i++)fx.push({type:'flame',x:br.x+(Math.random()-.5)*R,y:by+(Math.random()-.5)*R,
+        sz:.6+Math.random()*.6,t:.45,max:.45,color:Math.random()<.5?'#9ff0c0':'#dfffe8'});
+      for(const m of mobs){
+        if(m.dead)continue;
+        if(Math.hypot(m.x-br.x,(m.y+.5)-by)<=R+m.r)magDamage(m,br.boomDmg||30);
       }
+      br.dead=true;
+      continue;
+    }
+    if(!best){br.x=Math.min(br.x+(br.spd||HERO_SPD)*dt,COLS-.5);continue;}
+    br.cd-=dt;
+    const gap=best.x-br.x;
+    if(gap>(br.rng||.8)){br.x=Math.min(br.x+(br.spd||HERO_SPD)*dt,COLS-.5);}
+    else if(br.cd<=0){
+      br.cd=br.ivl||1;
+      if(br.mag)magDamage(best,br.atk);else physDamage(best,br.atk);
+      fx.push({type:'ring',x:best.x,y:best.y+.5,rr:.3,t:.15,max:.15,color:md.color});
     }
   }
   SRC=null;
   bears=bears.filter(b=>!b.dead);
 }
+/* 远古树放一只小精灵（自爆伤害在生成时按主人当时的智力算好） */
+function spawnWisp(tree){
+  const w=MINIONS.wisp, o=tree.own, lv=tree.lv||1;
+  const sm=((o&&o.tier&&advOf(o).key==='summoner')?1+(20+2*o.specLv)/100:1)*((o&&o.sumB)||1);
+  const hp=(w.hpB+(o?o.int:0)*w.hpI*lv)*sm;
+  bears.push({isBear:true,kind:'wisp',owner:o,own:o,row:tree.row,oy:(Math.random()-.5)*.5,
+    x:tree.x+.35,lv,hp,maxHp:hp,atk:0,rng:w.rng,ivl:w.ivl,spd:w.spd,r:w.r,mag:true,boom:1,
+    boomDmg:(30+(o?o.int:0)*.8*lv)*sm,t:w.dur(lv),cd:0,dead:false});
+}
 /* 区域技能（冰雹/火焰风暴/大地震颤）+ 试炼CD + 宝箱 */
 function tickAreas(dt){
-  /* 暴风雪冰雹：到点落下，小片AOE伤害+减速 */
-  for(const hl of hails){
-    SRC=hl.own||null;
-    hl.delay-=dt;
-    if(hl.delay>0){
-      // 落地前0.5秒在区域内撒下一片下落的冰棱
-      if(!hl.cued&&hl.delay<=.5){
-        hl.cued=true;
-        const n=5+Math.round(hl.R*2);
-        for(let i=0;i<n;i++){
-          const a=Math.random()*7, rad=Math.sqrt(Math.random())*hl.R;
-          fx.push({type:'fall',x:hl.cx+Math.cos(a)*rad,y:hl.cy+Math.sin(a)*rad,
-            t:hl.delay,max:.5+Math.random()*.3,color:'#bfeaff'});
-        }
-      }
-      continue;
-    }
-    hl.done=true;
-    fx.push({type:'ring',x:hl.cx,y:hl.cy,rr:hl.R,t:.3,max:.3,color:'#bfeaff'});
-    fx.push({type:'aoe',x:hl.cx,y:hl.cy,rr:hl.R,t:.18,max:.18,color:'#dff4ff'});
+  /* 闪电链：每 0.35 秒跳一次，跳完为止（唯一的持续型技能） */
+  for(const ch of chains){
+    ch.cd-=dt;
+    if(ch.cd>0)continue;
+    ch.cd=.35;
+    const t=ch.cur;
+    if(!t||t.dead||ch.left<=0){ch.done=true;continue;}
+    SRC=ch.own||null;
+    fx.push({type:'zap',x1:ch.px,y1:ch.py,x2:t.x,y2:t.y+.5,seed:Math.random()*99,
+             t:.3,max:.3,color:'#9fd0ff'});
+    magDamage(t,ch.dmg);
+    ch.hit.add(t);ch.px=t.x;ch.py=t.y+.5;ch.left--;
+    let nxt=null,bd=2.5;
     for(const m of mobs){
-      if(m.dead)continue;
-      if(Math.hypot(m.x-hl.cx,(m.y+.5)-hl.cy)<=hl.R+m.r){
-        magDamage(m,hl.dmg,'#7fd8ff');
-        m.slowT=2;m.slowF=hl.slow;m.frost=2;
-      }
+      if(m.dead||ch.hit.has(m))continue;
+      const d=Math.hypot(m.x-ch.px,(m.y+.5)-ch.py);
+      if(d<bd){bd=d;nxt=m;}
     }
+    ch.cur=nxt;
+    if(!nxt||ch.left<=0)ch.done=true;
   }
-  hails=hails.filter(h=>!h.done);
-  /* 火焰风暴：延迟1s后在固定区域持续灼烧（每0.5s结算一次） */
-  for(const s of storms){
-    SRC=s.own||null;
-    if(s.delay>0){
-      s.delay-=dt;
-      if(s.delay<=0)fx.push({type:'ring',x:s.cx,y:s.cy,rr:s.R,t:.35,max:.35,color:'#ff7a2f'});
-      continue;
-    }
-    s.t-=dt;s.tick-=dt;s.fxT-=dt;
-    if(s.fxT<=0){   // 火舌粒子
-      s.fxT=.035;
-      const a=Math.random()*6.283,d=Math.sqrt(Math.random())*s.R;
-      fx.push({type:'flame',x:s.cx+Math.cos(a)*d,y:s.cy+Math.sin(a)*d,
-        sz:.7+Math.random()*.7,t:.55,max:.55,color:Math.random()<.4?'#ffd24f':'#ff7a2f'});
-    }
-    if(s.tick<=0){
-      s.tick=.5;
-      for(const m of mobs){
-        if(m.dead)continue;
-        if(Math.hypot(m.x-s.cx,(m.y+.5)-s.cy)<=s.R+m.r)magDamage(m,s.dps*.5,'#ff7a2f');
-      }
-    }
-    if(s.t<=0)s.done=true;
-  }
-  storms=storms.filter(s=>!s.done);
-  /* 大地震颤：身前矩形地裂，持续DoT + 区域内移速/攻速减益（每0.5s结算伤害） */
-  for(const q of quakes){
-    SRC=q.own||null;
-    q.t-=dt;q.tick-=dt;q.fxT-=dt;
-    if(q.fxT<=0){   // 碎石飞溅
-      q.fxT=.05;
-      fx.push({type:'rock',x:q.x0+Math.random()*(q.x1-q.x0),y:q.y0+Math.random()*(q.y1-q.y0),
-        sz:.6+Math.random()*.8,vx:(Math.random()-.5)*.6,t:.5,max:.5,
-        color:Math.random()<.35?'#c98b4b':'#7d5a3a'});
-    }
-    const tick=q.tick<=0;
-    if(tick)q.tick=.5;
-    for(const m of mobs){
-      if(m.dead)continue;
-      if(m.x<q.x0-m.r||m.x>q.x1+m.r)continue;
-      const my=m.y+.5;
-      if(my<q.y0||my>q.y1)continue;
-      if(tick)magDamage(m,q.dps*.5,'#e0a05a');
-      // 站在裂地里就一直吃减益，离开后很快恢复
-      m.slowT=Math.max(m.slowT,.3);m.slowF=Math.max(m.slowF,q.slow);
-      m.asT=Math.max(m.asT,.3); m.asF=Math.max(m.asF,q.slow);
-    }
-    if(q.t<=0)q.done=true;
-  }
-  quakes=quakes.filter(q=>!q.done);
+  SRC=null;
+  chains=chains.filter(c=>!c.done);
   /* 试炼CD + 宝箱计时（宝箱不会消失，只做浮动动画） */
   for(const k of TRIAL_KEYS)if(trialCd[k]>0)trialCd[k]=Math.max(0,trialCd[k]-dt);
   for(const ch of chests)ch.t+=dt;
@@ -914,14 +952,15 @@ function tickHeroes(dt){
     if(!h.alive)continue;
     if(h.flash>0)h.flash-=dt;
     if(h.anim>0)h.anim-=dt;
-    if(h.endT>0)h.endT-=dt;   // 忍受 buff 计时
+    if(h.bhT>0){h.bhT-=dt;if(h.bhT<=0)calc(h);}   // 嗜血狂战 buff 计时
     const hx=h.x,hy=h.row+.5;
-    const bb=h.skills['狂战士之血'];
-    if(bb){
-      const miss=1-h.hp/h.maxHp;
-      if(miss>0)h.hp=Math.min(h.maxHp,h.hp+h.maxHp*.02*bb*miss*2*dt);
+    /* 幽邃恐惧：灵魂在身周飘荡，每隔一段时间集体攻击一次 */
+    if(h.fearT>0){
+      h.fearT-=dt;h.fearCd-=dt;
+      if(h.fearCd<=0){h.fearCd=h.bond.abyss?1.5:3;soulStrike(h);}
     }
-    // 回血（1力=0.3/s，和狂战士之血那种按失血比的回复叠加）/ 回蓝
+    if(h.skills['奉献光环'])devotionTick(h,dt);   // 熔装备换全队永久主属性
+    // 回血（1力=0.3/s）/ 回蓝
     if(h.hp<h.maxHp)h.hp=Math.min(h.maxHp,h.hp+h.hpRegen*dt);
     h.mp=Math.min(h.maxMp,h.mp+h.mpRegen*dt);
     /* 装备计时器：回响之刃CD / 风暴骑手攻速buff / 幽邃圣主的诅咒冷却加速 */
@@ -937,9 +976,13 @@ function tickHeroes(dt){
       if(h.cds[name]>0)continue;
       if((def.mana||0)>h.mp)continue;   // 蓝不够不放
       if(castSkill(h,name,h.skills[name],hx,hy)){
-        h.cds[name]=def.cd*(1-h.cdr);
+        /* 羁绊可以直接改 CD（bondCd）；fixed 的技能不吃冷却缩减 */
+        const cd0=Math.max(1,def.cd+((h.bond&&h.bond[def.bond])?(def.bondCd||0):0));
+        h.cds[name]=def.fixed?cd0:cd0*(1-h.cdr);
         h.mp-=def.mana||0;
         if(h.procs.curse)h.curseT=3;
+        const li=h.skills['智力传承'];   // 每 3 次施法永久 +0.5×等级 智力
+        if(li){h.castN=(h.castN||0)+1;if(h.castN>=3){h.castN=0;h.legI=(h.legI||0)+.5*li;calc(h);}}
       }
     }
     // 牧师专精·治愈祷言（主动，自动释放）
@@ -990,7 +1033,9 @@ function tickHeroes(dt){
       attack(h,hx,hy,best);
       const ms=h.skills['多重射击'];
       if(ms){
-        let extra=Math.floor(ms/2)+((ms%2)&&Math.random()<.5?1:0);
+        // 基础额外 2 个目标，Lv4/7/10 各再多 1 个；次要伤害 (30+5lv)%（羁绊再 +30%）
+        const extra=2+(ms>=4?1:0)+(ms>=7?1:0)+(ms>=10?1:0);
+        const sec=(30+5*ms)/100+(h.bond.hunt?.3:0);
         if(extra>0){
           // 次级目标的检索范围比主目标再放宽 MS_EXTRA 格（横向和纵向都放宽），
           // 否则常常只打得到 1 个、打不满 extra 个
@@ -1000,7 +1045,7 @@ function tickHeroes(dt){
             if(h.cls==='warrior'&&Math.abs(m.y-h.row)>1.15+MS_EXTRA)return false;
             return Math.hypot(m.x-hx,(m.y+.5)-hy)<=h.range+m.r+MS_EXTRA;
           }).sort((a,b)=>a.x-b.x).slice(0,extra);
-          for(const o of others)attack(h,hx,hy,o,.7,'#7fe8ff');
+          for(const o of others)attack(h,hx,hy,o,sec,1);
         }
       }
     }
@@ -1054,11 +1099,11 @@ function tickWaveEnd(){
     renderInfo();
   }
 }
-/* 攻击溅射：普攻(含多重射击的额外攻击)对目标周围1.5格溅射 */
+/* 攻击溅射：普攻(含多重射击的额外攻击)对目标周围1格溅射，飘字用浅橙（次级物理） */
 function cleaveAround(m,base,pct){
   for(const o of mobs){
     if(o===m||o.dead)continue;
-    if(Math.hypot(o.x-m.x,o.y-m.y)<=1.5+o.r)physDamage(o,base*pct,'#ffb27f');
+    if(Math.hypot(o.x-m.x,o.y-m.y)<=1+o.r)physDamage(o,base*pct,DC.pMin);
   }
   fx.push({type:'ring',x:m.x,y:m.y+.5,rr:1.5,t:.2,max:.2,color:'#ffb27f'});
 }
@@ -1078,7 +1123,7 @@ function effInterval(h){
   const bat=h.interval*(1+h.ias/100);   // 还原BAT
   return bat/(1+ias/100);
 }
-function attack(h,hx,hy,m,mul,color,noEcho){
+function attack(h,hx,hy,m,mul,minor,noEcho){
   mul=mul||1;
   h.animT=animT(h);h.anim=h.animT;
   const adv=advOf(h), akey=adv?adv.key:'', asp=h.specLv||1;
@@ -1086,28 +1131,27 @@ function attack(h,hx,hy,m,mul,color,noEcho){
   /* 平A叠层：战争领主的嗜血(+5攻+1%吸血,25层) / 羊刀(+10攻速,10层) */
   if(P.blood&&(h.bloodS||0)<25){h.bloodS=(h.bloodS||0)+1;calc(h);}
   if(P.sheep&&(h.sheepS||0)<10){h.sheepS=(h.sheepS||0)+1;calc(h);}
-  let dmg=effAtk(h)*mul*(h.dmgMul||1),c=color;   // dmgMul = 弩手·重弩的最终伤害加成
+  let dmg=effAtk(h)*mul*(h.dmgMul||1),c=minor?DC.pMin:null,big=0;   // dmgMul = 弩手·重弩的最终伤害加成
   if(akey==='bandit'){                            // 强盗·掠夺：每次普攻偷金币
     const st=30+5*asp;gold+=st;
     nums.push({x:h.x,y:h.row+.1,txt:'+'+st,color:'#f0c46a',t:.8,max:.8});
   }
   if(P.gold){gold+=5;nums.push({x:h.x,y:h.row+.1,txt:'+5',color:'#f0c46a',t:.6,max:.6});}
-  // 致命一击：(15+5lv)%几率 (140+10lv)%伤害；装备再加暴击率/爆伤
-  const cr=h.skills['致命一击'];
-  const critC=(cr?.15+.05*cr:0)+(h.critAdd||0);   // 技能暴击率 + 装备暴击率
-  if(critC>0&&Math.random()<critC){dmg*=(cr?1.4+.1*cr:1.5)+(h.critDmg||0);c='#ffd24f';R3.shake(.09);}
+  // 暴击（现在只来自装备）：飘字用醒目的红色大字
+  const critC=h.critAdd||0;
+  if(critC>0&&Math.random()<critC){dmg*=1.5+(h.critDmg||0);c=DC.crit;big=1;R3.shake(.09);}
+  const la=h.skills['敏捷传承'];   // 每 5 次普攻永久 +0.5×等级 敏捷
+  if(la){h.atkN=(h.atkN||0)+1;if(h.atkN>=5){h.atkN=0;h.legA=(h.legA||0)+.5*la;calc(h);}}
   if(h.sunder){m.sunderT=6;m.sunder=Math.max(m.sunder||0,h.sunder);}   // 锈蚀/幽冥破甲
   if(P.black){                                    // 黑刀：永久削最大生命与护甲
     m.maxHp=Math.max(1,m.maxHp*.9);m.hp=Math.min(m.hp,m.maxHp);
     m.armor=Math.max(0,m.armor-40);
   }
-  if(P.thunder)magDamage(m,h.str+h.agi+h.int,'#8ad8ff');   // 雷霆领主的法令
+  if(P.thunder)magDamage(m,h.str+h.agi+h.int);   // 雷霆领主的法令
   if(h.lifesteal)h.hp=Math.min(h.maxHp,h.hp+dmg*h.lifesteal);
-  const poison=h.skills['沁毒射击']?h.agi*(.35+.15*h.skills['沁毒射击']):0;
-  const cleave=h.skills['攻击溅射']?(.25+.05*h.skills['攻击溅射']):0;
+  const cleave=h.skills['攻击溅射']?(.35+.04*h.skills['攻击溅射']):0;
   if(h.cls==='warrior'){
-    physDamage(m,dmg,c);
-    if(poison)magDamage(m,poison,'#7ce87c');
+    physDamage(m,dmg,c,big);
     if(cleave)cleaveAround(m,dmg,cleave);
     fx.push({type:'slash',x:m.x-.1,y:m.y+.5,rr:.42,a:Math.atan2((m.y+.5)-hy,m.x-hx),
              t:.22,max:.22,color:c||CLASSES[h.cls].color});
@@ -1116,58 +1160,49 @@ function attack(h,hx,hy,m,mul,color,noEcho){
     }
   }else if(akey==='musket'){
     /* 火枪兵·精准射击：弹道瞬发（参考 DotA 火枪），没有飞行时间，直接结算 + 一条枪线 */
-    physDamage(m,dmg,c);
-    if(poison)magDamage(m,poison,'#7ce87c');
+    physDamage(m,dmg,c,big);
     if(cleave)cleaveAround(m,dmg,cleave);
     fx.push({type:'bolt',x1:hx,y1:hy,x2:m.x,y2:m.y+.5,t:.08,max:.08,color:'#ffd08a'});
   }else{
     shots.push({x:hx,y:hy,target:m,tx:m.x,ty:m.y+.5,a:Math.atan2((m.y+.5)-hy,m.x-hx),
       kind:h.cls==='mage'?'orb':(akey==='xbow'?'quarrel':'arrow'),
       heavy:akey==='xbow'?1:0,
-      dmg,cleave,splash:h.splash,poison,src:h,color:c||CLASSES[h.cls].color});
+      dmg,cleave,splash:h.splash,crit:big,minor:minor?1:0,src:h,color:CLASSES[h.cls].color});
   }
   /* 回响之刃：每2秒一次，这一下打两遍 */
-  if(P.echo&&!noEcho&&(h.echoCd||0)<=0&&!m.dead){h.echoCd=2;attack(h,hx,hy,m,mul,color,1);}
+  if(P.echo&&!noEcho&&(h.echoCd||0)<=0&&!m.dead){h.echoCd=2;attack(h,hx,hy,m,mul,minor,1);}
 }
 function shotHit(s,m){
   SRC=s.src||null;
-  physDamage(m,s.dmg,s.color==='#7fe8ff'?'#7fe8ff':(s.color==='#ffd24f'?'#ffd24f':undefined));
+  physDamage(m,s.dmg,s.crit?DC.crit:(s.minor?DC.pMin:null),s.crit);
   if(s.heavy){                       // 弩手·重弩：单发命中的冲击感
     R3.shake(.13);
     fx.push({type:'ring',x:m.x,y:m.y+.5,rr:.9,t:.24,max:.24,color:'#ffd08a'});
     fx.push({type:'slash',x:m.x-.05,y:m.y+.5,rr:.34,a:s.a||0,t:.18,max:.18,color:'#fff0c4'});
   }
-  if(s.target===m){
-    if(s.poison)magDamage(m,s.poison,'#7ce87c');
-    if(s.cleave)cleaveAround(m,s.dmg,s.cleave);
-  }
+  if(s.target===m&&s.cleave)cleaveAround(m,s.dmg,s.cleave);
   SRC=null;
 }
 function hitUnit(u,m){
   if(u.isBear){
     u.hp-=m.atk;
     if(u.own)u.own.dmgTaken=(u.own.dmgTaken||0)+m.atk;   // 召唤物承伤算在主人头上
-    dnum(u.x,u.row+.5+(u.oy||0),m.atk,'#ff8080');
+    dnum(u.x,u.row+.5+(u.oy||0),m.atk,DC.hurt);
     return;
   }
   const h=u;
   // 固定格挡 + 固定减免 先扣，再吃护甲减伤，最后乘百分比格挡(穷鬼盾)
   let dmg=Math.max(0,m.atk-h.block-(h.flat||0))*(1-armorRed(h.armor))*(1-(h.blockP||0));
-  const bb=h.skills['狂战士之血'];
-  if(bb){
-    const miss=1-h.hp/h.maxHp;
-    dmg*=1-Math.min(.7,miss*(.25+.08*bb));
-  }
-  if(h.endT>0)dmg*=1-h.endF;   // 忍受：额外减伤（与其它减伤相乘）
+  if(h.bhT>0)dmg*=1.6;   // 嗜血狂战：换来攻速的代价是自身受伤 +60%
   h.hp-=dmg;h.flash=.12;h.dmgTaken=(h.dmgTaken||0)+dmg;
-  dnum(h.x,h.row+.5,dmg,'#ff8080');
+  dnum(h.x,h.row+.5,dmg,DC.hurt);
+  const ls=h.skills['力量传承'];   // 每承受 10 次攻击永久 +0.5×等级 力量
+  if(ls){h.hitN=(h.hitN||0)+1;if(h.hitN>=10){h.hitN=0;h.legS=(h.legS||0)+.5*ls;calc(h);}}
   if(h.titan&&(h.titanS||0)<50){   // 泰坦的坚决：每次受伤叠一层，本波内永久
     h.titanS=(h.titanS||0)+1;
     const rt=h.hp/h.maxHp;calc(h);h.hp=h.maxHp*rt;
     if((h.titanS%10)===0)fx.push({type:'ring',x:h.x,y:h.row+.5,rr:.6,t:.35,max:.35,color:'#f0a63c'});
   }
-  const th=h.skills['荆棘光环'];
-  if(th)magDamage(m,m.atk*.15*th+h.str*.4*th,'#9dff9d');
   if(h.hp<=0){
     h.hp=0;h.alive=false;R3.shake(.16);
     fx.push({type:'ring',x:h.x,y:h.row+.5,rr:.7,t:.35,max:.35,color:'#fff'});
@@ -1175,21 +1210,23 @@ function hitUnit(u,m){
   }
 }
 /* ===== 召唤类技能：技能名 → 召唤物种类 ===== */
-const SUMMONS={'召唤熊德':'bear','火元素':'fire','水元素':'water','地狱火':'infernal'};
+const SUMMONS={'森之呼唤':'treant','古树智慧':'ancient'};
 function summon(h,kind,lv){
   const d=MINIONS[kind];
-  if(!mobs.length)return false;   // 同种召唤物可以叠着召（CD流人海战术）
+  if(!mobs.length)return false;   // 场上没怪不放；同种可以叠着召
   // 召唤师·召唤精通：召唤物属性 +(20+2×专精等级)%
   const sm=((h.tier&&advOf(h).key==='summoner')?1+(20+2*h.specLv)/100:1)*(h.sumB||1);
   const hp=(d.hpB+h.int*d.hpI*lv)*sm, atk=(d.atkB+h.int*d.atkI*lv)*sm;
-  // 同排已有其它召唤物时错开站位，避免模型重叠
+  const forest=hasBond(h,'forest');
   const cnt=bears.filter(b=>!b.dead&&b.row===h.row).length;
   const base=(cnt%4)*.19;
   for(let i=0;i<d.n;i++){
-    const oy=(d.n>1?(i-(d.n-1)/2)*.34:0)+[0,.16,-.16][(cnt+i)%3];   // 纵向错开显示
-    const x=h.x+.5+base+i*.35;
-    bears.push({isBear:true,kind,owner:h,row:h.row,oy,x,
-      own:h,hp,maxHp:hp,atk,rng:d.rng,ivl:d.ivl,spd:d.spd,splash:d.splash,mag:d.mag,r:d.r,
+    const oy=(d.n>1?(i-(d.n-1)/2)*.34:0)+[0,.16,-.16][(cnt+i)%3];
+    const x=d.fixed?.6:h.x+.5+base+i*.35;
+    bears.push({isBear:true,kind,owner:h,row:h.row,oy,x,lv,
+      own:h,hp,maxHp:hp,atk,rng:d.rng,ivl:(d.ivl)/(kind==='treant'&&forest?3:1),
+      spd:d.spd,splash:d.splash,mag:d.mag,r:d.r,
+      fixed:d.fixed?1:0,boom:d.boom?1:0,spawnCd:d.spawn?(forest?2:3):0,
       t:d.dur(lv),cd:0,dead:false});
     fx.push({type:'ring',x,y:h.row+.5+oy,rr:.8,t:.4,max:.4,color:d.color});
   }
@@ -1207,104 +1244,80 @@ function frontInRange(h,hx,hy){
 }
 function castSkill(h,name,lv,hx,hy){
   if(SUMMONS[name])return summon(h,SUMMONS[name],lv);
-  if(name==='火球术'){
-    const t=frontInRange(h,hx,hy);
-    if(!t)return false;
-    fx.push({type:'bolt',x1:hx,y1:hy,x2:t.x,y2:t.y+.5,t:.4,max:.4,color:'#ffb04f'});
-    fx.push({type:'ring',x:t.x,y:t.y+.5,rr:.6,t:.3,max:.3,color:'#ffb04f'});
-    magDamage(t,40+h.int*3*lv,'#ffb04f');
-    return true;
-  }
-  if(name==='冰风暴'){
-    const t=frontInRange(h,hx,hy);
-    if(!t)return false;
-    // 暴风雪：固定区域，每0.9秒对区域内所有敌人结算一次，共 3+等级 波
-    const R=1.1+.1*lv, waves=3+lv, gap=.9, cx=t.x, cy=t.y+.5;
-    const dur=.3+waves*gap;
-    fx.push({type:'aoe',x:cx,y:cy,rr:R,t:dur,max:dur,color:'#7fd8ff'});
-    for(let i=0;i<waves;i++){
-      hails.push({cx,cy,R,delay:.3+i*gap,own:h,
-        dmg:15+h.int*.8*lv,slow:Math.min(.75,.4+.05*lv)});
-    }
-    return true;
-  }
-  if(name==='火焰风暴'){
-    const t=frontInRange(h,hx,hy);
-    if(!t)return false;
-    // 延迟1秒落地，之后每0.5秒灼烧一次，持续 2+0.5×等级 秒
-    const R=1.5,dur=2+.5*lv,dps=12+h.int*.55*lv;
-    storms.push({cx:t.x,cy:t.y+.5,R,delay:1,t:dur,tick:0,fxT:0,dps,own:h});
-    fx.push({type:'aoe',x:t.x,y:t.y+.5,rr:R,t:1,max:1,color:'#ff7a2f'});   // 1秒预警圈
-    return true;
-  }
-  if(name==='大地震颤'){
-    // 身前 3(高)×4.5(长) 矩形，纵向以英雄为中心并推回场内
-    const LEN=4.5,H=3;
-    const x0=hx,x1=hx+LEN;
-    let y0=hy-H/2;
-    y0=Math.max(0,Math.min(ROWS-H,y0));
-    const y1=y0+H;
-    let any=false;
-    for(const m of mobs){
-      if(m.dead)continue;
-      if(m.x>=x0-m.r&&m.x<=x1+m.r&&m.y+.5>=y0&&m.y+.5<=y1){any=true;break;}
-    }
-    if(!any)return false;
-    const dur=3+.5*lv, dps=10+h.str*.4*lv;
-    quakes.push({x0,x1,y0,y1,t:dur,tick:0,fxT:0,dps,slow:.3,own:h});
-    for(let i=0;i<14;i++)fx.push({type:'rock',x:x0+Math.random()*LEN,y:y0+Math.random()*H,
-      sz:.9+Math.random()*.9,vx:(Math.random()-.5)*.8,t:.55,max:.55,color:'#c98b4b'});
-    return true;
-  }
-  if(name==='忍受'){
-    // 附近有敌人才开（射程+1.5格内），避免空放
+  if(name==='嗜血狂战'){
     let near=false;
     for(const m of mobs){
       if(m.dead)continue;
-      if(Math.hypot(m.x-hx,(m.y+.5)-hy)<=h.range+1.5){near=true;break;}
+      if(Math.hypot(m.x-hx,(m.y+.5)-hy)<=h.range+2){near=true;break;}
     }
     if(!near)return false;
-    h.endT=3+lv;h.endF=(20+3*lv)/100;
-    fx.push({type:'ring',x:hx,y:hy,rr:.75,t:.4,max:.4,color:'#ffd24f'});
+    h.bhT=6+lv;calc(h);
+    fx.push({type:'ring',x:hx,y:hy,rr:.85,t:.45,max:.45,color:'#ff4d4d'});
     return true;
   }
-  if(name==='剑雨'){
+  if(name==='幽邃之握'){
     const t=frontInRange(h,hx,hy);
     if(!t)return false;
-    const R=2, dmg=20+h.agi*.5*lv, cx=t.x, cy=t.y+.5;
-    fx.push({type:'aoe',x:cx,y:cy,rr:R,t:.45,max:.45,color:'#cfe6ff'});
-    for(let i=0;i<12;i++){
-      const a=Math.random()*6.283,d=Math.sqrt(Math.random())*R;
-      fx.push({type:'sword',x:cx+Math.cos(a)*d,y:cy+Math.sin(a)*d,
-        t:.45+Math.random()*.2,max:.65,color:'#dceaff'});
-    }
-    for(const m of mobs){
-      if(m.dead)continue;
-      if(Math.hypot(m.x-cx,(m.y+.5)-cy)<=R+m.r)magDamage(m,dmg,'#cfe6ff');
-    }
+    fx.push({type:'bolt',x1:hx,y1:hy,x2:t.x,y2:t.y+.5,t:.3,max:.3,color:'#b070ff'});
+    fx.push({type:'ring',x:t.x,y:t.y+.5,rr:.7,t:.3,max:.3,color:'#b070ff'});
+    magDamage(t,500+h.int*lv*Math.max(1,h.souls||0));
+    if(t.dead){h.soulK=(h.soulK||0)+1;calc(h);}
+    return true;
+  }
+  if(name==='幽邃恐惧'){
+    if(!mobs.length)return false;
+    h.fearT=18+lv;h.fearCd=0;h.fearLv=lv;
+    fx.push({type:'aoe',x:hx,y:hy,rr:2.6,t:.5,max:.5,color:'#b070ff'});
     return true;
   }
   if(name==='闪电链'){
-    let cur=frontInRange(h,hx,hy);
-    if(!cur)return false;
-    const n=2+lv,dmg=12+h.int*.45*lv,hit=new Set();
-    let px=hx,py=hy;
-    for(let i=0;i<n&&cur;i++){
-      fx.push({type:'zap',x1:px,y1:py,x2:cur.x,y2:cur.y+.5,seed:Math.random()*99,
-               t:.3,max:.3,color:'#9fd0ff'});
-      magDamage(cur,dmg,'#9fd0ff');
-      hit.add(cur);px=cur.x;py=cur.y+.5;
-      let nxt=null,bd=2.5;   // 2.5格内弹跳
-      for(const m of mobs){
-        if(m.dead||hit.has(m))continue;
-        const d=Math.hypot(m.x-px,(m.y+.5)-py);
-        if(d<bd){bd=d;nxt=m;}
-      }
-      cur=nxt;
-    }
+    const t=frontInRange(h,hx,hy);
+    if(!t)return false;
+    chains.push({own:h,cur:t,px:hx,py:hy,left:4+lv,cd:0,dmg:h.int*lv*.2,hit:new Set()});
     return true;
   }
   return false;
+}
+/* 幽邃恐惧：每个灵魂各打一次（集火最近的敌人，打死就换下一个） */
+function soulStrike(h){
+  const souls=Math.max(0,Math.round(h.souls||0));
+  if(!souls)return;
+  const lv=h.fearLv||1, dmg=h.int*souls*lv*.25;
+  const n=Math.min(40,souls);   // 结算次数封顶，避免灵魂数极高时卡帧
+  SRC=h;
+  for(let i=0;i<n;i++){
+    let t=null,td=1e9;
+    for(const m of mobs){
+      if(m.dead)continue;
+      const d=Math.hypot(m.x-h.x,(m.y+.5)-(h.row+.5));
+      if(d<=3.4&&d<td){td=d;t=m;}
+    }
+    if(!t)break;
+    if(i<8)fx.push({type:'bolt',x1:h.x,y1:h.row+.5,x2:t.x,y2:t.y+.5,t:.22,max:.22,color:'#b070ff'});
+    magDamage(t,dmg);
+    if(t.dead)h.soulK=(h.soulK||0)+1;
+  }
+  SRC=null;calc(h);
+}
+/* 奉献光环：每秒熔掉自己身上（羁绊时连背包）的一件装备，换全体队友的永久主属性 */
+function devotionTick(h,dt){
+  const lv=h.skills['奉献光环'];
+  if(!lv)return;
+  const bond=hasBond(h,'all4one');
+  let it=h.equips[0];
+  if(!it&&bond)it=inv.find(o=>o.t!=='book');
+  if(!it)return;                                  // 没装备可熔就没有效果
+  const q=eqDef(it).q, cap=MELT_T[q]||5;
+  it.melt=(it.melt||0)+dt;
+  const rate=(1+.1*lv)*(bond?2:1);
+  for(const o of heroes){o.devA=(o.devA||0)+rate*dt;}
+  if(it.melt>=cap){                               // 熔完了，装备消失
+    const i=h.equips.indexOf(it);
+    if(i>=0)h.equips.splice(i,1);
+    else{const j=inv.indexOf(it);if(j>=0)inv.splice(j,1);renderInv();}
+    fx.push({type:'ring',x:h.x,y:h.row+.5,rr:.7,t:.4,max:.4,color:'#f0c46a'});
+  }
+  for(const o of heroes)calc(o);
 }
 function endGame(win){
   over=true;running=false;closeShop();
@@ -1639,7 +1652,7 @@ function renderInfo(){
               :`<div class="slot" data-eqslot="${i}">空</div>`);
     }
     html=`<div class="hcard">
-      <div><b style="color:${b.color}">${dispName(h)}</b> <span class="dim">Lv${h.lv} · ${xpTxt}</span></div>
+      <div><b style="color:${b.color}">${dispName(h)}</b> <span class="dim">Lv${h.lv} · ${xpTxt}</span>${bondTxt(h)}</div>
       <div class="hgrid">
         <span>HP <b id="hpVal">${Math.ceil(h.hp)}/${h.maxHp}</b> +${h.hpRegen.toFixed(1)}/s</span>
         <span>MP <b id="mpVal">${Math.floor(h.mp)}/${h.maxMp}</b> +${h.mpRegen.toFixed(1)}/s</span>

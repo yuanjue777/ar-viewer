@@ -40,14 +40,14 @@
 | 实体 | 字段 |
 |---|---|
 | 英雄 `heroes[]` | `cls`(mage/archer/warrior) `row` `col` `x`(浮点，老家=col+.5) `lv` `xp` `tier` `branch` `specLv` `alive` `hp/maxHp` `mp/maxMp` `flash` `anim` `endT` `titanS` `sizeMul` `skills{名:lv}` `equips[]` `str/agi/int`(calc 后) |
-| 怪 `mobs[]` | `type`(normal/fast/tank/boss) `x` `y`(行坐标,浮点) `row`(派生) `r` `hp/maxHp` `atk` `atkR` `color` `elite` `trial` `frost` `slowT/slowF` `asT/asF` `sunderT` `dead` `flash` `knock`(挨打后弹，纯表现) `chest` |
-| 召唤物 `bears[]` | `kind`(bear/fire/water/infernal) `x` `row` `oy` `hp/maxHp` `dead` |
+| 怪 `mobs[]` | `type`(normal/lancer/brute/tank/boss) `x` `y`(行坐标,浮点) `row`(派生) `r` `hp/maxHp` `atk` `atkR` `color` `elite` `trial` `frost` `slowT/slowF` `asT/asF` `sunderT` `dead` `flash` `knock`(挨打后弹) `anim`(挥击动作倒计时) `chest` |
+| 召唤物 `bears[]` | `kind`(treant/ancient/wisp) `x` `row` `oy` `lv` `hp/maxHp` `dead` `fixed`(远古树不动) `boom`+`boomDmg`(小精灵自爆) `spawnCd` |
 | 弹道 `shots[]` | `x` `y` `a`(角度) `kind`('orb'或箭) `color` `target` |
 | 特效 `fx[]` | `type` `t/max`(倒计时) `color`，按 type 另有 `x,y` / `x1,y1,x2,y2` / `rr` `sz` `a` `seed` `vx` `ax,ay` |
-| 飘字 `nums[]` | `x` `y` `txt` `color` `t/max` |
+| 飘字 `nums[]` | `x` `y` `txt` `color` `t/max` `big`(暴击=更大更粗) |
 | 宝箱 `chests[]` | `x` `y` `dead` |
 | 尸体 `corpses[]` | `type` `x` `y` `r` `t/max`(0.6s) —— 怪死时在 `damage()` 里生成，纯表现 |
-| 区域技能 | `storms[]`(cx,cy,R,delay) `quakes[]`(x0,y0,x1,y1) `hails[]` |
+| 闪电链 `chains[]` | `own` `cur`(当前目标) `px,py` `left`(剩余跳数) `cd` `dmg` `hit`(Set) |
 
 ### 改什么 → 去哪里 · `www/rpg.js`（逻辑，约2180行）
 | 想改的东西 | 去哪里（grep 锚点） |
@@ -59,6 +59,10 @@
 | 英雄定价（现 0/100/200） | `const HERO_COSTS=` |
 | **招募/转职卡片弹层** | `openHireCards` / `openAdvCards` / `refreshHire` |
 | **加/改技能（技能表）** | `const SKB=` |
+| **羁绊表 / 羁绊判定** | `const BONDS=` / `function hasBond` |
+| **伤害飘字配色**（法/物/次级/暴击） | `const DC=` / `function dnum` |
+| 敌人身上的减益光环（减甲/幽邃） | `function debuffAura` |
+| 幽邃恐惧的灵魂齐射 / 奉献光环熔装备 | `function soulStrike` / `function devotionTick` |
 | 品质颜色/属性系颜色 | `const QC=` / `const CATS=` |
 | 技能书roll价、按品质的学习费 | `const PACK_COST=` / `const BOOK_COST=` |
 | 装备出售价 / **穿戴费** | `const SELL_EQ=` / `const EQUIP_COST=` |
@@ -92,7 +96,7 @@
 | ├ 资源产出/波次计时/自动试炼/HUD | `function tickWorld` |
 | ├ 怪物AI/寻敌/推进/互相排开 | `function tickMobs` |
 | ├ 召唤物行为 | `function tickMinions` |
-| ├ 冰风暴/火焰风暴/大地震颤 + 试炼CD + 宝箱 | `function tickAreas` |
+| ├ 闪电链跳跃 + 试炼CD + 宝箱 | `function tickAreas` |
 | └ **英雄：回蓝/放技能/推进/选敌/攻击** | `function tickHeroes` |
 | 弹道飞行与命中 | `function tickShots` |
 | 尸体/怪/弹道/特效/飘字 的回收 | `function tickCleanup` |
@@ -100,7 +104,7 @@
 | 溅射/血怒/攻速公式 | `cleaveAround` / `berserkRatio` / `effInterval` |
 | 普攻结算（暴击/毒/溅射/弹道） | `function attack` |
 | 英雄挨打/反伤/格挡/泰坦叠层 | `function hitUnit` |
-| 技能名→召唤物映射 / 创建召唤物 | `const SUMMONS=` / `function summon` |
+| 技能名→召唤物映射 / 创建召唤物 | `const SUMMONS=` / `function summon` / `spawnWisp` |
 | **所有主动技能的实现** | `function castSkill` |
 | 顶栏数值 + 面板HP/MP/间隔实时刷新 | `function updateHUD` |
 | **信息区/英雄面板（属性网格、技能栏、装备栏）** | `function renderInfo` |
@@ -130,7 +134,7 @@
 | **英雄模型** 分职业外观 + 九条支线武器 | `function heroMage` / `heroArcher` / `heroWarrior`（支线靠 `bk` 分流） |
 | **攻击动作**（每条支线一套，靠 `g.userData.akind` 分流） | `function drawHeroes` 里的 `if(ak==='...')` 链 |
 | **怪物模型（普通/快速/坦克/Boss）** | `function buildMob` |
-| **召唤物模型（熊/火/水/地狱火）** | `function buildMinion` |
+| **召唤物模型（小树人/远古树/小精灵）** | `function buildMinion` |
 | 宝箱模型 | `function buildChest` |
 | 弹道模型（箭矢/奥术弹） | `function buildShot` |
 | **程序化贴图（草地/石板/土地/符文/柔光）** | `function texGrass` / `texStone` / `texDirt` / `texRune` |
@@ -146,7 +150,6 @@
 | **点击拾取（屏幕→格子坐标）** | `function pick` |
 | **每帧渲染调度**（+ 屏幕震动/降级/cardTick） | `function draw`（只剩 7 个子调用） |
 | ├ 法阵/传送门/商店建筑/工人/建筑名牌 | `function drawWorld` |
-| ├ 火焰风暴光盘 / 大地震颤裂缝 | `function drawGroundFx` |
 | ├ **英雄模型动作 + 血蓝经验条** | `function drawHeroes` |
 | ├ 召唤物 | `function drawMinions` |
 | ├ 怪物 + 尸体 | `function drawMobs` |
@@ -159,9 +162,9 @@
 - **本地验证（已固化成脚本，别再手写 playwright）**：`www/_test/run.js` + `www/_test/go.sh`，一条命令干完语法检查→build→跑：
   | 命令 | 干什么 |
   |---|---|
-  | `sh www/_test/go.sh shot` | 布阵/战斗/精英试炼各截一张 + **底栏 UI 单独截一条**（`s3_bottom.png` 商店2×2+背包、`s6b_incshop.png` 金矿商店两个按钮、`s7_boss.png` 顶栏BOSS血条）→ `/tmp/rpgtest/s0_setup.png` `s1_fight.png` `s2_trial.png` `s3_bottom.png`，末尾打印 FPS 和报错 |
+  | `sh www/_test/go.sh shot` | 布阵/战斗/精英试炼各截一张 + **底栏 UI 单独截一条**（`s3_bottom.png` 商店2×2+背包、`s6b_incshop.png` 金矿商店两个按钮、`s7_boss.png` 顶栏BOSS血条、`s2b_summon.png` 三种召唤物）→ `/tmp/rpgtest/s0_setup.png` `s1_fight.png` `s2_trial.png` `s3_bottom.png`，末尾打印 FPS 和报错 |
   | `sh www/_test/go.sh cards` | 招募卡→转职卡→**补满3英雄**→技能书授予→装备授予→**熔炉存取→点侧栏格子替换**全流程点一遍，打印断言（英雄数/金币/tier/侧栏数/技能数/装备数/商店是否还开着/卡片层总宽）+ 五张截图 |
-  | `sh www/_test/go.sh probe` | **数值体检（最省，改完数值先跑这个）**：只打印数字不截图——基础BAT / 九条转职支线的 atk·bat·甲·cdr·伤害倍率 / 装备池规模与定价 / roll四档金木价与实roll分布 / 唯一特效去重 / 全属性 / 合成链 / 杀人剑进化链 / 穿装备扣金 / 金矿伐木场价格曲线 / 召唤物移速 / 背包排布 |
+  | `sh www/_test/go.sh probe` | **数值体检（最省，改完数值先跑这个）**：只打印数字不截图——技能池规模/分系可roll数/**羁绊激活与灵魂数**/**伤害飘字五种配色**/基础BAT / 九条转职支线的 atk·bat·甲·cdr·伤害倍率 / 装备池规模与定价 / roll四档金木价与实roll分布 / 唯一特效去重 / 全属性 / 合成链 / 杀人剑进化链 / 穿装备扣金 / 金矿伐木场价格曲线 / 召唤物移速 / 背包排布 |
   | `sh www/_test/go.sh eq` | **装备特效体检**：真打一场 + 手动连A30下，验每个 `proc` 有没有触发（嗜血/羊刀/泰坦层数、黑刀削血、回响双击、狂涌、沉默、召唤/治疗倍率），并打印**单件装备的DPS增益排行**（Lv15精灵游侠基准）。加/改装备后跑这个 |
   | `sh www/_test/go.sh models` | **看模型**：先按职业弹转职卡片层各截一张（`mc0_warrior` `mc1_archer` `mc2_mage`，3D 预览最大最清楚），再按 branch 截战场上的「静止/出手」各一张（`m0_idle` `m0_atk`…）。改了 `buildHero` 或攻击动作就跑这个 |
 | `sh www/_test/go.sh sim` | **平衡快跑**：裸跑 3 英雄，用逻辑时钟加速（16秒真实≈1500秒逻辑，能跑完25波），打印每波的命/场上怪/存活英雄 |
@@ -233,7 +236,8 @@
   | 牧师 | 白袍 + **十字圣杖** + 头顶光环（`userData.halo`，呼吸闪） |
   | 大法师 | 高尖帽（缀星）+ **巨型奥术宝珠 + 双符文环**（`orbit`/`orbit2`） |
   - ⚠️ 子部件要单独做动作就用局部 `attach(sub)`（建 group + 把 mats 并进主 group 才会跟着染色）。对象池 key `'H'+cls+tier+branch`，转职后自动重建。
-  - 怪物模型按 `m.r` 缩放、走路上下颠，配色沿用 `MOBS.color`：步兵=驼背小鬼(双角大眼) / **长矛兵=瘦长身+伸向 -X 的长矛**（一眼看出手长）/ **狂徒=小头大拳头+背刺的红壮汉** / 重甲兵=重甲方体(头盔背刺) / Boss=巨体恶魔(弯角尖牙发光眼)。减速时整体染冰霜蓝。召唤物：熊灵 / 火元素(自发光锥焰) / 水元素(半透明) / 地狱火(岩石身+熔岩裂缝)。
+  - 怪物模型按 `m.r` 缩放、走路上下颠，配色沿用 `MOBS.color`：步兵=驼背小鬼(双角大眼) / **长矛兵=瘦长身+伸向 -X 的长矛**（一眼看出手长）/ **狂徒=小头大拳头+背刺的红壮汉** / 重甲兵=重甲方体(头盔背刺) / Boss=巨体恶魔(弯角尖牙发光眼)。减速时整体染冰霜蓝。召唤物：小树人(树桩身+树冠+枝条手臂) / 远古树(粗干+大树冠+会吐小精灵的树洞) / 小精灵(自发光球+拖尾)。
+  - **怪物挥击动作**：`tickMobs` 里开打时置 `m.anim=.42`，渲染层 `drawMobs` 用和英雄同一条 `swing()` 曲线往 **-X** 方向扑（怪面朝左）。
 - **血条/蓝条/经验条/等级框/伤害飘字不在 3D 里**，画在覆盖层 2D canvas `#cv2`（各 `draw*()` 用 `proj()` 投影）。`#cv2` 是 `pointer-events:none`，点击照样落到 `#cv`。
 - **打击感 + 攻击动作（⚠️ 改动作前先看这段）**：逻辑层只给线性进度 `h.anim`（倒计时），渲染层换算成 `t`(0→1) 喂给曲线。
   - **`swing(t)`（近战）** = 三段：`t<ANT(.16)` 反向蓄力 → `~PEAK(.30)` 极快出手 → `~1` 慢慢收招。返回 0→-.32→1→0，所以各支线原来 `rest+amp*p` 的公式**把 p 换成 sw 就自动变三段**，不用改每条。
@@ -243,7 +247,7 @@
   - **走路**：英雄真在推进时才摆动（比对上一帧 `h.x`，存 `userData.lx`），瞬移回本阵不会误触发。
   - **节奏**：`ANIM_T=.22` 默认，各支线在 `ANIM_BR` 里覆盖（弩手.44 / 狂战士.28 / 火枪.17 / 强盗.15 / 精灵游侠.12）。动作按 `g.userData.akind` 分流：`axes`(双斧连斩，第二把延后20%) / `swing`(绕肩挥砍，护卫盾 `userData.aux` 同步前顶) / `stab`(匕首直捅) / `gun`(后坐上扬+枪口火光，t<.34 才显形) / `xbow`(沉重后坐) / `draw`(拉弓) / `cast`(宝珠蓄光)。
   - **火枪平A没有飞行弹道**（`attack()` 里 `akey==='musket'` 直接结算 + 一条 .08s 枪线）。**弩手是慢而重的单发**（弹道 `kind:'quarrel'`，命中靠 `s.heavy` 额外炸冲击环+刀光）。
-- **弹道/技能样式（`drawFx`）**：游侠=箭矢，法师=奥术弹(光晕锥尾)，战士=弧形刀光(slash)；火球=飞行光球+落点爆闪(bolt)，闪电链=分段折线(zap)，冰风暴=八面体冰棱天降(fall)，火焰风暴=上窜火舌(flame)，剑雨=剑插下(sword)，大地震颤=崩起碎石(rock)，治愈=上浮十字(heal)，AOE=地面光环+半透明圆盘。
+- **弹道/技能样式（`drawFx`）**：游侠=箭矢，法师=奥术弹(光晕锥尾)，战士=弧形刀光(slash)；火球=飞行光球+落点爆闪(bolt)，闪电链=分段折线(zap)，小精灵自爆=火舌(flame)+光盘(aoe)，治愈=上浮十字(heal)，AOE=地面光环+半透明圆盘。⚠️ `fall`(冰棱)/`rock`(碎石)/`sword`(剑雨) 这几个分支现在没有技能在用了，留着给以后加技能复用。
 
 ## 方块战线·角色卡片系统（招募 / 转职）
 - 弹层 DOM 在 rpg.html 的 `#cards`（`#cardTitle`——⚠️ **CSS 里已 `display:none`，用户要求不显示这行文字提示**，JS 照旧给它写文本 / `#cardBody`=`#cardInfo`左详情+`#cardRow` / `#cardCancel`），样式在 rpg.css 的"角色卡片选择层"。侧栏 HTML 由 `sideSkills(h,nm)` / `sideEquips(h)` 生成，**⚠️ 用户明确要求侧栏不显示「技能栏 x/4」「装备栏 x/6」这种计数抬头，别再加回来**（`.chside .row` 是 `flex:1`，去掉抬头后格子自动撑高）。
@@ -285,7 +289,7 @@
   | | **大法师** | 奥术专精：技能CD -`10+2lv`% | `calc` 的 `h.cdr` 行 |
   - ⚠️ 旧的 **死亡射手/死神收割** 和 **德鲁伊/自然之力** 已删干净（`deathAgi` 字段 2026-07 也一并删了）。
 - **英雄招募走卡片**：`HERO_COSTS=[0,100,200]`——**开局免费送1个**（begin() 里直接弹卡片让你选），之后 100/200 金。招募入口是 **右上角 header 里的「招募英雄」按钮**（`#hireBtn`，在 `.hright` 里，满3人自动 `display:none`），点空的出兵格也能唤起同一个卡片层。选了职业后自动放进该职业那一列的第一个空行（`freeRow(col)`）。
-- **魔兽式属性系统**：主属性加攻击（战士主力/游侠主敏/法师主智）；**1力=8HP + 0.3生命回复/s**（`h.hpRegen`，在 update 里和回蓝一起结算，与狂战士之血的回复相加）；敏捷/7加护甲、**1敏=0.5攻速点**（1:1 → 0.3 → 2026-07 用户定 0.5；改 `h.agi*.5` 这一个系数就能整体调游侠强度）；**1智=0.01回蓝/s + 0.001法术强度**（`h.spellP=1+int*.001`，在 `magDamage` 里对**所有**魔法伤害生效）；**攻速用魔兽/DotA正版公式：每秒攻击=(1+攻速/100)/BAT**（BAT1.4时+140攻速=每秒多A一下），攻速上限400；护甲减伤=甲×0.06/(1+甲×0.06)；魔抗固定百分比（英雄基础25%上限75%）。普攻=物理吃护甲，技能/毒/反伤=魔法吃魔抗。职业基础(攻击间隔bat/武器wep/甲)：法师1.6s/6/1(射程4.5)，游侠1.4s/8/2(射程6)，战士1.5s/15/**8**(射程1.15，护甲是用户2026-07从4提上来的)；成长/级：战士+2.7力，游侠+2.9敏，法师+3.2智（副属性各1~1.5）。怪物也有甲/抗：坦克6甲15%抗、Boss10甲30%抗。转职=属性×1.35+武器/HP/攻速倍率。
+- **魔兽式属性系统**：主属性加攻击（战士主力/游侠主敏/法师主智）；**1力=8HP + 0.3生命回复/s**（`h.hpRegen`，在 tickHeroes 里和回蓝一起结算）；敏捷/7加护甲、**1敏=0.5攻速点**（1:1 → 0.3 → 2026-07 用户定 0.5；改 `h.agi*.5` 这一个系数就能整体调游侠强度）；**1智=0.01回蓝/s + 0.001法术强度**（`h.spellP=1+int*.001`，在 `magDamage` 里对**所有**魔法伤害生效）；**攻速用魔兽/DotA正版公式：每秒攻击=(1+攻速/100)/BAT**（BAT1.4时+140攻速=每秒多A一下），攻速上限400；护甲减伤=甲×0.06/(1+甲×0.06)；魔抗固定百分比（英雄基础25%上限75%）。普攻=物理吃护甲，技能=魔法吃魔抗。职业基础(攻击间隔bat/武器wep/甲)：法师1.6s/6/1(射程4.5)，游侠1.4s/8/2(射程6)，战士1.5s/15/**8**(射程1.15，护甲是用户2026-07从4提上来的)；成长/级：战士+2.7力，游侠+2.9敏，法师+3.2智（副属性各1~1.5）。怪物也有甲/抗：坦克6甲15%抗、Boss10甲30%抗。转职=属性×1.35+武器/HP/攻速倍率。
 - **装备池（2026-07 用户整池重做，实现在 rpg.js 的 `EQUIPS` 表）**：**装备商店四档roll(`EQ_TIERS`)，每档固定出4件，⚠️ 只花木头**：低级200木(白60/绿30/蓝9/紫1)、中级400木(30/40/24/6)、高级800木(5/30/45/20)、**顶级1600木(不出白，绿5/蓝30/紫55/金10)**。⚠️ **顶级档是唯一能roll出金色的地方**（推翻了原来「金色只从宝箱开」）；前三档roll不到金色，宝箱那条路(`GOLD_DROP`)照旧。`rollEquip` 里金色要特判 `e.pool==='gold'`，别用 `!e.pool` 过滤。**和技能书同一个思路：roll 只是出货，真正穿上时按品质另付装备费**（`EQUIP_COST` **白50/绿120/蓝200/紫600/金1000 金币**，在 `applyItem` 里扣，背包格子和卡片层都直接标价，钱不够卡片标「金币不足」）。进背包点一下→选英雄穿（**装备栏2×3=6格**）。
   - **⚠️ 唯一特效规则（用户定的，别改成取max）：同名装备的特殊特效只生效一件，不同名字之间照常叠加。** 实现在 `calc()` 的 `seen` 集合：普通属性（攻击/三围/攻速/暴击/爆伤/护甲/回蓝/CD/召唤/治疗/格挡/固定减伤）**永远求和**，只有 **`bat`(攻击间隔) / `sunder`(削甲) / `range`(射程) / `proc`(特殊触发)** 这四类按 `id` 去重。所以两把满月只减一次间隔，但 满月+柳月弓+幻烁之舞 是叠加的（-0.45）。
   - **stats 字段全表**：`atk` `all`(全属性) `str/agi/int` `aspd`(攻速点) `bat`(正=减间隔/负=加间隔) `crit`(%) `cdmg`(爆伤%) `armor` `mres` `hp` `block`(固定格挡,只挡普攻) `blockP`(普攻伤害%减免,上限80%) `flat`(固定减免) `mpre`(回蓝/s) `cdr` `summon` `heal`(治疗强度%) `range` `sunder`。另有 `proc`(见下)、`craft:{to,n}`(合成)、`evo/evoN`(进化)、`pool`('gold'=只宝箱 / 'evo'=只进化得到)。
@@ -312,16 +316,33 @@
 - **技能配色约定**：技能栏/背包书的**边框颜色=品质**（绿/蓝/紫），**文字颜色=属性系**（力红/敏绿/智蓝）。
 - **底栏布局（2026-07 再改）**：**背包挪进了 `#dock` 试炼那一行**（`#dock #inv`：「背包」标题 + **4格技能书 | 竖线 | 装备**（34px 格，超出横向滚动）+ 最右端的出售按钮），dock 高约 64px；`#bottom` 现在只剩 `#info` 一个（高 84px，含 safe-area）。**信息区最右边常驻熔炉**（`.forge`，宽约154px，4×2格）。**商店按钮排成 2×2**（`.shopGrid`；⚠️ 2026-07 用户要求**按钮尽量小**：`grid-template-columns/rows:auto` + `justify-content:start` + `align-content:center`，所以按钮只有内容那么大、不再撑满信息区，字号 10.5px/小字 8.5px，别改回 `1fr 1fr`；装备商店四档正好填满 2×2，所以 `.shopGrid.eq .btn:last-child{grid-column:1/-1}` 那条已删；金矿/伐木场用 `.shopGrid.inc` 只有一行=升级+招工人，抬头 `.shopHead.inc` 竖排三行放名字/等级工人数/现产）。改底栏只动 rpg.css 的 `#dock #inv / #bottom / #info / .shopGrid` 那几段 + `shopHTML()`。
 - **自动学习**（技能栏左侧按钮，魔兽启用型技能式金色脉动发光）：开启后该英雄会自动吃掉商店刷出的**已学同名技能书**来升级（满Lv10不吃）；开启瞬间也会结算一次背包里的存书。多个英雄同时开启则按购买顺序分配。
-- 品质=绿/蓝/紫，roll权重 绿3/蓝2/紫1。**法力系统**：maxMP=10+智×3，回蓝=1+智×0.01/s(+装备)，主动技能耗蓝；英雄面板HP/MP由 updateHUD 每0.25s原地刷新(#hpVal/#mpVal)，不重建DOM；**主动技能释放距离=英雄射程**（狙击潜质同步加长）。血条下有蓝条，经验条紫色(魔兽风)。点技能/装备栏=查看详情（不是长按）。
-- **技能实现速查**（⚠️ 数值公式别抄这里，`SKB[名].desc` 就是权威文案；这里只记"在哪实现 + 有什么坑"。所有主动技能都在 `castSkill`）：
-  - **三个区域技能各用一个数组**：大地震颤=`quakes[]`（矩形，每0.5s结算，碎石 fx `'rock'`）/ 冰风暴=`hails[]`（存波次，每波落地前0.5s撒 `'fall'` 冰棱）/ 火焰风暴=`storms[]`（延迟1s+橙色预警圈，DoT 期 `'flame'`）。**区域内没怪时不释放**（不吃CD）。
+- 品质=绿/蓝/紫/**金**，roll权重 绿3/蓝2/紫1/**金0.35**。**法力系统**：maxMP=10+智×3，回蓝=1+智×0.01/s(+装备)，主动技能耗蓝；英雄面板HP/MP由 updateHUD 每0.25s原地刷新(#hpVal/#mpVal)，不重建DOM；**主动技能释放距离=英雄射程**。血条下有蓝条，经验条紫色(魔兽风)。点技能/装备栏=查看详情（不是长按）。
+- **⚠️ 2026-08 用户把技能池整个换掉了**（旧的火球术/冰风暴/火焰风暴/大地震颤/剑雨/忍受/荆棘光环/狂战士之血/沁毒射击/狙击潜质/致命一击/魂吸/CD光环 **全部删除**，连带 `hails/storms/quakes` 三个区域数组、`soulInt/endT/endF` 字段、熊灵/火水元素/地狱火 四种召唤物一起删干净了）。现在是 **17 个技能 = 4 条羁绊 + 5 个通用**。
+- **羁绊系统**：`BONDS` 表列出每条羁绊需要的技能；`hasBond(h,key)` 判定「这个英雄是否集齐」，`calc` 每次把结果缓存进 `h.bond`。**技能位只有 4 格**，所以 4 技能的羁绊（我为人人 / 幽邃深渊）会占满一个英雄，2 技能的（狂猎 / 森林）还能带别的。激活状态显示在英雄面板名字后面（`bondTxt`）。
+  | 羁绊 | 技能 | 羁绊效果 |
+  |---|---|---|
+  | 狂猎 `hunt` | 多重射击 / 嗜血狂战 | 次要目标 +30% 伤害；嗜血狂战再 -0.1 间隔、CD -4s |
+  | 我为人人 `all4one` | 主属光环 / 减甲光环 / 狂风光环 / 奉献光环 | 主属 +100；减甲再 -10%；狂风再 -0.1 间隔；奉献速率翻倍 + 熔背包 |
+  | 幽邃深渊 `abyss` | 幽邃之握 / 幽邃光环 / 幽邃灵魂 / 幽邃恐惧 | 之握 CD -5s；幽邃光环覆盖全场并再 -10% 魔抗；**灵魂翻倍**；恐惧攻击间隔减半 |
+  | 森林的羁绊 `forest` | 森之呼唤 / 古树智慧 | 小树人 +200 攻速；小精灵产出间隔 -1s、自爆范围 +0.5 格 |
+- **技能实现速查**（⚠️ 数值公式别抄这里，`SKB[名].desc` 才是权威文案；这里只记「在哪实现 + 有什么坑」。主动技能都在 `castSkill`）：
+  - **CD 两个新字段**：`fixed:1`=CD 不吃冷却缩减（嗜血狂战固定 20s）、`bondCd`=激活羁绊后 CD 的增量（负数=减）。结算在 `tickHeroes` 的施法成功分支。
+  - **灵魂 `h.souls`** 在 `calc` 里派生 = `幽邃灵魂等级×3 + h.soulK(击杀累积) `，羁绊激活后 ×2。⚠️ **只能改 `h.soulK`**，`h.souls` 是每次 calc 重算的。
+  - **幽邃恐惧**：`h.fearT/fearCd/fearLv`，到点调 `soulStrike(h)`——每个灵魂各打一次（集火最近的敌人），**结算次数封顶 40**、特效只画前 8 条，否则灵魂多了直接卡帧。
+  - **奉献光环 `devotionTick`**：每帧按 `dt` 熔 `h.equips[0]`（羁绊时背包也能熔），装备上记 `it.melt` 已熔秒数，满 `MELT_T[品质]` 就消失；给**全体**英雄累加 `o.devA`（永久主属性，`calc` 里加进主属性）。
+  - **两个减益光环**（减甲/幽邃）作用在**怪**身上，走 `debuffAura(m,技能名,base,per,羁绊key,是否全场)`：减甲乘进 `mobArmor`，幽邃乘进 `magDamage` 的魔抗。
+  - **主属光环 / 狂风光环 / 护卫护甲光环**都在 `calc` 里结算（取最高不叠加，半径 `AURA_R=3`）；英雄会走位，所以 `tickWorld` 的 0.25s tick 会重算全体属性。
+  - **三系传承**（力/敏/智）：计数器 `h.hitN/atkN/castN` 分别在 `hitUnit`/`attack`/`tickHeroes` 里累加，够数就永久加 `h.legS/legA/legI`。
   - **多重射击**的次级目标检索范围比主目标多 `MS_EXTRA=0.5` 格，否则经常只打得到 1 个。
-  - **主属光环 / 护卫护甲光环**在 `calc` 里结算（存 `h.aura`）；英雄会走位，所以 update 的 0.25s HUD tick 里会重算全体属性。
-  - **狂战士之血 / 忍受**的减伤在 `hitUnit` 里与其它减伤**相乘**（忍受存 `h.endT/h.endF`，只在射程+1.5格内有敌人时才开，不空放）。
-  - ⚠️ **怪物减速字段是拆开的**：`m.slowT/slowF`=移速、`m.asT/asF`=**攻速**、`m.frost`=**只控制冰霜覆层显示**（只有冰风暴设）。所以震颤减速不会把怪画成冰蓝色。
-- **召唤物系统已统一**：`bears[]` 装所有召唤物，属性表 `const MINIONS=`、技能名映射 `const SUMMONS=`、创建走 `summon(h,kind,lv)`（**同种可重复叠召 → CD流人海战术**；同排已有时自动错开站位；场上没怪不释放），外观走 `drawElemental`（bear 仍走 `drawBear`）。
+  - ⚠️ **怪物减速字段是拆开的**：`m.slowT/slowF`=移速、`m.asT/asF`=攻速、`m.frost`=只控制冰霜覆层显示。**新技能池里已经没有减速技能了**，这几个字段目前只有装备/试炼可能用到。
+- **伤害飘字配色（`const DC`，用户 2026-08 定）**：物理=橙 `#ff9d4f` / 法术=天蓝 `#5fd0ff` / **次级伤害（溅射、多重射击的次要目标）= 同类的浅色** `#ffd2ab`·`#b7e9ff` / **暴击=红 `#ff3b3b` 且 `big:1`**（渲染层字号 ×1.55、描边加粗）/ 英雄受伤 `#ff8080`。
+  - `physDamage/magDamage(m,d,color,big)` 的 `color` **不传就是默认色**——所以新技能一律别传颜色，让它自己走天蓝。
+- **召唤物系统（2026-08 只剩森林系三种）**：`bears[]` 装所有召唤物，属性表 `const MINIONS=`、技能名映射 `const SUMMONS=`、创建走 `summon(h,kind,lv)`（同种可重复叠召；同排已有时自动错开站位；场上没怪不释放）。
+  - `treant` **小树人**：森之呼唤一次 4 只，和英雄同速往前压，普通近战。
+  - `ancient` **远古树**：`fixed:1` 钉在最左（x=0.6）不动不普攻，`spawnCd` 到点调 `spawnWisp(tree)` 放一只小精灵。
+  - `wisp` **小精灵**：`boom:1`，冲到离目标 0.45 格就自爆（`boomDmg` 在生成时按主人当时的智力算好），范围 0.8 格（羁绊 +0.5）。
   - **⚠️ 召唤物没有活动上限**：召出来就一路向右压（本行没敌人也继续走，最远 `COLS-0.5`），不会被英雄卡住；**波次结束（cleared）时全部消散**（`bears=[]`）。移速统一 = `HERO_SPD`，`own` 指向主人（承伤统计用）。
-  - **加新召唤物只要在 `MINIONS` + `SUMMONS` + `SKB` 各加一行**（要新外观才动 `drawElemental`）。召唤师·召唤精通对所有召唤物生效。
+  - **加新召唤物只要在 `MINIONS` + `SUMMONS` + `SKB` 各加一行**（要新外观才动 `buildMinion`）。召唤师·召唤精通对所有召唤物生效。
 
 ## 方块战线·四大试炼 + 宝箱（TRIALS 表在 rpg.js 前部）
 - dock 那一行的4个图标（`.tile.trial`，HTML 在 rpg.html 的 #dock 里；商店已挪进地图，dock 只剩试炼），**点图标才开始试炼**，怪立刻入场，奖励在**击杀时结算**。
