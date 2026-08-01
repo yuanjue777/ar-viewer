@@ -27,7 +27,7 @@
 ## 方块战线·代码架构（⚠️ 改代码前先看这节，别遍历代码）
 - **文件已拆分**（为省 token，别再合回单文件）：
   - `www/rpg.html`（约60行）= DOM 骨架：header(左=资源数值 + **`#uiBoss` BOSS总血条**，右=`.hright` 按钮组：3个自动开关+倍速+`#hireBtn`招募+`#nextBtn`+启动) / canvas / **`#dock` = 4个 `.tile.trial` + `#inv`背包（同一行）** / `#bottom` = `#info`信息区（独占一行） / `#cards`卡片层 / `#overlay`开始页
-  - `www/rpg.css`（约240行）= 全部样式，`:root` 里是配色变量
+  - `www/rpg.css`（约355行）= 全部样式，`:root` 里是配色变量 + **异世界皮肤令牌**（见「UI 皮肤」那节）
   - `www/rpg.js`（约2200行）= **纯逻辑**（数值/技能/AI/波次/商店/UI），不含任何绘制代码
   - `www/rpg3d.js`（约1680行）= **纯渲染**（Three.js 3D 场景/模型/特效/血条），逻辑层不用管
   - ⚠️ **2026-07 已按职责把几个巨型函数拆开**（`update`→`tick*`、`draw`→`draw*`、`buildHero`→`hero*`），目的就是让以后每次改动只 sed 几十行。**别再合回大函数**；新加逻辑也往对应的小函数里放。现在最长的函数也只有 ~130 行。
@@ -352,6 +352,26 @@
 - **精英试炼掉宝箱**（`chests`，画在战斗区带金色光晕，点击开启）：**整场试炼只掉1个箱子，25%概率掉2个**（`startTrial` 里 `nChest`，只给前 nChest 只精英挂 chest 标记，快速怪不再掉）；**1个箱子=1件装备**。
 - 开箱：**15%（`GOLD_DROP`）出金色装备**（`pool:'gold'`），否则从**商店同款的蓝/紫**里随机（2026-07 整池重做后**已没有单独的精英池**了，`pool:'elite'` 这个值不再存在）。
 - 破甲实现：`h.sunder`（同名唯一、异名求和）→ 普攻给怪挂 `m.sunderT=6s`，物理伤害走 `mobArmor(m)` 而不是 `m.armor`。**`mobArmor` 先减固定削甲、再乘 `(1-SRC.armorPen)`**（百分比破甲只有火枪兵有）。
+
+## 方块战线·UI 皮肤（异世界风，2026-08 用户要求「有异世界的味道」）
+- 全部在 `www/rpg.css`，**没有任何外部图片/字体**（Artifact 的 CSP 不许外链），全靠渐变 + 伪元素拼出来。
+- **`:root` 里的皮肤令牌**（改风格先改这几个，别到处硬写颜色）：
+  | 令牌 | 用途 |
+  |---|---|
+  | `--p1/--p2` | 面板亮部/暗部（暗紫 `#251d3a`→`#150f26`） |
+  | `--brz` `--brz2` | 青铜描边色 |
+  | `--rim` | 金属外框渐变（切角元素的「边」就是它，做背景用） |
+  | `--serif` | 标题衬线字体栈（Songti SC / Noto Serif CJK），只给 ≥11px 的标题用 |
+  | `--cut5` `--cut9` | 切角八边形 `clip-path`（切 5px / 9px） |
+- **切角金属框的做法**（`.tile` / `.chcard` / `#cardInfo` / `#uiBoss` 都是这套）：元素本身 `background:var(--rim)` + `clip-path` + `isolation:isolate`，再用 `::before{inset:1.5~2px;同一个 clip-path;z-index:-1}` 铺内层暗底。
+  ⚠️ **`isolation:isolate` 不能省**——否则 `z-index:-1` 会穿到祖先（`#cards` 有 backdrop-filter）背后去。
+  ⚠️ `.chcard` 额外要 `padding:2px`，否则 `canvas`（width:100%）会盖住左右的金边。
+- **三条魔法分割线**：`header::after` / `#dock::before` / `#bottom::before`，中段最亮两端淡出的金色渐变条（2px，不占布局高度）。
+- **战场四角的黄金直角饰件**：`#stage::before` 用 8 层 `linear-gradient` 背景画出来；`#stage::after` 是内圈暗角。两个都 `pointer-events:none`，不影响点击。
+- **面板织纹**：`repeating-linear-gradient(135deg,rgba(255,255,255,.016) 0 1px,transparent 1px 7px)`，header/#dock/#bottom 各一份。⚠️ 试过 `.022/2px/6px`，在手机上偏脏，别调回去。
+- **开始页**（`#overlay`）：`::before` 是缓慢自转 72s 的巨型符文环（`repeating-conic-gradient`），标题用 `background-clip:text` 的金渐变 + 下方菱形分隔线，开始按钮是切角金牌。
+- **启动按钮配色已从 rpg.html 的内联样式挪进 CSS**（`#launchBtn` 紫水晶）；HTML 里只剩 `style="display:none"`，别再往回写内联色。
+- **`#uiBoss` 血条**：外框切角、`i` 改成 `left/right/top/bottom:1px`（不再是 `width:100%`），`span` 上叠了一层 `repeating-linear-gradient` 当刻度凿痕。JS 仍然只改 `i` 的 `scaleX`。
 
 ## 方块战线·场景背景（3D）
 - 场景在 `rpg3d.js` 的 `init()` 里一次搭好（地面 / 战斗区台面 / 网格线 / 出兵色块 / 红色分界线 / 选中框），**都是静态 mesh，不要改成每帧重建**。
