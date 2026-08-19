@@ -1005,6 +1005,21 @@ function scatterDecor(){
   }
 }
 
+/* ---- 异象天色：rpg.js 调 R3.mood(天空,阳光,天光) 换目标色，这里每帧平滑靠拢 ---- */
+let hemi=null,mSky=null,mSun=null,mAmb=null,cSky=null,mLast=0;
+function mood(sky,sun,amb){
+  if(!T)return;
+  mSky=new T.Color(sky);mSun=new T.Color(sun);mAmb=new T.Color(amb||sun);
+}
+function moodTick(){
+  if(!mSky||!dirLight)return;
+  const now=performance.now(),dt=Math.min(.05,(now-(mLast||now))/1000);mLast=now;
+  const k=Math.min(1,dt*1.6);
+  if(!cSky)cSky=new T.Color(0x8fb8d4);
+  cSky.lerp(mSky,k);ren.setClearColor(cSky,1);
+  dirLight.color.lerp(mSun,k);
+  if(hemi)hemi.color.lerp(mAmb,k);
+}
 function init(){
   const cv=document.getElementById('cv');
   ren=new T.WebGLRenderer({canvas:cv,antialias:true,powerPreference:'high-performance'});
@@ -1016,7 +1031,7 @@ function init(){
 
   /* 阳光下的明亮场景：天光偏蓝、地面反光偏暖，主光是一颗高角度的太阳。
      ⚠️ 环境光不能再往上加了 —— 卡通分阶靠"一盏主光压过环境光"，天光一高就全顶到最亮那一阶。 */
-  scene.add(new T.HemisphereLight(0xbcd8ff,0x6d7a58,.78));
+  hemi=new T.HemisphereLight(0xbcd8ff,0x6d7a58,.78);scene.add(hemi);
   dirLight=new T.DirectionalLight(0xfff4d6,1.6);
   dirLight.position.set(COLS/2-5,13,ROWS/2-5);
   dirLight.castShadow=true;
@@ -1204,6 +1219,7 @@ function bar(cx,top,w,h,ratio,color){
 function draw(){
   if(!inited)return;
   const t0=performance.now();
+  moodTick();
   tmpReset();
   octx.setTransform(PR,0,0,PR,0,0);
   octx.clearRect(0,0,W,H);
@@ -1680,5 +1696,5 @@ function cardTick(){
 
 function info(){const r=ren.info.render;
   return {calls:r.calls,tris:r.triangles,outline:olMeshes.length,textures:ren.info.memory.textures};}
-return {resize,draw,pick,shopAt,cardShow,cardHide,info,shake};
+return {resize,draw,pick,shopAt,cardShow,cardHide,info,shake,mood};
 })();

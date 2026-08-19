@@ -13,6 +13,7 @@
     <div class="stat woodS"><b id="uiWood">0</b><small>木</small></div>
     <div class="stat life"><b id="uiLife">0</b><small>基地</small></div>
     <div class="stat wave"><b id="uiWave">0/15</b><small>波</small></div>
+    <span class="omen" id="uiOmen" style="display:none"></span>
     <div id="uiBoss"><i></i><span>BOSS</span></div>
     <div class="hright">
       <button class="hbtn auto" id="autoLearnBtn">自动学习</button>
@@ -30,6 +31,7 @@
     <button class="tile trial" data-trial="wood"><span class="cdmask"></span><span class="ic"></span>木头试炼<span class="lv">就绪</span></button>
     <button class="tile trial" data-trial="xp"><span class="cdmask"></span><span class="ic"></span>经验试炼<span class="lv">就绪</span></button>
     <button class="tile trial" data-trial="elite"><span class="cdmask"></span><span class="ic"></span>精英试炼<span class="lv">Lv5波</span></button>
+    <button class="tile ult" id="ultBtn"><span class="cdmask"></span><span class="ic"></span>天罚<span class="lv">待启动</span></button>
     <div id="inv">
       <div class="invLabel">背包</div>
       <div id="invItems"></div>
@@ -51,7 +53,8 @@
     <span><i style="background:var(--archer)"></i>游侠·主敏捷</span>
     <span><i style="background:var(--warrior)"></i>战士·主力量</span>
   </div>
-  <p>共 25 波，15 波后强度加速爬升。进场先<b>布阵</b>：买英雄、逛商店，准备好后点<b>右上角 ▶ 启动</b>才开始进攻。智力给蓝量回蓝，主动技能耗蓝；技能书/装备 roll 进背包拖给英雄；点技能栏/装备栏可看详情。</p>
+  <p>共 25 波。进场先<b>布阵</b>：买英雄、逛商店，点<b>右上角 ▶ 启动</b>开战。<br>
+  每波开战会降下一道<b>异象</b>，全场规则随之改变；每 2 波清场后从三张<b>祝福</b>里选一项永久强化；战斗中可放<b>天罚</b>（底栏右侧，点按钮再点落点）；连杀 20 触发<b>战意爆发</b>。</p>
   <button class="lg" id="startBtn">开 始</button>
 </div>
 

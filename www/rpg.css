@@ -64,6 +64,13 @@
   .stat b{font-family:ui-monospace,"SF Mono",Menlo,monospace;font-size:14px;font-weight:600;
     font-variant-numeric:tabular-nums;text-shadow:0 1px 2px rgba(0,0,0,.7)}
   .stat small{font-size:10px;color:var(--ink-dim)}
+  /* 异象徽章：颜色由 JS 按当前异象写 inline，点一下弹说明 */
+  .omen{
+    flex-shrink:0;font-family:var(--serif);font-size:11px;letter-spacing:.1em;
+    padding:1px 8px;cursor:pointer;clip-path:var(--cut5);
+    border:1px solid currentColor;background:rgba(255,255,255,.05);
+    text-shadow:0 0 8px currentColor;
+  }
   /* BOSS 总血条：占据顶栏中段的空白，不再画在战场上方挡视野 */
   #uiBoss{display:none;flex:1;min-width:110px;max-width:340px;height:16px;position:relative;
     background:var(--rim);padding:1px;clip-path:var(--cut5);isolation:isolate}
@@ -174,6 +181,18 @@
   .tile.trial.locked{opacity:.42}
   .tile .cdmask{position:absolute;inset:0;pointer-events:none;z-index:2;clip-path:var(--cut5);
     background:conic-gradient(rgba(4,2,10,.8) var(--p,0deg),transparent 0)}
+
+  /* ---- 天罚：玩家唯一的主动干预，和试炼同款 CD 扫圈 ---- */
+  .tile.ult{--tc:#ff9f5a}
+  .tile.ult .ic{background:radial-gradient(circle at 40% 35%,#ffd9a0,#ff7a2a 70%);border-radius:50%;
+    box-shadow:0 0 8px #ff9f5a}
+  .tile.ult.ready{background:linear-gradient(180deg,#ff9f5a,#5a3418 55%,#ff9f5a)}
+  .tile.ult.ready::before{background:linear-gradient(180deg,#3a2416,#1d1208)}
+  .tile.ult.ready .ic{animation:trPulse 1.1s ease-in-out infinite}
+  .tile.ult.aim{background:linear-gradient(180deg,#ffd9a0,#ff7a2a 55%,#ffd9a0);
+    animation:autoGlow .7s ease-in-out infinite}
+  /* 瞄准中：战场压一层暖色，提示「点哪里」 */
+  #stage.aim::after{box-shadow:inset 0 0 70px rgba(255,120,40,.5),inset 0 0 0 2px rgba(255,159,90,.7)}
 
   /* ---- 底栏：信息区 + 背包同一行（省纵向空间给战斗区） ---- */
   #bottom{
@@ -483,6 +502,12 @@
   }
   .chcard .hcTal .tn{font-size:10.5px;font-weight:700;color:#d3bcff}
   .chcard .hcTal .td{font-size:9px;color:#a99cb8;line-height:1.35;margin-top:2px}
+  /* 祝福卡：没有 3D 预览，中间是一枚大符文 */
+  #cards.boon #cardCancel{display:none}        /* 祝福必须选一个，不给取消 */
+  .chcard .boonIc{
+    font-size:46px;line-height:1;text-align:center;padding:16px 0 12px;
+    filter:drop-shadow(0 0 12px currentColor);
+  }
   /* 英雄卡上的羁绊进度（学完会不会点亮） */
   .chcard .hcBond{margin:0 6px 4px;padding:2px 3px;border-radius:2px;font-size:8.5px;text-align:center;
     border:1px solid #4a3f63;color:#a99cb8;line-height:1.25}

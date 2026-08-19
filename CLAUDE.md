@@ -59,6 +59,9 @@
 | 英雄定价（现 0/100/200） | `const HERO_COSTS=` |
 | **招募/转职卡片弹层** | `openHireCards` / `openAdvCards` / `refreshHire` |
 | **加/改技能（技能表）** | `const SKB=` |
+| **异象表（每波战场规则+天色）** | `const OMENS=` / `function rollOmen` / `setOmen`（乘数在全局 `OM`） |
+| **祝福表（波间三选一）** | `const BOONS=` / `openBoonCards` / `applyBoons`（累加值在全局 `BN`） |
+| **天罚（玩家主动技）/ 连杀战意** | `const ULT=` / `castUlt` / `setAim` / `addCombo` / `tickUlt` |
 | **羁绊表 / 羁绊判定** | `const BONDS=` / `function hasBond` |
 | **羁绊的 UI**（面板徽章 / 详情文案 / 技能属于哪条羁绊） | `function bondTxt` / `function bondInfo` / `function bondsOfSkill` |
 | **伤害飘字配色**（法/物/次级/暴击） | `const DC=` / `function dnum` |
@@ -146,6 +149,7 @@
 | **战场右侧传送门**（能量幕/门柱/地面光带） | `function buildPortal` / `texPortal` |
 | 地图装饰（树/石头/草簇的散布） | `function scatterDecor` |
 | **场景搭建：光照/阴影/草地/石板路/法阵光圈/商店建筑** | `function init` |
+| **异象天色（平滑换天空/阳光/天光色）** | `function mood` / `moodTick`（rpg.js 调 `R3.mood(sky,sun,amb)`） |
 | **相机装框（正交范围计算）** | `function resize` |
 | 世界坐标→屏幕坐标（覆盖层用） | `function proj` / `ppu` |
 | **点击拾取（屏幕→格子坐标）** | `function pick` |
@@ -165,13 +169,13 @@
   |---|---|
   | `sh www/_test/go.sh shot` | 布阵/战斗/精英试炼各截一张 + **底栏 UI 单独截一条**（`s3_bottom.png` 商店2×2+背包、`s6b_incshop.png` 金矿商店两个按钮、`s7_boss.png` 顶栏BOSS血条、`s2b_summon.png` 三种召唤物）→ `/tmp/rpgtest/s0_setup.png` `s1_fight.png` `s2_trial.png` `s3_bottom.png`，末尾打印 FPS 和报错 |
   | `sh www/_test/go.sh cards` | 招募卡→转职卡→**补满3英雄**→技能书授予→装备授予→**熔炉存取→点侧栏格子替换**全流程点一遍，打印断言（英雄数/金币/tier/侧栏数/技能数/装备数/商店是否还开着/卡片层总宽）+ 五张截图 |
-  | `sh www/_test/go.sh probe` | **数值体检（最省，改完数值先跑这个）**：只打印数字不截图——技能池规模/分系可roll数/**羁绊激活与灵魂数**/**伤害飘字五种配色**/基础BAT / 九条转职支线的 atk·bat·甲·cdr·伤害倍率 / 装备池规模与定价 / roll四档金木价与实roll分布 / 唯一特效去重 / 全属性 / 合成链 / 杀人剑进化链 / 穿装备扣金 / 金矿伐木场价格曲线 / 召唤物移速 / 背包排布 |
+  | `sh www/_test/go.sh probe` | **数值体检（最省，改完数值先跑这个）**：只打印数字不截图——**异象/祝福/天罚/战意的数值也在这里**——技能池规模/分系可roll数/**羁绊激活与灵魂数**/**伤害飘字五种配色**/基础BAT / 九条转职支线的 atk·bat·甲·cdr·伤害倍率 / 装备池规模与定价 / roll四档金木价与实roll分布 / 唯一特效去重 / 全属性 / 合成链 / 杀人剑进化链 / 穿装备扣金 / 金矿伐木场价格曲线 / 召唤物移速 / 背包排布 |
   | `sh www/_test/go.sh eq` | **装备特效体检**：真打一场 + 手动连A30下，验每个 `proc` 有没有触发（嗜血/羊刀/泰坦层数、黑刀削血、回响双击、狂涌、沉默、召唤/治疗倍率），并打印**单件装备的DPS增益排行**（Lv15精灵游侠基准）。加/改装备后跑这个 |
   | `sh www/_test/go.sh models` | **看模型**：先按职业弹转职卡片层各截一张（`mc0_warrior` `mc1_archer` `mc2_mage`，3D 预览最大最清楚），再按 branch 截战场上的「静止/出手」各一张（`m0_idle` `m0_atk`…）。改了 `buildHero` 或攻击动作就跑这个 |
 | `sh www/_test/go.sh sim` | **平衡快跑**：裸跑 3 英雄，用逻辑时钟加速（16秒真实≈1500秒逻辑，能跑完25波），打印每波的命/场上怪/存活英雄 |
   | `sh www/_test/go.sh shot --clip=250,130,340,110` | 只截某块区域放大看（省得截全屏再裁） |
   - 截图落在 `/tmp/rpgtest/`，直接用 Read 工具看。改 `run.js` 顶部的 `SEED` 可以调测试用的开局（钱/等级/预置技能）。
-  - **改完平衡必跑 `sim`**，和下面记的裸跑基准对比。
+  - **改完平衡必跑 `sim`**，和下面记的裸跑基准对比。`sim` 里 `noBoon=noOmen=true`，所以基准始终是「裸跑无祝福无异象」。
   - FPS 是 swiftshader 软件渲染，只能看"有没有崩"，别当真机参考。
 
 ## 方块战线·玩法现状
@@ -192,9 +196,9 @@
   - **左侧广场四排**（`shopPos(i)`）：① 5棵树 `TREE_Z=.2` ② 伐木场|金矿 `INC_Z=1.30` ③ 5处矿脉 `ORE_Z=2.62` ④ 技能|装备 `SHOP_Z=3.95`。**所以 SHOPS 顺序 = mill/mine/skill/item**（下标即排序）。`SHOP_S=1.4`、点击半径 `SHOP_R=.9`、名牌画在建筑**下方** `sz+.75`（上方永远有别的东西）。技能/装备牌**不显示小字**。
   - ⚠️ 树高别超 `.89`（最扁屏 asp≥6.1 时相机上沿 hh≈2.134，再高就切头）；现在 `buildTree` 高 .76。
   - **横向自适应**：屏幕越扁横向越富余，`resize()` 把整排商店往左挪 `shopShift`（上限 `SHIFT_MAX=2.6`）、碎石广场 `yard` 跟着变宽，富余**全留给左边**，相机右沿死死贴传送门。改这块只动 `resize()` + `layoutShops()`。
-  - dock 那一行 = **4 个试炼图标 + 背包**。
+  - dock 那一行 = **4 个试炼图标 + 天罚 + 背包**。
 - **右上角三个自动开关**（`.hbtn.auto`，状态 `autoLearnAll/autoTrial/autoNext`，**跨局保留、reset 不清**）：自动学习（同步每个英雄的 `h.autoLearn`）/ 自动试炼（每 1.5s 开一个就绪的）/ 自动开波（备战期直接 `goNextWave(true)`，照拿提前开波奖励）。
-- 开局是布阵阶段，点 ▶ 才开波。共 **25 波**，逢5精英波、逢10纯Boss关、第25波总攻。
+- 开局是布阵阶段，点 ▶ 才开波。共 **25 波**，逢5精英波、逢10纯Boss关、第25波总攻；**第4波起每波开战抽一道异象，每2波清场后三选一祝福**（见「roguelite 三件套」那节）。
   - **波次节奏**：出怪后**不限时**（`battleT` 只累计用时）；**清场后进入 `REST_TIME=25s` 备战**（`resting`），倒计时结束自动开下一波。所以打得慢不会被追尾。备战期**不能开试炼**。
   - **⏩ 提前开波**（`#nextBtn`，只在备战期显示）：把省下的时间换金币 `nextBonus()=剩余秒×波数×2`。
   - **整波一起入场 + 阵型**：`startWave` 把 `waveComp` 全 spawn 出来，槽位由 `formSlots(n,kind)` 算（`FORMS` 按波轮换：雁形/锋矢/横阵/斜阵/方阵）；**近战在前**（按 `MOBS.atkR` 升序抢 dx 最小的槽位）。有 lane 时纵向只抖 ±0.25，试炼那种没 lane 的大幅散开。
@@ -349,6 +353,37 @@
   - `wisp` **小精灵**：`boom:1`，冲到离目标 0.45 格就自爆（`boomDmg` 在生成时按主人当时的智力算好），范围 0.8 格（羁绊 +0.5）。
   - **⚠️ 召唤物没有活动上限**：召出来就一路向右压（本行没敌人也继续走，最远 `COLS-0.5`），不会被英雄卡住；**波次结束（cleared）时全部消散**（`bears=[]`）。移速统一 = `HERO_SPD`，`own` 指向主人（承伤统计用）。
   - **加新召唤物只要在 `MINIONS` + `SUMMONS` + `SKB` 各加一行**（要新外观才动 `buildMinion`）。召唤师·召唤精通对所有召唤物生效。
+
+## 方块战线·roguelite 三件套（2026-08 加，让每局都不一样）
+> 目的：原来的玩法是「布阵好 → 看英雄自动打完 25 波」，波与波之间没有抉择、战斗中玩家没事做。这三件套分别补上「每波都变」「每两波做选择」「战斗中有操作」。
+
+### ① 异象 Omen（每波开战抽一条战场规则，连天色一起换）
+- 表 = `const OMENS=`（7 条，含「晴空万里」= 无规则）；当前异象的乘数摊平在全局 **`OM`**，各处只读 `OM.xxx`，**别在别的地方硬写异象数值**。
+- 抽取：`startWave()` 里 `rollOmen()` → 第 `OMEN_FROM=4` 波起才抽（新手期保持干净），**BOSS 关固定血月**（红天=仪式感）。`noOmen=true` 可整局关掉（`sim` 用它保基准）。
+- 挂钩点：`spawnMob`(mAtk/mHp/mArm/mRes) · `tickMobs`+`tickHeroes`(spd) · `calc`(hIas/hSpell/hMp/cdr) · `damage`(gold/xp) · `tickWorld`(income)。
+- 表现：`R3.mood(sky,sun,amb)` 换 clearColor + 主光 + 半球光，`moodTick()` 每帧平滑靠拢（约 0.6s 过完）；顶栏徽章 `#uiOmen`（点一下弹说明 + 已选祝福清单）；开波 toast 播报异象名与效果。
+  | key | 名 | 效果 |
+  |---|---|---|
+  | calm | 晴空万里 | 无（权重最高） |
+  | blood | 血月当空 | 怪攻 +25%，击杀金币 ×2 |
+  | tide | 灵能潮汐 | 法术伤害 +40%，怪魔抗 +15% |
+  | iron | 铁幕降临 | 怪护甲 +8，金矿/伐木场产出 ×2 |
+  | gale | 疾风之诗 | 怪与英雄移速 +35%，英雄攻速 +40 |
+  | bounty | 丰饶之地 | 怪血 +20%，击杀金币与经验 ×1.5 |
+  | void | 虚空低语 | 技能CD -25%，英雄法力上限 -30% |
+
+### ② 祝福 Boon（每 `BOON_EVERY=2` 波清场后三选一，永久叠加）
+- 表 = `const BOONS=`（15 条，分 攻势/守御/秘法/自然/财富/天灾 六类）；已选的存 `boons[]`，累加值在全局 **`BN`**（`applyBoons()` 重算）。
+- 触发：`tickWaveEnd` 清场分支里 `openBoonCards()`；**没选完就冻住备战倒计时**（`tickWorld` 的 `resting&&cardMode!=='boon'`），所以自动开波也不会抢跑。
+- UI：复用卡片层，`#cards.boon` 模式——没有 3D 预览，中间是一枚大符文 `.boonIc`；**CSS 里 `#cards.boon #cardCancel{display:none}`，祝福必须选一个**。
+- 挂钩点：绝大多数在 `calc()`（atk/hp/ias/crit/cdmg/armor/flat/main/regen/mpre/mp/cdr/summon），全局类在 `damage`(gold) · `tickWorld`(income) · `startTrial`(trialCd) · `castUlt`(ultD/ultCd)；`wall` 这种一次性的走 `b.once()`。
+- `noBoon=true` 整局关掉（`sim` 和测试 SEED 都开着它，**裸跑基准才可比**）。
+
+### ③ 天罚 Ult + 战意 Fury（战斗中唯一的手动操作）
+- **天罚** = dock 里第 5 个牌子 `#ultBtn`（和试炼同款 CD 扫圈）：点按钮进**瞄准**（`setAim`，战场压一层暖色 `#stage.aim`），再点战场落点 → `castUlt(x,y)`。`ULT={cd:55,r:1.75,slow:2,dmg:w=>70+36*w,pct:.08,pctBoss:.035}`。
+  ⚠️ **伤害 = 固定值 + 目标最大生命的 8%（Boss 3.5%）**：怪血量后期是指数爬升的，纯固定值到 20 波以后就是挠痒。
+  ⚠️ 瞄准判定写在 `cv` 的 pointerdown **最前面**，不然会先被"选英雄/进商店"吃掉。
+- **战意** = 连杀 `FURY_N=20` 触发 `FURY_T=8` 秒全体 攻击 +15%、攻速 +40（`furyT` 直接在 `calc` 里读）；`COMBO_KEEP=5` 秒内没有新击杀就清零。连杀数与战意剩余时间显示在顶栏波数后面（零布局成本）。
 
 ## 方块战线·四大试炼 + 宝箱（TRIALS 表在 rpg.js 前部）
 - dock 那一行的4个图标（`.tile.trial`，HTML 在 rpg.html 的 #dock 里；商店已挪进地图，dock 只剩试炼），**点图标才开始试炼**，怪立刻入场，奖励在**击杀时结算**。

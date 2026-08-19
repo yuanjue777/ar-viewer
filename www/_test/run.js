@@ -29,7 +29,7 @@ const W=+arg('wide',900), H=+arg('tall',420);
 
 /* 测试用的开局：给钱 + 塞满英雄技能，方便看特效 */
 const SEED=`
-  gold=99999;wood=99999;
+  gold=99999;wood=99999;noBoon=true;
   if(heroes.length<3){
     heroes.length=0;
     heroes.push(makeHero('warrior',ROW0,2),makeHero('archer',ROW0+1,1),makeHero('mage',ROW0+2,0));
@@ -144,6 +144,20 @@ const SEED=`
     await p.waitForTimeout(400);
     console.log('点第2个装备格替换:',b0,'→',await p.evaluate(()=>heroes[0].equips.map(e=>eqDef(e).n).join('/')),
                 '(第2格应被换掉，旧的退回背包)');
+    /* ---- 祝福三选一（每 BOON_EVERY 波清场后弹） ---- */
+    await p.evaluate(()=>{closeCards();noBoon=false;boons=[];applyBoons();openBoonCards();});
+    await p.waitForTimeout(500);
+    await shot('k6_boon');
+    console.log('祝福卡张数:',await p.evaluate(()=>document.querySelectorAll('#cardRow .chcard').length),
+                '取消键应隐藏:',await p.evaluate(()=>getComputedStyle(document.getElementById('cardCancel')).display==='none'));
+    const atk0=await p.evaluate(()=>heroes[0].atk);
+    await p.evaluate(()=>document.querySelectorAll('#cardRow .chcard')[0].click());
+    await p.waitForTimeout(300);
+    console.log('选完祝福 → 已选:',await p.evaluate(()=>boons.join(',')),
+                'BN 有值:',await p.evaluate(()=>JSON.stringify(Object.entries(BN).filter(e=>e[1]))),
+                '英雄攻击:',atk0,'→',await p.evaluate(()=>heroes[0].atk),
+                '卡片层已关:',await p.evaluate(()=>!document.getElementById('cards').classList.contains('show')));
+    await p.evaluate(()=>{noBoon=true;});
 
   }else if(scene==='sim'){
     /* 平衡测试：不 seed（裸跑），用逻辑时钟快跑，不等真实时间 */
@@ -152,6 +166,7 @@ const SEED=`
     await p.evaluate(()=>{
       heroes.push(makeHero('archer',ROW0,1),makeHero('mage',ROW0+2,0));
       heroes.forEach(h=>{calc(h);h.hp=h.maxHp;h.mp=h.maxMp;});
+      noBoon=true;noOmen=true;        // 裸跑基准不含祝福/异象，保持和 md 里那几行可比
       document.getElementById('launchBtn').click();
       window.__log=[];let t=0;
       window.__sim=setInterval(()=>{
@@ -386,6 +401,21 @@ const SEED=`
       inv.length=0;inv.push({t:'book',name:'闪电链'},{t:'eq',id:'doransword'});renderInv();
       const kids=[...document.getElementById('invItems').children].map(e=>e.className);
       O['背包排布']=kids.join(',');
+      /* ---- 异象 / 祝福 / 天罚 ---- */
+      O['异象数(含晴空)']=OMENS.length;
+      O['异象·血月对怪攻/金币']=(()=>{
+        const sv=wave;wave=9;noOmen=false;setOmen(omenOf('blood'));
+        const m0=mobs.length;spawnMob('normal',{lane:2});const a1=mobs[mobs.length-1].atk;
+        setOmen(omenOf('calm'));spawnMob('normal',{lane:2});const a0=mobs[mobs.length-1].atk;
+        mobs.length=m0;wave=sv;
+        return [Math.round(a0),'→',Math.round(a1),'金币×'+omenOf('blood').m.gold];})();
+      O['祝福池/分类']=[BOONS.length,[...new Set(BOONS.map(b=>b.t))].join('/')];
+      O['祝福·攻击12%']=(()=>{
+        const h=heroes[0],a0=h.atk;boons=['atk'];applyBoons();calc(h);const a1=h.atk;
+        boons=[];applyBoons();calc(h);return a0+'→'+a1;})();
+      O['天罚 CD/范围/w10固伤+比例']=[ULT.cd,ULT.r,Math.round(ULT.dmg(10)),
+        '+'+Math.round(ULT.pct*100)+'%最大生命(Boss '+Math.round(ULT.pctBoss*100)+'%)'];
+      O['战意 触发连杀/持续']=[FURY_N,FURY_T];
       O['帧率徽标已删']=!document.getElementById('fps');
       return O;
     });
@@ -433,6 +463,27 @@ const SEED=`
     await p.evaluate(()=>{document.getElementById('launchBtn').click();});
     await p.waitForTimeout(3500);
     await shot('s1_fight',cl);                        // 战斗中：模型/特效/血条
+    /* ---- 天罚：点按钮进瞄准 → 点战场落点 → 范围伤害 ---- */
+    const uhp0=await p.evaluate(()=>{ultCd=0;renderTrials();
+      document.getElementById('ultBtn').click();
+      return mobs.reduce((a,m)=>a+m.hp,0);});
+    console.log('天罚瞄准中:',await p.evaluate(()=>aiming),
+                '战场高亮:',await p.evaluate(()=>document.getElementById('stage').classList.contains('aim')));
+    await shot('s1b_aim',{x:0,y:H-152,width:460,height:70});
+    await p.mouse.click(W*0.55,H*0.45);
+    await p.waitForTimeout(200);
+    console.log('天罚落地 → 瞄准解除:',await p.evaluate(()=>!aiming),
+                'CD 进入冷却:',await p.evaluate(()=>Math.round(ultCd)),
+                '全场怪总血:',Math.round(uhp0),'→',await p.evaluate(()=>Math.round(mobs.reduce((a,m)=>a+m.hp,0))));
+    console.log('天罚直接砸怪:',await p.evaluate(()=>{
+      if(!mobs.length)return '场上没怪';
+      const m=mobs[0],hp0=m.hp;ultCd=0;castUlt(m.x,m.y+.5);
+      return ['血 '+Math.round(hp0)+'→'+Math.round(m.hp),'减速 '+m.slowT.toFixed(1)+'s'];}));
+    /* ---- 连杀战意 ---- */
+    console.log('连杀→战意:',await p.evaluate(()=>{
+      combo=0;furyT=0;const a0=heroes[0].atk;
+      for(let i=0;i<FURY_N;i++)addCombo();
+      const a1=heroes[0].atk;return [FURY_N,'连杀后 furyT='+Math.round(furyT),'攻击 '+a0+'→'+a1];}));
     await p.evaluate(()=>{wave=12;trialCd.elite=0;startTrial('elite');});
     await p.waitForTimeout(3000);
     await shot('s2_trial',cl);                        // 精英试炼+宝箱

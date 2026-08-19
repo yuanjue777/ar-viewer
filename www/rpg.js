@@ -389,6 +389,171 @@ function makeHero(cls,row,col){
   calc(h);h.hp=h.maxHp;
   return h;
 }
+/* ================= 异象（Omen）：每波开战抽一条战场规则，连天色一起换 =================
+   ⚠️ 所有数值只走全局 OM（当前异象的乘数表），别在各处硬写；加新异象只往 OMENS 里塞一条。
+   前 OMEN_FROM 波不抽（新手期保持干净），BOSS 关固定血月（红天=仪式感）。 */
+const OMEN_FROM=4;
+const OM_BASE={mAtk:1,mHp:1,mArm:0,mRes:0,spd:1,hIas:0,hSpell:1,hMp:1,cdr:0,gold:1,xp:1,income:1};
+const OMENS=[
+  {k:'calm',  n:'晴空万里',c:'#cfe0f5',w:3,sky:0x8fb8d4,sun:0xfff4d6,amb:0xbcd8ff,
+   d:'风平浪静，没有额外规则'},
+  {k:'blood', n:'血月当空',c:'#ff6b7a',w:2,sky:0x54121e,sun:0xffa892,amb:0xff9aa2,
+   m:{mAtk:1.25,gold:2},      d:'怪物攻击 +25%，击杀金币 ×2'},
+  {k:'tide',  n:'灵能潮汐',c:'#7ad4ff',w:2,sky:0x1f3f78,sun:0xbfe4ff,amb:0x9fd0ff,
+   m:{hSpell:1.4,mRes:.15},   d:'法术伤害 +40%，怪物魔抗 +15%'},
+  {k:'iron',  n:'铁幕降临',c:'#ccd0dc',w:2,sky:0x5c6470,sun:0xe8ecf4,amb:0xc4ccd8,
+   m:{mArm:8,income:2},       d:'怪物护甲 +8，金矿/伐木场产出 ×2'},
+  {k:'gale',  n:'疾风之诗',c:'#8ef0c0',w:2,sky:0x4fae94,sun:0xe4fff2,amb:0xa8ffd8,
+   m:{spd:1.35,hIas:40},      d:'怪物与英雄移速 +35%，英雄攻速 +40'},
+  {k:'bounty',n:'丰饶之地',c:'#ffd47a',w:2,sky:0xc8a256,sun:0xffeeb8,amb:0xffd9a0,
+   m:{mHp:1.2,gold:1.5,xp:1.5},d:'怪物生命 +20%，击杀金币与经验 ×1.5'},
+  {k:'void',  n:'虚空低语',c:'#c9a0ff',w:2,sky:0x2a1748,sun:0xcbb0ff,amb:0xb08cff,
+   m:{cdr:.25,hMp:.7},        d:'技能冷却 -25%，英雄法力上限 -30%'},
+];
+let omen=null,OM=Object.assign({},OM_BASE),noOmen=false;
+function omenOf(k){return OMENS.find(o=>o.k===k)||OMENS[0];}
+function setOmen(o){
+  omen=o;OM=Object.assign({},OM_BASE,o.m||{});
+  if(R3.mood)R3.mood(o.sky,o.sun,o.amb);
+  for(const h of heroes){const rt=h.hp/h.maxHp;calc(h);h.hp=h.maxHp*rt;h.mp=Math.min(h.mp,h.maxMp);}
+}
+function rollOmen(){
+  if(noOmen||wave<OMEN_FROM)return setOmen(omenOf('calm'));
+  if(isBossWave(wave))return setOmen(omenOf('blood'));
+  let tot=0;for(const o of OMENS)tot+=o.w;
+  let r=Math.random()*tot;
+  for(const o of OMENS){r-=o.w;if(r<=0)return setOmen(o);}
+  setOmen(OMENS[0]);
+}
+/* ================= 祝福（Boon）：每 BOON_EVERY 波清场后三选一，永久叠加 =================
+   这是本作的 roguelite 抉择点：波与波之间玩家必须做一次取舍，两局不会长一样。
+   ⚠️ 英雄类祝福只往 BN 里累加，统一在 calc() 结算；全局类（金币/产出/试炼CD）在各自位置读 BN。
+   加新祝福：往 BOONS 塞一条 + 在 calc 或对应函数里读一次 BN.<key> 就行。 */
+const BOON_EVERY=2;
+const BN_BASE={atk:0,hp:0,ias:0,crit:0,cdmg:0,armor:0,flat:0,main:0,regen:0,
+               mpre:0,mp:0,cdr:0,summon:0,gold:0,income:0,trialCd:0,ultD:0,ultCd:0};
+const BOONS=[
+  {k:'atk',t:'攻势',   n:'战意烙印',ic:'⚔',c:'#ff8f6a',d:'全体英雄攻击 +12%',            m:{atk:.12}},
+  {k:'hp',t:'守御',    n:'巨人血脉',ic:'❤',c:'#6ee7a0',d:'全体英雄最大生命 +15%',        m:{hp:.15}},
+  {k:'ias',t:'攻势',   n:'迅捷之风',ic:'≫',c:'#8ef0c0',d:'全体英雄攻速 +25',             m:{ias:25}},
+  {k:'crit',t:'攻势',  n:'致命洞察',ic:'✦',c:'#ff6b6b',d:'暴击率 +6%，暴击伤害 +20%',    m:{crit:.06,cdmg:.2}},
+  {k:'armor',t:'守御', n:'磐岩壁垒',ic:'⛨',c:'#c8c0a0',d:'护甲 +6，固定减伤 +5',         m:{armor:6,flat:5}},
+  {k:'main',t:'秘法',  n:'天赋觉醒',ic:'★',c:'#ffd47a',d:'全体英雄主属性 +14',           m:{main:14}},
+  {k:'regen',t:'守御', n:'生命潮汐',ic:'❉',c:'#7ae0a8',d:'每秒回复 1.2% 最大生命',       m:{regen:.012}},
+  {k:'mana',t:'秘法',  n:'秘法充盈',ic:'◈',c:'#8db8ff',d:'回蓝 +1.5/s，法力上限 +20%',   m:{mpre:1.5,mp:.2}},
+  {k:'cdr',t:'秘法',   n:'时之沙漏',ic:'⧗',c:'#c9a0ff',d:'技能冷却 -8%',                 m:{cdr:.08}},
+  {k:'summon',t:'自然',n:'自然之友',ic:'❦',c:'#9fe07a',d:'召唤物属性 +25%',              m:{summon:.25}},
+  {k:'gold',t:'财富',  n:'点石成金',ic:'◆',c:'#f0c46a',d:'击杀金币 +30%',                m:{gold:.3}},
+  {k:'income',t:'财富',n:'商路繁荣',ic:'⚒',c:'#e0a86a',d:'金矿与伐木场产出 +40%',        m:{income:.4}},
+  {k:'trial',t:'自然', n:'试炼精通',ic:'◎',c:'#9fd0ff',d:'四大试炼冷却 -20%',            m:{trialCd:.2}},
+  {k:'ult',t:'天灾',   n:'天罚强化',ic:'☄',c:'#ff9f5a',d:'天罚伤害 +40%、冷却 -15%',     m:{ultD:.4,ultCd:.15}},
+  {k:'wall',t:'守御',  n:'城墙加固',ic:'⌂',c:'#8ab8d8',d:'立刻 +2 基地生命（可叠加）',   once:h=>{lives+=2;}},
+];
+let boons=[],BN=Object.assign({},BN_BASE),noBoon=false;
+function boonCount(k){return boons.filter(x=>x===k).length;}
+function applyBoons(){
+  BN=Object.assign({},BN_BASE);
+  for(const k of boons){
+    const b=BOONS.find(x=>x.k===k);
+    if(b&&b.m)for(const f in b.m)BN[f]+=b.m[f];
+  }
+}
+function takeBoon(b){
+  boons.push(b.k);applyBoons();
+  if(b.once)b.once();
+  for(const h of heroes){const rt=h.hp/h.maxHp;calc(h);h.hp=h.maxHp*rt;h.mp=Math.min(h.mp,h.maxMp);}
+  closeCards();updateHUD();renderInfo();
+  showToast(`<b style="color:${b.c}">${b.ic} ${b.n}</b><br><span style="color:#a99cb8">${b.d}</span>`);
+}
+/* 清场后弹三选一（选完才继续备战倒计时，见 tickWorld 的 cardMode==='boon' 判定） */
+function openBoonCards(){
+  if(noBoon)return;
+  const pool=BOONS.slice();
+  const pick=[];
+  for(let i=0;i<3&&pool.length;i++)pick.push(pool.splice(Math.floor(Math.random()*pool.length),1)[0]);
+  cardMode='boon';
+  cardTitle.textContent='选择一项祝福';
+  cardRow.innerHTML='';cardInfo.innerHTML='';cardInfo.classList.remove('show');
+  cardsEl.classList.add('boon');
+  for(const b of pick){
+    const had=boonCount(b.k);
+    const el=document.createElement('div');
+    el.className='chcard';
+    el.innerHTML=`<div class="hcName" style="color:${b.c}">${b.n}</div>
+      <div class="boonIc" style="color:${b.c}">${b.ic}</div>
+      <div class="hcTal"><div class="tn" style="color:${b.c}">${b.t} · 祝福</div>
+        <div class="td">${b.d}</div></div>
+      <div class="hcBuy">${had?`选择 · 已有 ×${had}`:'选择'}</div>`;
+    el.onclick=()=>takeBoon(b);
+    cardRow.appendChild(el);
+  }
+  cardsEl.classList.add('show');
+}
+/* 顶栏「祝福 ×N」徽章点开：列出已选的全部祝福 */
+function boonListTxt(){
+  if(!boons.length)return '<b style="color:#f0c46a">祝福</b><br><span style="color:#8b809f">还没有获得祝福（每 '+BOON_EVERY+' 波清场后三选一）</span>';
+  const cnt={};for(const k of boons)cnt[k]=(cnt[k]||0)+1;
+  const rows=Object.keys(cnt).map(k=>{
+    const b=BOONS.find(x=>x.k===k);
+    return `<span style="color:${b.c}">${b.ic} ${b.n}${cnt[k]>1?' ×'+cnt[k]:''}</span>`;
+  });
+  return `<b style="color:#f0c46a">已获祝福 ${boons.length} 项</b><br>`+rows.join('　');
+}
+/* ================= 天罚（Ult）+ 战意（Fury）：给玩家在战斗中真正能做的两件事 =================
+   天罚 = dock 最右的按钮，点一下进入瞄准，再点战场落陨石（范围魔法伤害 + 减速）。
+   战意 = 连杀累计，满 FURY_N 触发全体狂暴数秒。两者都不吃英雄的技能位。 */
+/* 天罚伤害 = 固定值 + 目标最大生命的一部分（怪血量后期指数爬升，纯固定值到后面就是挠痒） */
+const ULT={cd:55,r:1.75,slow:2,dmg:w=>70+36*w,pct:.08,pctBoss:.035};
+const FURY_N=20, FURY_T=8, COMBO_KEEP=5;
+let ultCd=0,aiming=false,combo=0,comboT=0,furyT=0;
+function ultReady(){return started&&!over&&!resting&&ultCd<=0;}
+function ultCost(){return ULT.cd*(1-BN.ultCd);}
+function setAim(v){
+  aiming=v;
+  const st=document.getElementById('stage');
+  if(st)st.classList.toggle('aim',!!v);
+  const b=document.getElementById('ultBtn');
+  if(b)b.classList.toggle('aim',!!v);
+}
+/* 落点结算：范围内全部吃一发魔法伤害 + 减速，屏幕重震 */
+function castUlt(x,y){
+  const mul=1+BN.ultD, d=ULT.dmg(wave)*mul;
+  SRC=null;
+  fx.push({type:'aoe',x,y,rr:ULT.r,t:.55,max:.55,color:'#ff9f5a'});
+  fx.push({type:'rock',x,y,rr:ULT.r,t:.6,max:.6,color:'#ffb27f'});
+  for(const m of mobs){
+    if(m.dead)continue;
+    if(Math.hypot(m.x-x,(m.y+.5)-y)<=ULT.r+m.r){
+      magDamage(m,d+m.maxHp*(m.type==='boss'?ULT.pctBoss:ULT.pct)*mul,'#ffb27f',1);
+      m.slowT=Math.max(m.slowT,ULT.slow);m.slowF=Math.max(m.slowF,.45);m.frost=Math.max(m.frost,ULT.slow);
+    }
+  }
+  R3.shake(.26);
+  ultCd=ultCost();
+  setAim(false);
+  renderTrials();
+}
+/* 连杀战意：COMBO_KEEP 秒内不再击杀就归零；满 FURY_N 全体狂暴 FURY_T 秒 */
+function addCombo(){
+  combo++;comboT=COMBO_KEEP;
+  if(combo>=FURY_N){
+    combo=0;furyT=FURY_T;
+    for(const h of heroes){
+      calc(h);
+      if(h.alive)fx.push({type:'aoe',x:h.x,y:h.row+.5,rr:1.1,t:.5,max:.5,color:'#ffd47a'});
+    }
+    R3.shake(.1);
+    showToast(`<b style="color:#ffd47a">⚡ 战意爆发！</b><br><span style="color:#a99cb8">全体英雄 攻击 +15%、攻速 +40，持续 ${FURY_T} 秒</span>`);
+  }
+}
+function tickUlt(dt){
+  if(ultCd>0)ultCd=Math.max(0,ultCd-dt);
+  if(comboT>0){comboT-=dt;if(comboT<=0)combo=0;}
+  if(furyT>0){
+    furyT-=dt;
+    if(furyT<=0){furyT=0;for(const h of heroes)calc(h);}   // 狂暴结束要重算回去
+  }
+}
 function calc(h){
   const b=CLASSES[h.cls],a=advOf(h);
   const am=h.tier?1.35:1;
@@ -429,11 +594,11 @@ function calc(h){
   h.aura=aura;
   const devA=Math.round(h.devA||0);   // 奉献光环累积给的主属性
   const ts=h.titanS||0;   // 泰坦的坚决层数
-  h.str=Math.round((b.attr.str+b.grow.str*(h.lv-1))*am)+eqStr+Math.round(h.legS||0)+(b.main==='str'?aura+devA:0);
-  h.agi=Math.round((b.attr.agi+b.grow.agi*(h.lv-1))*am)+eqAgi+Math.round(h.legA||0)+(b.main==='agi'?aura+devA:0);
-  h.int=Math.round((b.attr.int+b.grow.int*(h.lv-1))*am)+eqInt+Math.round(h.legI||0)+(b.main==='int'?aura+devA:0);
-  h.atk=Math.round(b.wep*(a?a.atk:1)+h[b.main]+eqAtk+ts*10+(h.bloodS||0)*5);
-  h.maxHp=Math.round((b.hpB+h.str*8)*(a?a.hp:1)+eqHp);
+  h.str=Math.round((b.attr.str+b.grow.str*(h.lv-1))*am)+eqStr+Math.round(h.legS||0)+(b.main==='str'?aura+devA+BN.main:0);
+  h.agi=Math.round((b.attr.agi+b.grow.agi*(h.lv-1))*am)+eqAgi+Math.round(h.legA||0)+(b.main==='agi'?aura+devA+BN.main:0);
+  h.int=Math.round((b.attr.int+b.grow.int*(h.lv-1))*am)+eqInt+Math.round(h.legI||0)+(b.main==='int'?aura+devA+BN.main:0);
+  h.atk=Math.round((b.wep*(a?a.atk:1)+h[b.main]+eqAtk+ts*10+(h.bloodS||0)*5)*(1+BN.atk)*(furyT>0?1.15:1));
+  h.maxHp=Math.round(((b.hpB+h.str*8)*(a?a.hp:1)+eqHp)*(1+BN.hp));
   // 护卫专精·护甲光环：3格内友方英雄 +5+lv 甲，护卫自己双倍（不叠加取最高）
   let armAura=0;
   for(const o of heroes){
@@ -441,7 +606,7 @@ function calc(h){
     if(o!==h&&Math.hypot((o.x||0)-(h.x||0),o.row-h.row)>3)continue;
     armAura=Math.max(armAura,(5+(o.specLv||1))*(o===h?2:1));
   }
-  h.armor=Math.round((b.baseArmor+h.agi/7+eqArmor+ts*2+armAura)*10)/10;
+  h.armor=Math.round((b.baseArmor+h.agi/7+eqArmor+BN.armor+ts*2+armAura)*10)/10;
   h.mres=Math.min(.75,.25+eqMres+ts*.01);
   // 魔兽/DotA公式：每秒攻击=(1+攻速/100)/BAT；1敏=1攻速；上限400⇒最多5/BAT次每秒
   // 精灵游侠专精：迅捷额外降BAT
@@ -458,27 +623,27 @@ function calc(h){
     h.atk=Math.round(h.atk*(1+r));h.dmgMul=1+r;
   }
   // ⚠️ 用户 2026-07 定：**1敏 = 0.5 攻速点**（1:1 → 0.3 → 现定在 0.5）
-  h.ias=Math.min(400,h.agi*.5+eqAspd+windIas+(bhOn?20+3*bhLv:0)+(h.stormT>0?30:0)+(h.sheepS||0)*10);
+  h.ias=Math.min(400,OM.hIas+BN.ias+(furyT>0?40:0)+h.agi*.5+eqAspd+windIas+(bhOn?20+3*bhLv:0)+(h.stormT>0?30:0)+(h.sheepS||0)*10);
   h.interval=h.bat/(1+h.ias/100);
-  h.cdr=Math.min(.5,eqCdr+(key==='archmage'?(10+2*sp)/100:0));
-  h.block=eqBlock;h.flat=eqFlat;   // block=固定格挡(只挡普攻)，flat=固定减免；当前怪只有普攻，两者效果相同
+  h.cdr=Math.min(.5,OM.cdr+BN.cdr+eqCdr+(key==='archmage'?(10+2*sp)/100:0));
+  h.block=eqBlock;h.flat=eqFlat+BN.flat;   // block=固定格挡(只挡普攻)，flat=固定减免；当前怪只有普攻，两者效果相同
   h.blockP=Math.min(.8,eqBlockP/100);   // 穷鬼盾：普攻伤害百分比减免（上限80%）
-  h.critAdd=eqCrit/100;      // 装备额外暴击率
-  h.critDmg=eqCdmg/100;      // 装备额外暴击伤害
+  h.critAdd=eqCrit/100+BN.crit;      // 装备额外暴击率
+  h.critDmg=eqCdmg/100+BN.cdmg;      // 装备额外暴击伤害
   h.healP=1+eqHeal/100;      // 治疗强度（牧师祷言吃这个）
   h.sunder=eqSunder;         // 锈蚀之刃/幽冥之刃：普攻削甲（同名唯一，异名叠加）
   h.armorPen=key==='musket'?Math.min(.9,.30+.02*sp):0;   // 火枪兵·精准射击：无视百分比护甲
-  h.sumB=1+eqSummon;         // 召唤物强度倍率
+  h.sumB=1+eqSummon+BN.summon;         // 召唤物强度倍率
   h.titan=!!proc.titan;      // 泰坦的坚决：受伤叠层
   h.silenced=!!proc.silence; // 禁制匕首：沉默携带者
   h.lifesteal=proc.blood?(h.bloodS||0)*.01:0;   // 战争领主的嗜血
   h.sizeMul=1+ts*.02;        // 体型随层数变大
   h.range=b.range+(a?a.range:0)+eqRange+(key==='musket'?1+.1*sp:0);
   h.splash=b.splash+(a?a.splash:0);
-  h.maxMp=10+h.int*3;
-  h.hpRegen=h.str*.3;                  // 1力 = 0.3 生命回复/s（用户 2026-07 加，英雄原本完全不回血）
-  h.mpRegen=1+h.int*.01+eqMpre;        // 1智 = 0.01 回蓝/s
-  h.spellP=1+h.int*.001;               // 1智 = +0.1% 法术伤害（作用在所有 magDamage 上）
+  h.maxMp=Math.round((10+h.int*3)*OM.hMp*(1+BN.mp));
+  h.hpRegen=h.str*.3+h.maxHp*BN.regen;                  // 1力 = 0.3 生命回复/s（用户 2026-07 加，英雄原本完全不回血）
+  h.mpRegen=1+h.int*.01+eqMpre+BN.mpre;        // 1智 = 0.01 回蓝/s
+  h.spellP=(1+h.int*.001)*OM.hSpell;               // 1智 = +0.1% 法术伤害（作用在所有 magDamage 上）
   if(h.mp===undefined)h.mp=h.maxMp;
   h.mp=Math.min(h.mp,h.maxMp);
   if(h.hp!==undefined)h.hp=Math.min(h.hp,h.maxHp);
@@ -521,6 +686,9 @@ function reset(){
   trialCd={};for(const k of TRIAL_KEYS)trialCd[k]=0;
   renderTrials();
   sel=null;invSel=null;over=false;openShop=null;SRC=null;
+  boons=[];applyBoons();
+  ultCd=0;combo=0;comboT=0;furyT=0;setAim(false);
+  setOmen(omenOf('calm'));
   closeShop();closeCards();updateHUD();renderInfo();renderInv();refreshHire();
 }
 function waveComp(w){
@@ -568,6 +736,7 @@ function formSlots(n,kind){
 function startWave(){
   if(wave>=TOTAL_WAVES)return;
   wave++;
+  rollOmen();
   resting=false;waveT=0;battleT=0;
   // 整波一起入场（不再一只只放）：排成纵深队形从右边压上来
   // 装备叠层每波重置：泰坦 / 嗜血 / 羊刀 / 狂涌 / 回响 / 诅咒
@@ -592,7 +761,10 @@ function startWave(){
     const e=list[li], sl=slots[si];
     spawnMob(e.t,{dx:sl.dx,lane:sl.lane,elite:e.elite,mul:e.mul,hmul:e.hmul,rs:e.rs});
   });
-  if(isEliteWave(wave)&&!isBossWave(wave))showToast(`<b style="color:#f0c46a">第 ${wave} 波 · 精英波</b>　混入精英怪`);
+  let wmsg=`<b style="color:${omen.c}">第 ${wave} 波 · ${omen.n}</b><br><span style="color:#a99cb8">${omen.d}</span>`;
+  if(isBossWave(wave))wmsg+=`<br><b style="color:#ff5d5d">BOSS 关卡</b>`;
+  else if(isEliteWave(wave))wmsg+=`<br><b style="color:#f0c46a">精英波：混入精英怪</b>`;
+  showToast(wmsg);
   updateHUD();renderInfo();
 }
 function spawnMob(type,opt){
@@ -619,9 +791,9 @@ function spawnMob(type,opt){
   let hMul=mul*(opt.hmul||1);
   if(wave>5)hMul*=Math.pow(1.09,wave-5);
   mobs.push({type,row,y,x:COLS+.5+Math.random()*.4+(opt.dx||0),
-    hp:b.hp*hMul,maxHp:b.hp*hMul,spd:b.spd,atk:b.atk*mul,r:b.r*(opt.rs||1),atkR:b.atkR,
+    hp:b.hp*hMul*OM.mHp,maxHp:b.hp*hMul*OM.mHp,spd:b.spd,atk:b.atk*mul*OM.mAtk,r:b.r*(opt.rs||1),atkR:b.atkR,
     reward:Math.round(b.reward*(opt.elite?2:1)),xp:Math.round(b.xp*(opt.elite?2:1)),
-    lives:b.lives,armor:b.armor,mres:b.mres,elite:opt.elite||0,
+    lives:b.lives,armor:b.armor+OM.mArm,mres:Math.min(.85,b.mres+OM.mRes),elite:opt.elite||0,
     trial:opt.trial||null,bonus:opt.bonus||0,chest:opt.chest||0,
     color:b.color,cd:0,fight:false,slowT:0,slowF:0,frost:0,asT:0,asF:0,sunderT:0,sunder:0});
 }
@@ -635,7 +807,7 @@ function startTrial(k){
   if(resting){showToast('备战时间内不能开试炼<br>等倒计时结束，或点 <b style="color:var(--gold)">⏩ 下一波</b>');return;}
   if(wave<T.minWave){showToast(`<b style="color:${T.color}">${T.n}</b> 第 ${T.minWave} 波后开放`);return;}
   if(trialCd[k]>0){showToast(`<b style="color:${T.color}">${T.n}</b> 冷却中 ${Math.ceil(trialCd[k])}s`);return;}
-  trialCd[k]=T.cd;
+  trialCd[k]=T.cd*(1-BN.trialCd);
   // 一波比一波难：数量与强度都跟当前波数走
   const w=Math.max(1,wave);
   if(k==='elite'){
@@ -675,14 +847,14 @@ function damage(m,d,color,big){
     m.dead=true;
     if(corpses.length<24)corpses.push({type:m.type,x:m.x,y:m.y,r:m.r,rot:0,t:.6,max:.6});
     if(m.type==='boss')R3.shake(.22);else if(m.type==='tank')R3.shake(.1);
-    gold+=m.reward;
-    gainXp(m.xp);
+    gold+=Math.round(m.reward*OM.gold*(1+BN.gold));
+    gainXp(Math.round(m.xp*OM.xp));
     // 试炼奖励：击杀即结算
     if(m.trial==='gold'){gold+=m.bonus;dnum(m.x,m.y+.2,m.bonus,'#f0c46a');}
     else if(m.trial==='wood'){wood+=m.bonus;dnum(m.x,m.y+.2,m.bonus,'#7ec87e');}
     else if(m.trial==='xp'){gainXp(m.bonus);dnum(m.x,m.y+.2,m.bonus,'#b070ff');}
     else if(m.trial==='elite'&&m.chest)dropChest(m.x,m.y+.5);
-    onKill();
+    onKill();addCombo();
     updateHUD();refreshAfford();
     fx.push({type:'ring',x:m.x,y:m.y+.5,rr:m.r*1.7,t:.28,max:.28,color:m.color});
   }
@@ -792,10 +964,10 @@ function tickWorld(dt){
     incomeT+=dt;
     while(incomeT>=1){
       incomeT-=1;
-      gold+=mineW*mineLv;wood+=millW*millLv;updateHUD();refreshAfford();
+      gold+=mineW*mineLv*OM.income*(1+BN.income);wood+=millW*millLv*OM.income*(1+BN.income);updateHUD();refreshAfford();
     }
     // 出怪后不限时（只累计战斗用时）；清场后进入备战倒计时，到点自动开下一波
-    if(resting){
+    if(resting&&cardMode!=='boon'){        // 祝福三选一没选完就把备战计时冻住
       waveT-=dt;
       if(autoNext&&wave<TOTAL_WAVES)goNextWave(true);   // 自动开波：不等备战倒计时
       else if(waveT<=0)startWave();
@@ -827,7 +999,7 @@ function tickMobs(dt){
     if(m.frost>0)m.frost-=dt;        // 冰霜覆层显示时长
     if(m.asT>0)m.asT-=dt;            // 攻速减益（大地震颤）
     if(m.sunderT>0)m.sunderT-=dt;    // 破甲计时（幽冥刃）
-    const spd=m.spd*(m.slowT>0?1-m.slowF:1);
+    const spd=m.spd*OM.spd*(m.slowT>0?1-m.slowF:1);
     m.fight=false;
     // 找仇恨范围内最近的我方单位（英雄或熊灵）
     let tgt=null,td=1e9;
@@ -936,6 +1108,7 @@ function spawnWisp(tree){
 }
 /* 区域技能（冰雹/火焰风暴/大地震颤）+ 试炼CD + 宝箱 */
 function tickAreas(dt){
+  tickUlt(dt);
   /* 闪电链：每 0.35 秒跳一次，跳完为止（唯一的持续型技能） */
   for(const ch of chains){
     ch.cd-=dt;
@@ -1041,7 +1214,7 @@ function tickHeroes(dt){
     // 开波后从左往右推进；没敌人时压上去，清场后瞬间传回本阵
     const home=h.col+.5;
     if(started&&!over&&mobs.length){
-      if(!best)h.x=Math.min(h.x+HERO_SPD*dt,COLS-.7);
+      if(!best)h.x=Math.min(h.x+HERO_SPD*OM.spd*dt,COLS-.7);
     }else if(h.x!==home){
       fx.push({type:'ring',x:h.x,y:h.row+.5,rr:.5,t:.3,max:.3,color:'#8ab8d8'});
       h.x=home;
@@ -1113,6 +1286,7 @@ function tickWaveEnd(){
     updateHUD();
     if(wave>=TOTAL_WAVES){endGame(true);return;}
     resting=true;waveT=REST_TIME;
+    if(wave%BOON_EVERY===0&&wave<TOTAL_WAVES)openBoonCards();
     showToast(`第 ${wave} 波清空（用时 ${Math.round(battleT)}s）<br>备战 <b style="color:#8ab8d8">${REST_TIME}s</b> 后出下一波，可点右上角 <b style="color:var(--gold)">⏩</b> 提前开波换金币`
       +(isBossWave(wave+1)?`<br><b style="color:#ff5d5d">⚠ 第 ${wave+1} 波 · BOSS 关卡即将来临</b>`:''));
     renderInfo();
@@ -1360,6 +1534,7 @@ const uiMoney=document.getElementById('uiMoney'),uiWood=document.getElementById(
       uiLife=document.getElementById('uiLife'),uiWave=document.getElementById('uiWave'),
       info=document.getElementById('info'),invEl=document.getElementById('invItems'),
       toast=document.getElementById('toast'),ghost=document.getElementById('dragGhost'),
+      uiOmen=document.getElementById('uiOmen'),
       uiBoss=document.getElementById('uiBoss'),
       uiBossFill=uiBoss.querySelector('i'),uiBossTxt=uiBoss.querySelector('span');
 /* BOSS 总血条：画在顶栏（金币那一行）中段，每帧刷新，场上没 Boss 就隐藏 */
@@ -1380,11 +1555,20 @@ function updateHUD(){
   uiMoney.textContent=Math.floor(gold);uiWood.textContent=Math.floor(wood);
   uiLife.textContent=lives;
   uiWave.textContent=wave+'/'+TOTAL_WAVES+
-    (!started||over?'':resting?' · 备战'+Math.ceil(waveT)+'s':(wave?' · 战斗'+Math.floor(battleT)+'s':''));
+    (!started||over?'':resting?' · 备战'+Math.ceil(waveT)+'s':(wave?' · 战斗'+Math.floor(battleT)+'s':''))
+    +(furyT>0?' · 战意'+Math.ceil(furyT)+'s':(combo>1?' · 连杀'+combo:''));
   const nb=document.getElementById('nextBtn');
   const canNext=started&&!over&&resting&&wave<TOTAL_WAVES;
   nb.style.display=canNext?'':'none';
   if(canNext)nb.textContent='⏩ 下一波 +'+nextBonus()+'金';
+  if(uiOmen){
+    const showOm=started&&!over&&omen;
+    uiOmen.style.display=showOm?'':'none';
+    if(showOm){
+      uiOmen.textContent=omen.n+(boons.length?' ✦'+boons.length:'');
+      uiOmen.style.color=omen.c;uiOmen.style.borderColor=omen.c;
+    }
+  }
   renderTrials();refreshHire();
   // 英雄面板的HP/MP实时刷新（不重建DOM，避免打断点击）
   const hv=document.getElementById('hpVal'),mv=document.getElementById('mpVal'),h=selHero();
@@ -1421,6 +1605,7 @@ function attrRows(base,grow,main){
 }
 function closeCards(){
   cardMode=null;cardsEl.classList.remove('show');cardsEl.classList.remove('give');
+  cardsEl.classList.remove('boon');
   forgeBtn.style.display='none';forgeBtn.onclick=null;
   cardRow.innerHTML='';cardInfo.innerHTML='';cardInfo.classList.remove('show');
   R3.cardHide();
@@ -1844,8 +2029,23 @@ for(const b of trialBtns){
     }
   });
 }
+const ultBtn=document.getElementById('ultBtn');
+if(ultBtn)ultBtn.addEventListener('click',()=>{
+  if(aiming){setAim(false);return;}
+  if(ultReady()){
+    setAim(true);
+    showToast('<b style="color:#ff9f5a">\u2604 \u5929\u7f5a</b><br><span style="color:#a99cb8">\u70b9\u6218\u573a\u4efb\u610f\u4f4d\u7f6e\u843d\u4e0b\uff08'+ULT.r+'\u683c\u8303\u56f4\uff0c'+Math.round(ULT.dmg(wave)*(1+BN.ultD))+' \u9b54\u6cd5\u4f24\u5bb3 + \u51cf\u901f\uff09</span>');
+  }else showToast('<b style="color:#ff9f5a">\u2604 \u5929\u7f5a</b>\uff08CD '+Math.round(ultCost())+'s\uff09<br><span style="color:#a99cb8">\u6218\u6597\u4e2d\u53ef\u7528\uff1a\u70b9\u6309\u94ae\u540e\u518d\u70b9\u6218\u573a\u843d\u70b9\uff0c\u8303\u56f4\u4f24\u5bb3\u5e76\u51cf\u901f</span>'
+    +(ultCd>0?'<br>\u51b7\u5374\u4e2d '+Math.ceil(ultCd)+'s':(resting?'<br>\u5907\u6218\u671f\u4e0d\u80fd\u7528':'')));
+});
 function renderTrials(){
   if(!trialCd)return;
+  if(ultBtn){
+    const rdy=ultReady();
+    ultBtn.classList.toggle('ready',rdy);
+    ultBtn.querySelector('.cdmask').style.setProperty('--p',(ultCd/Math.max(1,ultCost())*360)+'deg');
+    ultBtn.querySelector('.lv').textContent=aiming?'\u9009\u843d\u70b9':(ultCd>0?Math.ceil(ultCd)+'s':(started&&!over?(resting?'\u5907\u6218\u4e2d':'\u5c31\u7eea'):'\u5f85\u542f\u52a8'));
+  }
   for(const b of trialBtns){
     const k=b.dataset.trial,T=TRIALS[k],cd=trialCd[k]||0;
     const locked=wave<T.minWave;
@@ -2112,6 +2312,10 @@ cv.addEventListener('pointerdown',ev=>{
   const gp=R3.pick(ev);
   if(!gp)return;
   const fx0=gp.x,fy0=gp.y;
+  if(aiming){                       // 天罚瞄准中：这一下点的是落点，不选英雄也不进商店
+    if(fx0<HCOLS-.5){setAim(false);showToast('天罚要落在战线上');return;}
+    castUlt(fx0,fy0);return;
+  }
   // 商店建筑（摆在战场左侧）
   const shop=R3.shopAt(fx0,fy0);
   if(shop){sel=null;invSel=null;setShop(shop);return;}
@@ -2223,5 +2427,10 @@ function loop(now){
   updateBossBar();
   R3.draw();
 }
+if(uiOmen)uiOmen.onclick=()=>{
+  if(!omen)return;
+  showToast(`<b style="color:${omen.c}">异象 · ${omen.n}</b><br><span style="color:#a99cb8">${omen.d}</span>`
+    +`<br><span style="color:#8b809f">每波开战随机降临，第 ${OMEN_FROM} 波起生效</span><br>`+boonListTxt());
+};
 reset();resize();
 requestAnimationFrame(loop);
