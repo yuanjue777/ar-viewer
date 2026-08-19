@@ -157,6 +157,21 @@ const SEED=`
                 'BN 有值:',await p.evaluate(()=>JSON.stringify(Object.entries(BN).filter(e=>e[1]))),
                 '英雄攻击:',atk0,'→',await p.evaluate(()=>heroes[0].atk),
                 '卡片层已关:',await p.evaluate(()=>!document.getElementById('cards').classList.contains('show')));
+    /* 清场触发 + 冻结备战倒计时（自动开波也不许抢跑） */
+    console.log('祝福触发流程:',await p.evaluate(()=>{
+      closeCards();noBoon=false;autoNext=true;boons=[];applyBoons();
+      if(!started)document.getElementById('launchBtn').click();
+      const out={};wave=2;mobs.length=0;queue.length=0;cleared=false;
+      for(let i=0;i<3;i++)update(0.05);
+      out.清场后弹卡=document.getElementById('cards').classList.contains('show')&&cardMode==='boon';
+      const t0=waveT;
+      for(let i=0;i<40;i++)update(0.05);
+      out.倒计时冻住=Math.abs(waveT-t0)<1e-6;out.没抢跑开波=wave===2;
+      document.querySelectorAll('#cardRow .chcard')[0].click();
+      for(let i=0;i<20;i++)update(0.05);
+      out.选完恢复倒计时=waveT<t0;
+      noBoon=true;autoNext=false;
+      return out;}));
     await p.evaluate(()=>{noBoon=true;});
 
   }else if(scene==='sim'){
