@@ -174,6 +174,23 @@ const SEED=`
       return out;}));
     await p.evaluate(()=>{noBoon=true;});
 
+  }else if(scene==='win'){
+    /* 窗口尺寸兼容矩阵：手机横屏 / 电脑窗口 / 竖窗口(侧栏) / 窄条，
+       检查 顶栏和dock不被挤出去、战场没被压成一条缝、「请横屏」不挡电脑 */
+    for(const [w,h] of [[900,420],[1180,760],[760,900],[520,820]]){
+      await p.setViewportSize({width:w,height:h});
+      await p.waitForTimeout(500);
+      const m=await p.evaluate(()=>{
+        const hd=document.querySelector('header'),dk=document.getElementById('dock'),
+              st=document.getElementById('stage');
+        return {头栏溢出:hd.scrollWidth>hd.clientWidth,dock溢出:dk.scrollWidth>dk.clientWidth,
+                战场:[st.clientWidth,st.clientHeight],
+                横屏遮罩:getComputedStyle(document.getElementById('rotate')).display!=='none',
+                战场占比:Math.round(st.clientHeight/window.innerHeight*100)+'%'};});
+      console.log(String(w+'x'+h).padEnd(9),JSON.stringify(m));
+      await shot('w_'+w+'x'+h);
+    }
+
   }else if(scene==='sim'){
     /* 平衡测试：不 seed（裸跑），用逻辑时钟快跑，不等真实时间 */
     await p.evaluate(()=>document.querySelectorAll('#cardRow .chcard')[0].click());

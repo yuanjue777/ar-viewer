@@ -1176,7 +1176,11 @@ function resize(){
   shopShift=min(SHIFT_MAX,max(0,(hw-needW)*2));
   layoutShops();
   const tx=xR-hw;
-  const tz=ROWS-(hh-.02-yc*cos(TILT))/sin(TILT);   // 下沿贴第5行，富余全给上面
+  /* 下沿贴第5行、富余全给上面（用户指定）——但**富余封顶 needH*0.9**：
+     电脑窗口不像手机横屏那么扁（asp 只有 1.5~2），富余会大到把战场怼到屏幕最底边、
+     上面空出一大片草地，看着像坏了。封顶之后手机横屏(asp≈4，富余本来就小)行为不变。 */
+  const anchor=min(hh-needH,needH*.9);
+  const tz=ROWS-(needH+anchor-.02-yc*cos(TILT))/sin(TILT);
   cam.position.set(tx,yc+CAM_D*sin(TILT),tz+CAM_D*cos(TILT));
   camBase.copy(cam.position);
   cam.lookAt(tx,yc,tz);

@@ -390,12 +390,52 @@
   #overlay .cls i{display:inline-block;width:9px;height:9px;margin-right:5px;
     transform:rotate(45deg);box-shadow:0 0 6px currentColor}
 
+  /* 「建议横屏」提示层：⚠️ 只对触摸设备的竖屏自动弹（电脑上窗口再窄也不挡），
+     而且随时能点「仍要继续」关掉——电脑窗口偏竖时照样能玩（见下面的窄屏布局）。 */
   #rotate{position:fixed;inset:0;z-index:50;background:var(--bg);display:none;
-    flex-direction:column;align-items:center;justify-content:center;gap:12px;color:var(--ink-dim);text-align:center}
+    flex-direction:column;align-items:center;justify-content:center;gap:12px;color:var(--ink-dim);text-align:center;padding:20px}
   #rotate .ph{font-size:40px;animation:spin90 1.6s ease-in-out infinite}
+  #rotate .go{margin-top:6px;padding:8px 24px;font-family:var(--serif);letter-spacing:.16em;
+    clip-path:var(--cut5);border:1px solid var(--brz);color:#e9d9b4;
+    background:linear-gradient(180deg,#2c2246,#171129)}
   @keyframes spin90{0%,20%{transform:rotate(0)}60%,100%{transform:rotate(90deg)}}
-  @media (orientation:portrait){#rotate{display:flex}}
+  @media (orientation:portrait) and (pointer:coarse){#rotate{display:flex}}
+  body.norot #rotate{display:none}
   @media (prefers-reduced-motion:reduce){#rotate .ph{animation:none;transform:rotate(90deg)}}
+
+  /* ================= 窄屏 / 竖窗口兼容（电脑上把窗口拖窄、或用侧栏看都走这套） =================
+     战场是 20 列 × 5 行的宽条：**它的屏幕高度只由宽度决定**，纵向再高也不会变大。
+     所以窄屏下把 #stage 压成刚好装下战场的一条（aspect-ratio），省下来的纵向空间给背包，
+     否则会看到一大片没用的草地、战场被挤成底边一条缝。 */
+  @media (max-aspect-ratio:13/10),(max-width:820px){
+    header{flex-wrap:wrap;row-gap:4px;gap:8px;padding:4px 8px}
+    header .hbtn{white-space:nowrap}       /* 不加这条按钮会被压成竖排单字 */
+    .hright{gap:5px;flex-wrap:wrap;justify-content:flex-end}
+    #uiBoss{max-width:none;min-width:90px}
+    /* 整个 app 不再拉满高度，而是按内容排好后**垂直居中**（上下留黑边），
+       比「战场被挤成底边一条缝 + 一大片空草地」体面得多 */
+    body{display:flex;flex-direction:column;justify-content:center}
+    #app{height:auto;max-height:100dvh}
+    #stage{flex:0 0 auto;aspect-ratio:4.6/1;min-height:118px;max-height:46vh}
+    #dock{flex:0 0 auto}
+    #bottom{height:auto;min-height:96px;flex:0 0 auto}
+    #info{overflow-x:auto;overflow-y:hidden}
+    #info .forge{flex-shrink:0}
+    /* 居中letterbox 之后，toast 的 14% 会飘到上面的黑边里，拉回战场那条带上 */
+    #toast{top:calc(50% - 132px);max-width:92%}
+  }
+  /* 更窄（手机竖屏 / 很细的侧栏）：属性网格收成两列，别和技能栏挤在一起 */
+  @media (max-width:640px){
+    .hgrid{grid-template-columns:repeat(2,max-content);gap:1px 8px}
+    #bottom{min-height:112px}
+    .slotgrid.sk{grid-template-columns:repeat(2,26px);grid-template-rows:repeat(2,26px)}
+    .slotgrid.eq{grid-template-columns:repeat(3,26px);grid-template-rows:repeat(2,26px)}
+    #info .forge{display:none}            /* 熔炉太占宽度，窄屏先收起来 */
+    /* 背包换到自己的一行：试炼那排放不下就别挤了 */
+    #dock{flex-wrap:wrap;row-gap:6px}
+    #dock #inv{flex:0 0 100%;padding:6px 2px 0;border-left:0;
+      border-top:1px solid rgba(240,196,106,.18)}
+  }
 
   /* ===== 招募按钮（dock 左侧） ===== */
   #dock .tile.hire .ic{background:linear-gradient(135deg,#f0c46a,#e08a3a)}

@@ -2432,5 +2432,8 @@ if(uiOmen)uiOmen.onclick=()=>{
   showToast(`<b style="color:${omen.c}">异象 · ${omen.n}</b><br><span style="color:#a99cb8">${omen.d}</span>`
     +`<br><span style="color:#8b809f">每波开战随机降临，第 ${OMEN_FROM} 波起生效</span><br>`+boonListTxt());
 };
+/* 「建议横屏」提示可以直接关掉：电脑上窗口偏竖也能正常玩（CSS 里有窄屏布局） */
+const rotGo=document.getElementById('rotGo');
+if(rotGo)rotGo.onclick=()=>{document.body.classList.add('norot');setTimeout(resize,60);};
 reset();resize();
 requestAnimationFrame(loop);
