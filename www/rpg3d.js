@@ -1,0 +1,1704 @@
+/* ============================================================
+   rpg3d.js —— 方块战线 3D 渲染层（Three.js，俯视角）
+   ------------------------------------------------------------
+   坐标契约：游戏格子坐标 (x, y) → 世界坐标 (x, 高度, y)
+             也就是 世界X=格子X，世界Z=格子Y，世界Y=离地高度
+   对外只有三个入口：R3.resize() / R3.draw() / R3.pick(ev)
+   逻辑层(rpg.js)不需要知道 3D 的任何事。
+   ============================================================ */
+const R3=(function(){
+'use strict';
+const T=THREE;
+const PI=Math.PI, sin=Math.sin, cos=Math.cos, min=Math.min, max=Math.max, abs=Math.abs;
+
+let ren,scene,cam,ocv,octx,inited=false;
+let W=1,H=1,PR=1;                    // 覆盖层 CSS 尺寸 / 像素比
+let dirLight,selGroup,frontier;
+let shadowOn=true,ftAcc=0,ftN=0;     // 帧时统计（用于低端机自动降级）
+
+/* 相机：正交投影。战场是 16×3 的超宽比例，用透视会把两端格子拉变形，
+   正交则格子等大、战线清楚，立体感交给模型高度和阴影。 */
+const TILT=50*PI/180;                // 俯角（5行后放平一点，纵向才装得下）
+const CAM_D=26;                      // 相机距离（正交下只影响裁剪，不影响大小）
+
+/* ================= 几何 / 材质小工具 ================= */
+const GEO={};
+const g_box =(w,h,d)=>GEO['b'+w+'|'+h+'|'+d]||(GEO['b'+w+'|'+h+'|'+d]=new T.BoxGeometry(w,h,d));
+const g_sph =(r,s)=>GEO['s'+r+'|'+(s||8)]||(GEO['s'+r+'|'+(s||8)]=new T.SphereGeometry(r,s||8,(s||8)>>1));
+const g_cyl =(a,b,h,s)=>GEO['c'+a+'|'+b+'|'+h+'|'+(s||8)]||(GEO['c'+a+'|'+b+'|'+h+'|'+(s||8)]=new T.CylinderGeometry(a,b,h,s||8));
+const g_cone=(r,h,s)=>GEO['n'+r+'|'+h+'|'+(s||7)]||(GEO['n'+r+'|'+h+'|'+(s||7)]=new T.ConeGeometry(r,h,s||7));
+const g_oct =(r)=>GEO['o'+r]||(GEO['o'+r]=new T.OctahedronGeometry(r));
+const g_tet =(r)=>GEO['t'+r]||(GEO['t'+r]=new T.TetrahedronGeometry(r));
+const g_ring=(a,b)=>GEO['r'+a+'|'+b]||(GEO['r'+a+'|'+b]=new T.RingGeometry(a,b,28));
+const g_disc=()=>GEO.disc||(GEO.disc=new T.CircleGeometry(1,28));
+const g_torus=(arc)=>GEO['T'+arc]||(GEO['T'+arc]=new T.TorusGeometry(1,.055,6,20,arc));
+
+/* ================= 卡通着色（魔兽3式低模的关键，改这里全场生效） =================
+   1) MeshToonMaterial + 4阶灰度 ramp —— 光照被压成几档，明暗界线清楚，像手绘
+   2) inverted hull 描边 —— 按几何包围盒反算每轴缩放，描边在世界坐标里等宽
+   3) 一张程序化"笔触/斑驳"贴图叠在所有单位上，代替纯色平面
+   ⚠️ 地面/石板仍然用 Lambert（大面积不要分阶，会出难看的色带）。 */
+let outlineOn=true;
+const OL_W=.010;                                  // 描边宽度（世界单位）
+const OL_MIN=.34;                                 // 只给这么大以上的部件描边（否则眼睛/发带会糊成黑块）
+const olMat=new T.MeshBasicMaterial({color:0x10141d,side:T.BackSide});
+const olMeshes=[];                                // 低端机降级时统一隐藏
+let RAMP=null;
+function toonRamp(){
+  if(RAMP)return RAMP;
+  const st=[.42,.62,.82,1];                       // 4阶：暗面不到全黑，亮面留白
+  const c=document.createElement('canvas');c.width=st.length;c.height=1;
+  const x=c.getContext('2d');
+  st.forEach((v,i)=>{const n=Math.round(v*255);x.fillStyle='rgb('+n+','+n+','+n+')';x.fillRect(i,0,1,1);});
+  RAMP=new T.CanvasTexture(c);
+  RAMP.minFilter=RAMP.magFilter=T.NearestFilter;RAMP.generateMipmaps=false;
+  return RAMP;
+}
+/* 单位表面的手绘质感：柔和斑块 + 细笔触，整体接近白色（只扰明暗，不改色相） */
+/* ⚠️ 别做成平铺噪点（试过，小屏上就是一层脏）。
+   这里是**每个面一张**手绘暗角：盒子的每个面 UV 都是 0~1，所以一个面正好吃一张
+   「四周压暗 + 中心提亮 + 底部接触阴影 + 几笔刷痕」——平坦的大面立刻有体积感。 */
+let PTEX=null;
+function texPaint(){
+  if(PTEX)return PTEX;
+  const S=128,c=document.createElement('canvas');c.width=c.height=S;
+  const x=c.getContext('2d');
+  x.fillStyle='#fff';x.fillRect(0,0,S,S);
+  const g=x.createRadialGradient(S*.42,S*.36,S*.06,S*.5,S*.5,S*.72);
+  g.addColorStop(0,'rgba(255,255,255,.16)');
+  g.addColorStop(.55,'rgba(255,255,255,0)');
+  g.addColorStop(1,'rgba(0,0,0,.30)');
+  x.fillStyle=g;x.fillRect(0,0,S,S);
+  const b=x.createLinearGradient(0,S*.7,0,S);     // 底部接触暗部
+  b.addColorStop(0,'rgba(0,0,0,0)');b.addColorStop(1,'rgba(0,0,0,.22)');
+  x.fillStyle=b;x.fillRect(0,0,S,S);
+  for(let i=0;i<14;i++){                          // 几笔刷痕，别多
+    x.globalAlpha=.04+Math.random()*.05;
+    x.strokeStyle=Math.random()<.5?'#000':'#fff';x.lineWidth=1+Math.random()*2;
+    const px=Math.random()*S,py=Math.random()*S,a=(Math.random()-.5)*.7,L=14+Math.random()*30;
+    x.beginPath();x.moveTo(px,py);x.lineTo(px+cos(a)*L,py+sin(a)*L);x.stroke();
+  }
+  x.globalAlpha=1;
+  PTEX=new T.CanvasTexture(c);
+  PTEX.colorSpace=T.SRGBColorSpace;
+  return PTEX;
+}
+/* 配色往魔兽那种高饱和推一点（暴雪的低模全靠饱和度撑起辨识度） */
+const _hsl={},_pc=new T.Color();
+function pop(color){
+  _pc.set(color);_pc.getHSL(_hsl);
+  if(_hsl.s<.05)return _pc.getHex();              // 灰白件不动，动了会发脏
+  _pc.setHSL(_hsl.h,min(1,_hsl.s*1.2),_hsl.l*.97);
+  return _pc.getHex();
+}
+function geoSize(geo){
+  if(!geo.boundingBox)geo.computeBoundingBox();
+  const b=geo.boundingBox;
+  return [b.max.x-b.min.x,b.max.y-b.min.y,b.max.z-b.min.z];
+}
+/* 描边：同一份几何再画一遍背面，按包围盒每轴反算缩放 → 世界坐标里等宽。
+   挂成 mesh 的子节点，所以自动跟着一切动画走。 */
+function outline(m,geo){
+  const d=geoSize(geo);
+  if(max(d[0],max(d[1],d[2]))<OL_MIN)return;      // 只描剪影级的大块：躯干/披风/头/大武器
+  const k=v=>min(1.5,1+2*OL_W/max(v,.02));        // 夹住：薄片(眼睛/刀刃)不夹会膨胀成黑块
+  const o=new T.Mesh(geo,olMat);
+  o.scale.set(k(d[0]),k(d[1]),k(d[2]));
+  o.visible=outlineOn;
+  m.add(o);olMeshes.push(o);
+}
+
+/* ================= 攻击动作曲线（打击感的核心） =================
+   逻辑层只给一个线性进度 p（1→0），渲染层把它重映射成有节奏的动作。
+   ⚠️ 伤害是在 attack() 那一帧就结算的（t=0），所以：
+     · 近战用 swing(t)：先反向蓄力、再极快出手、然后慢慢收招。
+       峰值落在 t=PEAK≈0.3（0.22s 的动作就是 66ms≈4帧），比飘字晚 4 帧，看不出来，
+       但"有起手"这件事对打击感是决定性的。
+     · 远程用 recoil(t)：箭/子弹在 t=0 就飞出去了，再做蓄力会变成"箭比弓先动"，
+       所以只能做纯后坐衰减。
+   各支线原来的公式是 rest+amp*p，把 p 换成 swing/recoil 就自动变三段动作。 */
+const ANT=.16, PEAK=.30;
+function swing(t){
+  if(t<=0)return 0;
+  if(t<ANT){const k=t/ANT;return -.32*(1-(1-k)*(1-k));}          // 蓄力后拉(ease-out)
+  if(t<PEAK){const k=(t-ANT)/(PEAK-ANT);return -.32+1.32*k*k;}   // 出手(ease-in，最快)
+  return Math.pow(1-(t-PEAK)/(1-PEAK),1.8);                      // 收招(慢)
+}
+function recoil(t){return t<=0?0:Math.pow(1-t,2.1);}
+
+/* 屏幕震动：暴击/重弩命中/Boss死亡时抖一下相机（正交相机直接偏移位置就行） */
+let shk=0,lastGt=0,camBase=new T.Vector3();
+function shake(a){if(a>shk)shk=a;}
+
+/* 建组：userData 存材质与基础色，方便整体染色（受击闪白/死亡变灰/冰霜） */
+function mk(){const g=new T.Group();g.userData={mats:[],base:[]};return g;}
+function add(g,geo,color,x,y,z,o){
+  o=o||{};
+  color=o.glow?color:pop(color);
+  let mtl;
+  if(o.glow){
+    mtl=new T.MeshBasicMaterial({color,transparent:o.op!=null,opacity:o.op!=null?o.op:1});
+  }else{
+    const d=geoSize(geo),sz=max(d[0],max(d[1],d[2]));
+    mtl=new T.MeshToonMaterial({color,gradientMap:toonRamp(),
+      map:(o.noTex||sz<.22)?null:texPaint(),          // 太小的零件不贴（看不出还多一次采样）
+      transparent:o.op!=null,opacity:o.op!=null?o.op:1,emissive:o.em||0x000000});
+  }
+  const m=new T.Mesh(geo,mtl);
+  m.position.set(x,y,z);
+  if(o.rx)m.rotation.x=o.rx;
+  if(o.ry)m.rotation.y=o.ry;
+  if(o.rz)m.rotation.z=o.rz;
+  if(o.s)m.scale.set(o.s[0],o.s[1],o.s[2]);
+  m.castShadow=!o.noSh;
+  if(!o.glow&&!o.noSh&&o.op==null&&!o.noOl)outline(m,geo);
+  g.add(m);
+  if(!o.glow&&!o.noTint){g.userData.mats.push(m);g.userData.base.push(new T.Color(color));}
+  return m;
+}
+const _grey=new T.Color(0x39424f), _frost=new T.Color(0x9fe4ff);
+function tint(g,flash,dead,frost){
+  const u=g.userData,n=u.mats.length;
+  for(let i=0;i<n;i++){
+    const m=u.mats[i].material;
+    m.emissive.setScalar(flash?.6:0);
+    if(dead)m.color.copy(_grey);
+    else if(frost)m.color.copy(u.base[i]).lerp(_frost,.45);
+    else m.color.copy(u.base[i]);
+  }
+}
+
+/* ================= 对象池（按 key 复用，避免每帧 new/GC） ================= */
+const pools={},bound=new Map(),seen=new Set();
+function bind(ent,key,make){
+  let g=bound.get(ent);
+  if(!g||g.userData.key!==key){
+    if(g)free(g);
+    const p=pools[key]||(pools[key]=[]);
+    g=p.pop();
+    if(!g){g=make();g.userData.key=key;scene.add(g);}
+    bound.set(ent,g);
+  }
+  g.visible=true;seen.add(ent);
+  return g;
+}
+function free(g){g.visible=false;(pools[g.userData.key]||(pools[g.userData.key]=[])).push(g);}
+function sweep(){
+  for(const [e,g] of bound)if(!seen.has(e)){free(g);bound.delete(e);}
+  seen.clear();
+}
+/* 一次性用完即弃的（特效/弹道）：每帧计数取用，剩下的隐藏 */
+const tmp={};
+function take(key,make){
+  let p=tmp[key];
+  if(!p)p=tmp[key]={list:[],n:0};
+  let o=p.list[p.n];
+  if(!o){o=make();o.userData.key=key;scene.add(o);p.list.push(o);}
+  p.n++;o.visible=true;
+  return o;
+}
+function tmpReset(){for(const k in tmp)tmp[k].n=0;}
+function tmpHide(){for(const k in tmp){const p=tmp[k];for(let i=p.n;i<p.list.length;i++)p.list[i].visible=false;}}
+
+/* 把一个 z 轴长度为1的物体拉成从 A 到 B 的光束 */
+const _a=new T.Vector3(),_b=new T.Vector3();
+function beam(m,x1,y1,z1,x2,y2,z2,th){
+  _a.set(x1,y1,z1);_b.set(x2,y2,z2);
+  m.position.copy(_a).add(_b).multiplyScalar(.5);
+  m.lookAt(_b);
+  m.scale.set(th,th,max(_a.distanceTo(_b),.001));
+}
+
+/* ================= 单位模型 ================= */
+/* 英雄：二头身 chibi 比例（大头在小屏上辨识度最高），面向 +X（敌人从右来）。
+   总高约 1.05。tier>0 = 已转职：加披风/肩饰/头饰，武器也升级一档。
+   ⚠️ 对象池的 key 里带了 tier/branch，所以转职后模型会自动重建。 */
+function buildHero(cls,tier,branch){
+  tier=tier|0;branch=branch|0;
+  const g=mk(), c=CLASSES[cls].color;
+  const dk=shade3(c,.5), lt=shade3(c,1.42);
+  const SKIN=0xf6d9bb, EYE=0x2b2436, GOLD=0xf0c46a;
+  const HAIR=cls==='mage'?0x7a5a9a:cls==='archer'?0xe8c46a:0xd4713a;
+  /* 转职支线 key：一转后的外形完全按支线名字走
+     （狂战士=双斧 / 护卫=片手剑+大盾 / 强盗=匕首 / 火枪兵=火枪 / 精灵游侠=长弓 / 弩手=重弩 …） */
+  const bk=tier&&typeof ADV!=='undefined'?(((ADV[cls]||[])[branch]||{}).key||''):'';
+  /* 三条转职支线各给披风一个色调，卡片上一眼能区分 */
+  const CLOAK=shade3(c,[.62,1.15,.86][branch]||1);
+  const HY=.66;                                   // 头中心高度
+  /* 子部件建成独立 group（要单独做动作），mats 并进主 group 才能一起染色 */
+  const attach=(sub)=>{g.add(sub);
+    g.userData.mats.push(...sub.userData.mats);g.userData.base.push(...sub.userData.base);
+    return sub;};
+
+  /* ---- 腿 + 鞋（短腿，二头身） ---- */
+  for(const z of [-.075,.075]){
+    add(g,g_box(.085,.15,.095),dk,0,.075,z);
+    add(g,g_box(.115,.055,.125),shade3(c,.34),.014,.028,z);
+  }
+  /* ---- 脸（三职业共用：大眼 + 高光 + 腮红） ---- */
+  const face=()=>{
+    add(g,g_sph(.196,12),SKIN,0,HY,0);
+    for(const z of [-.073,.073]){
+      add(g,g_sph(.034,7),EYE,.171,HY+.012,z,{glow:1});
+      add(g,g_sph(.013,6),0xffffff,.188,HY+.045,z+.012,{glow:1});
+    }
+    add(g,g_sph(.03,6),0xf0a898,.163,HY-.055,-.115,{glow:1,op:.55,noSh:1});
+    add(g,g_sph(.03,6),0xf0a898,.163,HY-.055,.115,{glow:1,op:.55,noSh:1});
+  };
+
+  /* 三个职业的外观各自成函数，改哪个职业就只 sed 哪一个 */
+  const X={g,cls,tier,branch,c,dk,lt,SKIN,EYE,GOLD,HAIR,bk,CLOAK,HY,attach,face};
+  if(cls==='mage')heroMage(X);
+  else if(cls==='archer')heroArcher(X);
+  else heroWarrior(X);
+
+  /* ---- 转职通用：披风 + 肩章 ---- */
+  if(tier){
+    const cl=add(g,g_cone(.3,.7,7),CLOAK,-.14,.36,0,{rz:-.1});
+    cl.scale.set(.5,1,1.2);
+    add(g,g_sph(.055,7),GOLD,-.06,.56,-.2);
+    add(g,g_sph(.055,7),GOLD,-.06,.56,.2);
+  }
+  return g;
+}
+/* 法师系：长袍+尖帽+法杖（牧师=白袍圣杖光环 / 召唤师=兽首杖 / 大法师=巨珠双符文环） */
+function heroMage(X){
+  const {g,cls,tier,branch,c,dk,lt,SKIN,EYE,GOLD,HAIR,bk,CLOAK,HY,attach,face}=X;
+  add(g,g_cone(.245,.44,10),bk==='priest'?0xe8e4d8:c,0,.22,0);   // 长袍下摆（牧师=白袍）
+  add(g,g_cyl(.145,.185,.22,10),bk==='priest'?0xf2efe4:lt,0,.44,0);
+  add(g,g_box(.09,.2,.075),c,.02,.46,-.19);                // 袖
+  add(g,g_box(.09,.2,.075),c,.02,.46,.19);
+  if(bk==='priest')add(g,g_box(.05,.22,.05),GOLD,.15,.44,0);     // 胸前圣纹
+  face();
+  add(g,g_sph(.21,10),HAIR,-.03,HY+.03,0,{s:[.92,.9,1.04]}); // 头发
+  add(g,g_box(.1,.3,.075),HAIR,-.11,HY-.16,-.15);            // 两侧长发
+  add(g,g_box(.1,.3,.075),HAIR,-.11,HY-.16,.15);
+  if(bk==='priest'){                                       // 牧师：白兜帽 + 头顶光环
+    add(g,g_cone(.235,.3,10),0xf2efe4,-.09,HY+.17,0,{rz:.3});
+    const halo=add(g,g_torus(6.28),0xffe9a8,0,HY+.36,0,{rx:PI/2,glow:1,op:.8,noSh:1});
+    halo.scale.setScalar(.17);
+    g.userData.halo=halo;
+  }else{                                                   // 尖帽（大法师更高更尖，帽上缀星）
+    const ht=bk==='archmage'?.62:tier?.46:.36;
+    add(g,g_cyl(.265,.265,.028,12),dk,0,HY+.21,0);         // 帽檐（抬到头顶之上，不挡脸）
+    add(g,g_cone(.2,ht,10),bk==='summoner'?shade3(c,.72):dk,0,HY+.23+ht/2,0);
+    add(g,g_sph(tier?.06:.045,7),0xffe9a8,0,HY+.25+ht,0,{glow:1});
+    if(bk==='archmage')for(let i=0;i<3;i++)
+      add(g,g_tet(.042),0xffe9a8,.09,HY+.36+i*.15,.09-i*.07,{glow:1});
+    if(bk==='summoner')                                    // 召唤师：帽上兽角
+      for(const zz of [-.17,.17])add(g,g_cone(.05,.2,5),0xe8e2d0,-.02,HY+.34,zz,{rx:zz>0?.6:-.6});
+  }
+  /* ---- 法杖：牧师=十字圣杖 / 召唤师=兽首图腾杖 / 大法师=巨型奥术宝珠 ---- */
+  add(g,g_cyl(.024,.028,.94,7),bk==='priest'?0xe8e4d8:0x8a6a44,.24,.47,.2,{rz:-.1});
+  let orb;
+  if(bk==='priest'){
+    orb=add(g,g_box(.05,.3,.05),0xfff2c4,.29,1,.2,{glow:1});
+    add(g,g_box(.05,.05,.22),0xfff2c4,.29,1.05,.2,{glow:1});
+    add(g,g_sph(.17,10),0xffe9a8,.29,1,.2,{glow:1,op:.26,noSh:1});
+  }else if(bk==='summoner'){
+    orb=add(g,g_sph(.09,9),0x8ef0a8,.29,.97,.2,{glow:1});
+    add(g,g_cone(.05,.19,5),0xe8e2d0,.29,1.07,.13,{rx:-.55,glow:1});
+    add(g,g_cone(.05,.19,5),0xe8e2d0,.29,1.07,.27,{rx:.55,glow:1});
+    add(g,g_sph(.2,10),0x4fe08a,.29,.97,.2,{glow:1,op:.28,noSh:1});
+  }else{
+    const rr=bk==='archmage'?.125:tier?.105:.08;
+    orb=add(g,g_sph(rr,10),0xcfe8ff,.29,.97,.2,{glow:1});
+    add(g,g_sph(rr*1.85,10),0x4fa8ff,.29,.97,.2,{glow:1,op:.3,noSh:1});
+  }
+  if(tier){                                                // 宝珠环绕光环
+    const rc=bk==='priest'?0xffe9a8:bk==='summoner'?0x8ef0a8:0x9fd4ff;
+    const ring=add(g,g_torus(6.28),rc,.29,.97,.2,{rx:PI/2,glow:1,op:.7,noSh:1});
+    ring.scale.setScalar(bk==='archmage'?.26:.2);
+    g.userData.orbit=ring;
+    if(bk==='archmage'){                                   // 大法师：第二道垂直符文环
+      const r2=add(g,g_torus(6.28),0xc9a8ff,.29,.97,.2,{rz:PI/2,glow:1,op:.5,noSh:1});
+      r2.scale.setScalar(.22);g.userData.orbit2=r2;
+    }
+  }
+  g.userData.wep=null;g.userData.orb=orb;g.userData.akind='cast';
+}
+/* 游侠系：兜帽马尾+弓（火枪兵=火枪三角帽 / 精灵游侠=长弓尖耳 / 弩手=重弩护目镜） */
+function heroArcher(X){
+  const {g,cls,tier,branch,c,dk,lt,SKIN,EYE,GOLD,HAIR,bk,CLOAK,HY,attach,face}=X;
+  add(g,g_cone(.235,.3,9),dk,0,.17,0);                     // 短披风下摆
+  add(g,g_cyl(.14,.175,.24,10),c,0,.42,0);                 // 身体
+  add(g,g_box(.16,.06,.4),shade3(c,.4),0,.34,0);           // 腰带
+  add(g,g_box(.085,.19,.07),lt,.02,.46,-.185);
+  add(g,g_box(.085,.19,.07),lt,.02,.46,.185);
+  face();
+  add(g,g_sph(.212,10),HAIR,-.02,HY+.035,0,{s:[.95,.92,1.02]});
+  add(g,g_cone(.1,.42,7),HAIR,-.2,HY-.02,0,{rz:1.15});     // 马尾
+  add(g,g_sph(.08,7),HAIR,-.13,HY+.1,0);
+  if(!tier)add(g,g_cone(.205,.27,9),c,-.11,HY+.17,0,{rz:.32});  // 兜帽（往后戴，露脸）
+  else if(bk==='musket'){                                  // 火枪兵：三角帽 + 肩绶
+    add(g,g_cyl(.27,.27,.03,12),0x2f3a4a,-.02,HY+.2,0);
+    add(g,g_cyl(.15,.1,.13,10),0x2f3a4a,-.02,HY+.27,0);
+    add(g,g_box(.05,.09,.3),0x2f3a4a,-.2,HY+.24,0,{rz:-.35});
+    add(g,g_sph(.04,7),GOLD,.19,HY+.23,0,{glow:1});
+    add(g,g_box(.045,.3,.06),0xe8e4d8,.13,.44,-.1,{rz:.5});
+  }else if(bk==='elf'){                                    // 精灵游侠：尖长耳 + 叶冠
+    add(g,g_cone(.055,.3,5),SKIN,-.03,HY+.09,-.2,{rx:-.75});
+    add(g,g_cone(.055,.3,5),SKIN,-.03,HY+.09,.2,{rx:.75});
+    add(g,g_box(.03,.035,.36),0x8ef0a8,.14,HY+.17,0,{glow:1});
+    add(g,g_cone(.038,.13,5),0x8ef0a8,.04,HY+.25,-.09,{rz:-.35,rx:-.3,glow:1});
+    add(g,g_cone(.038,.13,5),0x8ef0a8,.04,HY+.25,.09,{rz:-.35,rx:.3,glow:1});
+  }else{                                                   // 弩手：额上护目镜 + 皮盔
+    add(g,g_cyl(.205,.2,.14,10),shade3(c,.45),-.02,HY+.15,0);
+    add(g,g_box(.035,.07,.32),0x2f3a4a,.15,HY+.17,0);
+    add(g,g_sph(.05,7),0xff9a5a,.175,HY+.17,-.09,{glow:1});
+    add(g,g_sph(.05,7),0xff9a5a,.175,HY+.17,.09,{glow:1});
+  }
+  /* ---- 武器 ---- */
+  if(bk==='musket'){                                       // 火枪：长枪管 + 枪托，枪口有火光
+    const gun=mk();
+    add(gun,g_cyl(.032,.032,.66,8),0x3a4350,.14,0,0,{rz:PI/2});
+    add(gun,g_cyl(.043,.043,.14,8),0x2a3240,.44,0,0,{rz:PI/2});
+    add(gun,g_box(.18,.11,.07),0x7a5230,-.22,-.03,0,{rz:.14});
+    add(gun,g_box(.06,.1,.06),0x7a5230,-.05,-.08,0);
+    add(gun,g_box(.03,.035,.03),GOLD,.22,.05,0);
+    const fl=add(gun,g_cone(.11,.26,6),0xffd27a,.64,0,0,{rz:-PI/2,glow:1,op:.92,noSh:1});
+    const fl2=add(gun,g_sph(.13,8),0xfff2c4,.56,0,0,{glow:1,op:.7,noSh:1});
+    gun.position.set(.15,.53,.13);gun.rotation.z=.06;gun.rotation.y=.36;
+    attach(gun);
+    g.userData.wep=gun;g.userData.muzzle=fl;g.userData.muzzle2=fl2;
+    fl.visible=fl2.visible=false;
+    g.userData.akind='gun';
+    add(g,g_box(.11,.13,.09),0x6b4a2c,-.13,.4,.16);        // 弹药袋
+  }else if(bk==='xbow'){                                   // 重弩：横臂 + 待发弩矢
+    const cb=mk();
+    add(cb,g_box(.44,.06,.08),0x6b4a2c,.02,0,0);
+    add(cb,g_box(.07,.05,.56),0x4a5560,.13,.04,0);
+    add(cb,g_box(.05,.035,.15),0x2f3a4a,.11,.04,-.28,{ry:.55});
+    add(cb,g_box(.05,.035,.15),0x2f3a4a,.11,.04,.28,{ry:-.55});
+    add(cb,g_cyl(.02,.014,.36,5),0x4a3a28,.16,.08,0,{rz:PI/2});
+    add(cb,g_cone(.034,.09,5),0xb9c6d6,.35,.08,0,{rz:-PI/2});
+    add(cb,g_box(.075,.13,.06),0x3a4350,-.15,-.08,0,{rz:.28});
+    add(cb,g_sph(.035,6),GOLD,.02,.05,0,{glow:1});
+    cb.position.set(.18,.54,.1);
+    attach(cb);
+    g.userData.wep=cb;g.userData.akind='xbow';
+    add(g,g_cyl(.06,.06,.26,6),0x6b4a2c,-.16,.54,.14,{rz:.45});   // 弩矢筒
+    for(let i=0;i<3;i++)add(g,g_cone(.024,.1,5),0x8a94a4,-.18,.71,.11+i*.045,{rz:.45});
+  }else{                                                   // 弓（精灵游侠更大、带绿光）
+    const el=bk==='elf';
+    const bow=add(g,g_torus(2.5),el?0xdcefb0:0xb98a4e,.24,.5,0,{});
+    bow.rotation.set(0,-PI/2,0);bow.scale.setScalar(el?.33:.28);
+    if(el){
+      add(g,g_box(.035,.16,.05),0x6b4a2c,.245,.5,0);       // 弓把
+      add(g,g_sph(.045,7),0x8ef0a8,.235,.5,0,{glow:1});
+    }else if(tier)add(g,g_sph(.045,7),GOLD,.24,.5,0,{glow:1});
+    g.userData.wep=bow;g.userData.wx=.24;g.userData.akind='draw';
+    add(g,g_cyl(.055,.055,.28,6),0x6b4a2c,-.15,.55,.13,{rz:.45});  // 箭袋
+    for(let i=0;i<3;i++)add(g,g_cone(.022,.11,5),0xd8c9a8,-.17,.72,.1+i*.045,{rz:.45});
+  }
+}
+/* 战士系：红甲+额带（狂战士=双斧双角 / 护卫=片手剑大盾 / 强盗=匕首兜帽面巾） */
+function heroWarrior(X){
+  const {g,cls,tier,branch,c,dk,lt,SKIN,EYE,GOLD,HAIR,bk,CLOAK,HY,attach,face}=X;
+  add(g,g_box(.19,.16,.24),shade3(c,.42),0,.19,0);         // 战裙
+  add(g,g_box(.29,.26,.25),c,0,.4,0);                      // 胸甲
+  add(g,g_box(.3,.05,.26),GOLD,0,.29,0);                   // 腰带
+  add(g,g_sph(.105,8),lt,0,.52,-.185);                     // 护肩
+  add(g,g_sph(.105,8),lt,0,.52,.185);
+  face();
+  add(g,g_sph(.208,10),HAIR,-.02,HY+.04,0,{s:[.94,.94,1.02]});
+  if(bk!=='guard')for(let i=0;i<3;i++)                     // 竖起的短发
+    add(g,g_cone(.06,.17,5),HAIR,-.02+i*.045,HY+.22,(i-1)*.1,{rz:-.25});
+  if(bk==='berserker'){                                    // 狂战士：双角 + 战纹
+    add(g,g_box(.035,.045,.34),0xb9c6d6,.16,HY+.1,0);
+    add(g,g_cone(.055,.3,6),0xe8e2d0,.03,HY+.19,-.19,{rx:-.6});
+    add(g,g_cone(.055,.3,6),0xe8e2d0,.03,HY+.19,.19,{rx:.6});
+    add(g,g_box(.02,.05,.16),0xd8434a,.185,HY+.09,0,{glow:1,op:.85,noSh:1});
+  }else if(bk==='guard'){                                  // 护卫：开面盔 + 红盔冠
+    add(g,g_cyl(.212,.196,.17,10),0xb9c6d6,-.02,HY+.13,0);
+    add(g,g_box(.15,.1,.05),0xd8434a,-.03,HY+.26,0);
+    add(g,g_box(.045,.055,.36),GOLD,.15,HY+.08,0);
+    add(g,g_box(.05,.16,.05),0xb9c6d6,.16,HY-.03,0);       // 护鼻
+  }else if(bk==='bandit'){                                 // 强盗：兜帽 + 面巾
+    add(g,g_cone(.225,.3,9),shade3(c,.5),-.1,HY+.18,0,{rz:.3});
+    add(g,g_box(.075,.1,.31),0x2f3a4a,.145,HY-.08,0);
+    add(g,g_box(.03,.04,.2),0x2f3a4a,.1,HY-.14,0,{rz:.5});
+    add(g,g_box(.035,.045,.34),0x2f3a4a,.16,HY+.1,0);      // 黑额带
+  }else add(g,g_box(.035,.045,.34),0xb9c6d6,.16,HY+.1,0);  // 未转职：额带
+  /* ---- 武器：狂战士=双斧 / 强盗=匕首 / 其余(未转职·护卫)=剑+盾 ---- */
+  if(bk==='berserker'){
+    /* 斧刃朝前（+X，敌人方向），俯视和卡片正视都看得出是斧头 */
+    const axe=()=>{const a=mk();
+      add(a,g_cyl(.026,.031,.64,6),0x6b4a2c,0,.11,0);      // 长斧柄（手上下都露出来）
+      add(a,g_cyl(.036,.036,.05,6),0x8a94a4,0,.4,0);       // 斧箍
+      add(a,g_box(.08,.16,.05),0x8a94a4,.055,.4,0);        // 斧颈
+      add(a,g_box(.14,.26,.06),0xc3cede,.15,.4,0);         // 斧身
+      add(a,g_box(.05,.3,.032),0xeef4fc,.235,.4,0);        // 刃口
+      add(a,g_cone(.048,.15,4),0x9aa6b6,-.08,.4,0,{rz:PI/2});   // 后刺
+      add(a,g_box(.028,.32,.014),0xff6a4a,.262,.4,0,{glow:1,op:.65,noSh:1});
+      a.rotation.z=.3;return attach(a);};
+    const a1=axe();a1.position.set(.09,.5,.24);a1.rotation.y=-.6;   // 两把斧刃向外张开
+    const a2=axe();a2.position.set(.09,.5,-.24);a2.rotation.y=.6;
+    g.userData.wep=a1;g.userData.wep2=a2;g.userData.akind='axes';
+  }else if(bk==='bandit'){
+    add(g,g_sph(.075,7),0x6b4a2c,-.1,.34,-.2);             // 腰间钱袋
+    add(g,g_box(.03,.2,.05),0x8a94a4,-.1,.42,-.24,{rz:.4});// 备用短刀
+    const kn=mk();                                         // 匕首（刃朝 +X，往前捅）
+    add(kn,g_box(.3,.055,.075),0xeef4fc,.15,0,0);
+    add(kn,g_cone(.06,.17,4),0xeef4fc,.37,0,0,{rz:-PI/2});
+    add(kn,g_box(.04,.1,.19),GOLD,-.01,0,0);               // 护手
+    add(kn,g_cyl(.032,.032,.16,6),0x5a3b22,-.11,0,0,{rz:PI/2});
+    add(kn,g_sph(.035,6),GOLD,-.2,0,0);                    // 柄尾
+    add(kn,g_box(.32,.02,.02),0xfff2c4,.16,.04,0,{glow:1,op:.55,noSh:1});
+    kn.position.set(.14,.47,.2);kn.rotation.y=.3;
+    attach(kn);
+    g.userData.wep=kn;g.userData.akind='stab';
+  }else{
+    const gd=bk==='guard';
+    const sh=mk();                                         // 盾（护卫的更大、带金色十字）
+    add(sh,g_box(.05,gd?.4:.28,gd?.3:.24),0xc3cede,0,0,0);
+    add(sh,g_box(.03,gd?.33:.2,gd?.23:.17),shade3(c,.85),.036,0,0);
+    if(gd){
+      add(sh,g_box(.022,.42,.06),GOLD,.045,0,0);
+      add(sh,g_box(.022,.08,.32),GOLD,.045,0,0);
+      add(sh,g_sph(.055,8),GOLD,.055,0,0,{glow:1});
+      add(sh,g_cone(.06,.1,4),0xc3cede,0,-.24,0,{rz:PI});   // 下端尖角（鸢盾）
+    }else if(tier)add(sh,g_sph(.05,7),GOLD,.04,0,0,{glow:1});
+    sh.position.set(gd?-.05:-.11,gd?.46:.44,-.24);
+    attach(sh);
+    const sw=mk();                                         // 剑（绕肩挥砍）
+    add(sw,g_box(.045,gd?.42:(tier?.56:.46),gd?.1:.1),0xeef4fc,0,gd?.24:(tier?.29:.24),0);
+    if(gd){
+      add(sw,g_box(.052,.34,.03),0xb9c6d6,0,.24,0);         // 血槽
+      add(sw,g_cone(.07,.13,4),0xeef4fc,0,.51,0);
+    }
+    add(sw,g_box(.055,.055,gd?.24:.22),GOLD,0,.02,0);
+    add(sw,g_cyl(.028,.028,.12,6),0x5a3b22,0,-.06,0);
+    if(tier)add(sw,g_box(.075,gd?.46:.5,.13),0xffd98a,0,gd?.26:.3,0,{glow:1,op:.32,noSh:1});
+    sw.position.set(.11,.5,.23);sw.rotation.z=.25;
+    attach(sw);
+    g.userData.wep=sw;g.userData.akind='swing';
+    if(gd)g.userData.aux=sh;                               // 护卫：挥砍时盾牌同步前顶
+  }
+}
+/* 怪物：面向 -X（往左推进）。单位空间半径≈1，绘制时按 m.r 缩放 */
+function buildMob(type){
+  const g=mk(),c=MOBS[type].color,dk=shade3(c,.55),lt=shade3(c,1.4);
+  if(type==='normal'){                                          // 驼背小鬼
+    add(g,g_cyl(.15,.18,.5,6),dk,.28,.25,-.3);
+    add(g,g_cyl(.15,.18,.5,6),dk,.28,.25,.3);
+    add(g,g_sph(.62,9),c,0,.92,0,{s:[1,.92,.88]});              // 躯干
+    add(g,g_sph(.44,9),lt,-.22,1.6,0);                          // 头
+    add(g,g_sph(.19,8),0xffffff,-.55,1.62,0,{glow:1});          // 大眼
+    add(g,g_sph(.09,6),0x1a1020,-.68,1.62,0,{glow:1});
+    add(g,g_cone(.1,.42,6),dk,.02,1.98,-.24,{rz:.3});           // 双角
+    add(g,g_cone(.1,.42,6),dk,.02,1.98,.24,{rz:.3});
+  }else if(type==='lancer'){                                    // 长矛兵：手长，靠长矛读出射程
+    add(g,g_cyl(.11,.13,.5,6),dk,.22,.25,-.19);
+    add(g,g_cyl(.11,.13,.5,6),dk,.22,.25,.19);
+    add(g,g_sph(.5,9),c,0,.92,0,{s:[.86,1.1,.82]});             // 瘦长躯干
+    add(g,g_sph(.34,9),lt,-.18,1.56,0);                         // 头
+    add(g,g_cone(.24,.46,6),dk,-.12,1.9,0);                     // 尖顶盔
+    add(g,g_sph(.1,7),0xfff0c0,-.44,1.58,-.12,{glow:1});
+    add(g,g_sph(.1,7),0xfff0c0,-.44,1.58,.12,{glow:1});
+    add(g,g_cyl(.05,.05,2.6,6),0x8a6a42,-.8,1.02,-.3,{rz:PI/2}); // 长矛杆（朝 -X）
+    add(g,g_cone(.14,.46,6),0xdbe3ee,-2.25,1.02,-.3,{rz:PI/2});  // 矛头
+  }else if(type==='brute'){                                     // 狂徒：高伤脆皮，大拳头小脑袋
+    add(g,g_cyl(.17,.21,.38,6),dk,.24,.19,-.26);
+    add(g,g_cyl(.17,.21,.38,6),dk,.24,.19,.26);
+    add(g,g_sph(.68,9),c,0,.8,0,{s:[.94,.88,1.02]});            // 宽厚躯干
+    add(g,g_sph(.26,8),lt,-.32,1.32,0);                         // 小头
+    add(g,g_sph(.13,7),0xffd24f,-.5,1.34,-.1,{glow:1});         // 怒目
+    add(g,g_sph(.13,7),0xffd24f,-.5,1.34,.1,{glow:1});
+    add(g,g_sph(.36,8),lt,-.52,.72,-.52);                       // 大拳头
+    add(g,g_sph(.36,8),lt,-.52,.72,.52);
+    for(let i=-1;i<2;i++)add(g,g_cone(.11,.38,5),0xf3f0e0,.3,1.12,i*.34,{rz:-.4});   // 背刺
+  }else if(type==='tank'){                                      // 重甲方体
+    add(g,g_box(.28,.5,.3),dk,.1,.25,-.34);
+    add(g,g_box(.28,.5,.3),dk,.1,.25,.34);
+    add(g,g_box(1.05,1,1.02),c,0,1.02,0);                       // 躯干
+    add(g,g_box(.16,.72,.86),lt,-.5,1.02,0);                    // 前甲
+    add(g,g_box(.66,.4,.68),0xcfd8e8,-.12,1.7,0);               // 头盔
+    add(g,g_box(.5,.12,.16),0x22283a,-.42,1.66,0,{glow:1});     // 面甲缝
+    for(let i=-1;i<2;i++)add(g,g_cone(.12,.34,5),0xcfd8e8,.3,1.62,i*.32);
+    add(g,g_sph(.2,7),lt,-.2,1.42,-.56);                        // 护肩
+    add(g,g_sph(.2,7),lt,-.2,1.42,.56);
+  }else{                                                        // Boss 巨体恶魔
+    add(g,g_cyl(.2,.26,.56,7),dk,.16,.28,-.36);
+    add(g,g_cyl(.2,.26,.56,7),dk,.16,.28,.36);
+    add(g,g_sph(.72,10),c,0,1.15,0,{s:[1,1.05,.92]});           // 躯干
+    add(g,g_box(.5,.6,.8),dk,-.42,1.2,0);                       // 胸甲
+    add(g,g_sph(.42,9),lt,-.25,2.02,0);                         // 头
+    add(g,g_sph(.12,7),0xffe07a,-.55,2.06,-.17,{glow:1});       // 发光眼
+    add(g,g_sph(.12,7),0xffe07a,-.55,2.06,.17,{glow:1});
+    add(g,g_cone(.07,.34,6),0xf3f0e0,-.5,1.82,-.1,{rz:-1.9});   // 尖牙
+    add(g,g_cone(.07,.34,6),0xf3f0e0,-.5,1.82,.1,{rz:-1.9});
+    add(g,g_cone(.15,.72,6),0xe8e0d0,.02,2.35,-.3,{rz:.62});    // 弯角
+    add(g,g_cone(.15,.72,6),0xe8e0d0,.02,2.35,.3,{rz:.62});
+    add(g,g_sph(.26,7),lt,-.1,1.6,-.68);
+    add(g,g_sph(.26,7),lt,-.1,1.6,.68);
+  }
+  return g;
+}
+/* 召唤物：单位空间半径≈1，按 MINIONS[kind].r 缩放 */
+function buildMinion(kind){
+  const g=mk(),c=MINIONS[kind].color,dk=shade3(c,.6),lt=shade3(c,1.4);
+  if(kind==='treant'){                                          // 小树人：树桩身子 + 枝条手臂
+    add(g,g_cyl(.2,.26,.34,6),0x6b4a2c,0,.17,-.2);
+    add(g,g_cyl(.2,.26,.34,6),0x6b4a2c,0,.17,.2);
+    add(g,g_cyl(.42,.5,.95,7),0x7a5433,0,.82,0);                // 树干
+    add(g,g_sph(.5,9),c,0,1.45,0,{s:[1.15,.85,1.05]});          // 树冠
+    add(g,g_sph(.3,8),lt,-.25,1.72,.2);
+    add(g,g_sph(.26,8),lt,.2,1.66,-.26);
+    add(g,g_sph(.11,6),0x2f1c10,-.42,1.02,-.16,{glow:1});       // 眼
+    add(g,g_sph(.11,6),0x2f1c10,-.42,1.02,.16,{glow:1});
+    add(g,g_cyl(.09,.09,.72,5),0x6b4a2c,-.5,.95,-.42,{rz:.5});  // 枝条手臂
+    add(g,g_cyl(.09,.09,.72,5),0x6b4a2c,-.5,.95,.42,{rz:.5});
+  }else if(kind==='ancient'){                                   // 远古树：不动的大树，树洞会吐小精灵
+    add(g,g_cyl(.62,.85,.5,8),0x5a3f24,0,.25,0);                // 根盘
+    add(g,g_cyl(.42,.56,1.5,8),0x6b4a2c,0,1.1,0);               // 粗树干
+    add(g,g_sph(.95,10),c,0,2.15,0,{s:[1.15,.8,1.1]});          // 大树冠
+    add(g,g_sph(.55,9),lt,-.5,2.5,.35);
+    add(g,g_sph(.5,9),lt,.45,2.42,-.4);
+    add(g,g_sph(.34,9),shade3(c,1.7),0,2.05,-.75,{glow:1,op:.8});
+    add(g,g_sph(.14,7),0xffe9a8,-.42,1.35,-.2,{glow:1});        // 眼
+    add(g,g_sph(.14,7),0xffe9a8,-.42,1.35,.2,{glow:1});
+    add(g,g_sph(.26,8),0x2a1d10,-.5,.85,0,{glow:1,op:.9});      // 树洞
+    add(g,g_cyl(.11,.11,1.1,5),0x6b4a2c,-.62,1.6,-.6,{rz:.65}); // 大枝条
+    add(g,g_cyl(.11,.11,1.1,5),0x6b4a2c,-.62,1.6,.6,{rz:.65});
+  }else{                                                        // 小精灵：会自爆的光球
+    add(g,g_sph(.62,10),c,0,.85,0,{glow:1,op:.85});
+    add(g,g_sph(.34,9),0xffffff,0,.9,0,{glow:1,op:.9});
+    add(g,g_cone(.2,.5,6),lt,.45,.85,0,{rz:-1.57,glow:1,op:.7});// 拖尾
+    add(g,g_ring(.7,.92),lt,0,.85,0,{rx:-PI/2,glow:1,op:.6,noSh:1});
+    add(g,g_sph(.13,6),0xdfffe8,-.3,1.25,-.28,{glow:1,op:.8});
+    add(g,g_sph(.13,6),0xdfffe8,.28,1.3,.3,{glow:1,op:.8});
+  }
+  return g;
+}
+function buildChest(){
+  const g=mk();
+  add(g,g_box(.4,.24,.3),0x6b4a2c,0,.12,0);
+  add(g,g_box(.42,.16,.32),0x8a5f38,0,.3,0);
+  add(g,g_box(.44,.05,.06),0xf0c46a,0,.24,0);
+  add(g,g_box(.06,.05,.34),0xf0c46a,0,.3,0);
+  add(g,g_sph(.05,6),0xffe9a8,-.21,.24,0,{glow:1});
+  add(g,g_disc(),0xf0c46a,0,.02,0,{rx:-PI/2,glow:1,op:.22,noSh:1,s:[.5,.5,.5]});
+  return g;
+}
+function buildShot(kind){
+  const g=mk();
+  if(kind==='orb'){
+    add(g,g_sph(.085,8),0xcfe6ff,0,0,0,{glow:1});
+    add(g,g_sph(.17,8),0x4f8dff,0,0,0,{glow:1,op:.32,noSh:1});
+    add(g,g_cone(.1,.34,6),0x4f8dff,-.17,0,0,{rz:PI/2,glow:1,op:.3,noSh:1});
+  }else if(kind==='quarrel'){        // 弩矢：短粗、钢头，看得出是"重"的一发
+    add(g,g_cyl(.032,.032,.32,6),0x4a3a28,-.02,0,0,{rz:PI/2});
+    add(g,g_cone(.075,.19,6),0xb9c6d6,.22,0,0,{rz:-PI/2});
+    add(g,g_box(.11,.075,.008),0x8a94a4,-.19,.035,0,{op:.95});
+    add(g,g_box(.11,.008,.075),0x8a94a4,-.19,0,.035,{op:.95});
+    add(g,g_cone(.11,.36,6),0xffd08a,-.24,0,0,{rz:PI/2,glow:1,op:.28,noSh:1});
+  }else{
+    add(g,g_cyl(.018,.018,.34,5),0xd8c9a8,-.03,0,0,{rz:PI/2});
+    add(g,g_cone(.045,.12,5),0xdfe8f5,.18,0,0,{rz:-PI/2});
+    add(g,g_box(.09,.06,.005),0xc8d4e4,-.2,.03,0,{op:.9});
+    add(g,g_box(.09,.005,.06),0xc8d4e4,-.2,0,.03,{op:.9});
+  }
+  return g;
+}
+/* 色阶（3D 层自带一份，rpg.js 不再需要 shade） */
+function shade3(hex,f){
+  const n=parseInt(hex.slice(1),16);
+  const r=min(255,(n>>16)*f)|0,g=min(255,(n>>8&255)*f)|0,b=min(255,(n&255)*f)|0;
+  return (r<<16)|(g<<8)|b;
+}
+
+/* ================= 初始化 ================= */
+/* ================= 程序化贴图（不用任何外部图片，Artifact 的 CSP 也不许外链） ================= */
+let _sd=12345;
+function srand(){_sd=(_sd*1664525+1013904223)&0x7fffffff;return _sd/0x7fffffff;}
+function makeTex(size,fn,rep){
+  const c=document.createElement('canvas');c.width=c.height=size;
+  fn(c.getContext('2d'),size);
+  const t=new T.CanvasTexture(c);
+  t.wrapS=t.wrapT=T.RepeatWrapping;
+  if(rep)t.repeat.set(rep[0],rep[1]);
+  t.colorSpace=T.SRGBColorSpace;
+  return t;
+}
+/* 草地：暗绿基底 + 噪点 + 草簇斑块。四角重画保证无缝平铺 */
+function texGrass(){
+  return makeTex(256,(x,S)=>{
+    x.fillStyle='#5d9243';x.fillRect(0,0,S,S);
+    const blob=(px,py,r,col,a)=>{
+      x.globalAlpha=a;
+      for(let dx=-1;dx<2;dx++)for(let dy=-1;dy<2;dy++){
+        const g=x.createRadialGradient(px+dx*S,py+dy*S,0,px+dx*S,py+dy*S,r);
+        g.addColorStop(0,col);g.addColorStop(1,'rgba(0,0,0,0)');
+        x.fillStyle=g;x.beginPath();x.arc(px+dx*S,py+dy*S,r,0,7);x.fill();
+      }
+      x.globalAlpha=1;
+    };
+    for(let i=0;i<26;i++)blob(srand()*S,srand()*S,18+srand()*30,'#7cb058',.5);
+    for(let i=0;i<18;i++)blob(srand()*S,srand()*S,14+srand()*22,'#477431',.45);
+    for(let i=0;i<10;i++)blob(srand()*S,srand()*S,10+srand()*16,'#93c268',.35);
+    for(let i=0;i<2600;i++){                       // 草纹噪点
+      const v=srand();
+      x.fillStyle=v>.72?'#82b45c':v>.42?'#65994a':'#4e7f39';
+      x.fillRect(srand()*S,srand()*S,1+(v>.9?1:0),1+(v>.85?2:0));
+    }
+  },[9,5.5]);
+}
+/* 石板路：4×4 块，块与块之间有缝，每块亮度随机 */
+function texStone(){
+  return makeTex(256,(x,S)=>{
+    const N=4,u=S/N;
+    x.fillStyle='#5f594c';x.fillRect(0,0,S,S);       // 石缝（暖灰，要比石块暗才有缝）
+    for(let i=0;i<N;i++)for(let j=0;j<N;j++){
+      const v=srand(),o=(j%2)*u*.5;                // 错缝
+      const px=(i*u+o)%S,py=j*u,pad=1.6;
+      const lum=.82+v*.36;
+      const col=(n)=>'#'+[0xa6,0x9d,0x88].map((b,k)=>Math.min(255,(b*n)|0).toString(16).padStart(2,'0')).join('');
+      for(const dx of [0,-S]){
+        x.fillStyle=col(lum);
+        x.fillRect(px+dx+pad,py+pad,u-pad*2,u-pad*2);
+        x.fillStyle='rgba(255,255,255,.05)';       // 上沿高光
+        x.fillRect(px+dx+pad,py+pad,u-pad*2,2);
+      }
+    }
+    for(let i=0;i<1400;i++){                       // 石面颗粒
+      x.fillStyle=srand()>.5?'rgba(255,255,255,.05)':'rgba(0,0,0,.07)';
+      x.fillRect(srand()*S,srand()*S,1,1);
+    }
+  },[COLS/1.6,ROWS/1.6]);
+}
+/* 商店广场：暖色土/碎石地（比战斗区石板亮，和草地、石板都分得开） */
+function texDirt(){
+  return makeTex(256,(x,S)=>{
+    x.fillStyle='#a3855a';x.fillRect(0,0,S,S);
+    for(let i=0;i<40;i++){                         // 土色斑块
+      const px=srand()*S,py=srand()*S,r=12+srand()*30;
+      const g=x.createRadialGradient(px,py,0,px,py,r);
+      g.addColorStop(0,srand()>.5?'#bda077':'#8a6f45');
+      g.addColorStop(1,'rgba(0,0,0,0)');
+      x.fillStyle=g;x.beginPath();x.arc(px,py,r,0,7);x.fill();
+    }
+    for(let i=0;i<900;i++){                        // 碎石
+      const v=srand(),s=1+(v>.85?2:0);
+      x.fillStyle=v>.8?'#dccdaa':v>.5?'#b2966c':'#7d6644';
+      x.fillRect(srand()*S,srand()*S,s,s);
+    }
+  },[1,1]);
+}
+/* 法阵符文环（白色，靠材质染成职业色） */
+function texRune(){
+  return makeTex(256,(x,S)=>{
+    const c=S/2;
+    x.strokeStyle='#fff';
+    x.lineWidth=4;
+    x.beginPath();x.arc(c,c,c*.9,0,7);x.stroke();
+    x.lineWidth=3;
+    x.beginPath();x.arc(c,c,c*.74,0,7);x.stroke();
+    for(let i=0;i<20;i++){                          // 一圈刻度
+      const a=i/20*Math.PI*2,l=i%5===0?.16:.09;
+      x.lineWidth=i%5===0?7:4;
+      x.beginPath();
+      x.moveTo(c+cos(a)*c*.74,c+sin(a)*c*.74);
+      x.lineTo(c+cos(a)*c*(.74+l),c+sin(a)*c*(.74+l));
+      x.stroke();
+    }
+    x.lineWidth=4;                                  // 内部六芒星
+    for(let k=0;k<2;k++){
+      x.beginPath();
+      for(let i=0;i<3;i++){
+        const a=k*Math.PI/3+i/3*Math.PI*2;
+        const px=c+cos(a)*c*.6,py=c+sin(a)*c*.6;
+        i?x.lineTo(px,py):x.moveTo(px,py);
+      }
+      x.closePath();x.stroke();
+    }
+    x.lineWidth=2.5;
+    x.beginPath();x.arc(c,c,c*.34,0,7);x.stroke();
+  });
+}
+/* 传送门能量幕：竖直流光条纹 + 中间亮芯，水平方向可平铺（用来做滚动动画） */
+function texPortal(){
+  return makeTex(256,(x,S)=>{
+    x.clearRect(0,0,S,S);
+    for(let i=0;i<44;i++){
+      const px=srand()*S, w=2+srand()*11, a=.12+srand()*.5;
+      const g=x.createLinearGradient(0,0,0,S);
+      const c=`${(180+srand()*70)|0},${(90+srand()*90)|0},255`;
+      g.addColorStop(0,`rgba(${c},0)`);
+      g.addColorStop(.5,`rgba(${c},${a})`);
+      g.addColorStop(1,`rgba(${c},0)`);
+      x.fillStyle=g;x.fillRect(px,0,w,S);
+      if(px+w>S)x.fillRect(px-S,0,w,S);          // 跨边界补一笔，保证无缝
+    }
+    const cg=x.createLinearGradient(0,0,0,S);    // 中间亮芯
+    cg.addColorStop(0,'rgba(120,60,200,0)');
+    cg.addColorStop(.5,'rgba(232,196,255,.5)');
+    cg.addColorStop(1,'rgba(120,60,200,0)');
+    x.fillStyle=cg;x.fillRect(0,0,S,S);
+  });
+}
+
+/* 径向柔光（法阵中心、建筑光晕） */
+function texGlow(){
+  return makeTex(64,(x,S)=>{
+    const g=x.createRadialGradient(S/2,S/2,0,S/2,S/2,S/2);
+    g.addColorStop(0,'#fff');g.addColorStop(.45,'rgba(255,255,255,.45)');
+    g.addColorStop(1,'rgba(255,255,255,0)');
+    x.fillStyle=g;x.fillRect(0,0,S,S);
+  });
+}
+
+/* ================= 商店建筑（原来 dock 上那一行，现在摆进地图） ================= */
+const SHOPS=[
+  {k:'mill', name:'伐木场'},   // 第1排建筑：伐木场|金矿，上有树、下有矿脉，工人两边跑
+  {k:'mine', name:'金矿'},
+  {k:'skill',name:'技能'},     // 第2排建筑：技能|装备
+  {k:'item', name:'装备'},
+];
+/* 左侧广场从上到下四排（可见地面 z≈-0.5~5.03，四排刚好塞满）：
+   ① 5棵树 TREE_Z  ② 伐木场|金矿 INC_Z  ③ 5处矿脉 ORE_Z  ④ 技能|装备 SHOP_Z */
+const SHOP_X0B=-3.75, SHOP_DX=1.95, SHOP_R=.9;
+const INC_Z=1.30, SHOP_Z=3.95;
+/* 宽屏时横向会多出空间：整排商店往左挪(shopShift)，广场跟着变宽，左边就不空了（resize 里算） */
+let SHOP_X0=SHOP_X0B, shopShift=0;
+const SHIFT_MAX=2.6;                               // 最多往左挪这么多
+const shopPos=i=>[SHOP_X0+(i%2)*SHOP_DX, i<2?INC_Z:SHOP_Z];
+const SHOP_S=1.4;                                  // 建筑整体缩放（四排要塞下，比 2×2 时略小）
+let shopGroups=[],circles=[],yard=null;
+/* 把商店排 + 脚下广场按当前 shopShift 摆好（init 和 resize 都调） */
+function layoutShops(){
+  SHOP_X0=SHOP_X0B-shopShift;
+  for(let i=0;i<shopGroups.length;i++){
+    const [px,pz]=shopPos(i);
+    shopGroups[i].position.x=px;shopGroups[i].position.z=pz;
+  }
+  if(yard){                                        // 广场从商店左侧一直铺到战斗区边上，中间不留空地
+    const x0=SHOP_X0-1.35, x1=-.26, w=x1-x0, d=BZ1-BZ0;
+    yard.scale.set(w,d,1);
+    yard.position.set((x0+x1)/2,.004,(BZ0+BZ1)/2);
+    yard.material.map.repeat.set(w/2.1,d/2.1);
+  }
+  layoutNodes();
+}
+
+/* ================= 资源点 + 工人 =================
+   上排 5 棵树（伐木工砍）/ 下排 5 处金矿脉（矿工挖），横向跟着广场一起铺开。
+   工人数 = rpg.js 的 mineW/millW（最多 5），从离本建筑最近的资源点开始往外占。
+   一趟 TRIP 秒，落一个 “+等级×TRIP” 的飘字 —— 正好等于 每秒 工人数×等级 的真实产出。 */
+const NODE_N=5, TRIP=3;
+const TREE_Z=.2, ORE_Z=2.62;         // 树在最上面一排、矿脉夹在两排建筑之间
+/* ⚠️ 树高别超过 .89：z=.2 处树梢投影 v=(H-.31)·cos50°+2.3·sin50°，相机上沿 hh≈2.134 */
+let treeG=[],oreG=[],nodeX=[];
+function layoutNodes(){
+  const x0=SHOP_X0-1.0, x1=-.62;
+  for(let i=0;i<NODE_N;i++){
+    nodeX[i]=x0+(x1-x0)*i/(NODE_N-1);
+    if(treeG[i])treeG[i].position.x=nodeX[i];
+    if(oreG[i]) oreG[i].position.x=nodeX[i];
+  }
+}
+function buildTree(){                // 高约 .76
+  const g=mk();
+  add(g,g_cyl(.065,.085,.3,6),0x4a3a2a,0,.15,0);
+  add(g,g_cone(.29,.38,7),0x24422c,0,.42,0);
+  add(g,g_cone(.21,.28,7),0x2d5236,0,.62,0);
+  return g;
+}
+function buildOre(){                 // 金矿脉：碎石堆 + 露出来的金块
+  const g=mk();
+  add(g,g_oct(.26),0x4a5164,0,.17,0,{s:[1.25,.85,1]});
+  add(g,g_oct(.15),0x565f74,.24,.1,.13);
+  add(g,g_oct(.09),0xf0c46a,-.05,.31,.11,{em:0x6b4d12});
+  add(g,g_oct(.07),0xf0c46a,.2,.19,-.12,{em:0x6b4d12});
+  return g;
+}
+/* 工人：矮胖小人（约英雄一半高），模型面朝 +X，挥动的工具挂在 userData.tool 上 */
+function buildWorker(kind){
+  const isM=kind==='mine', g=mk();
+  add(g,g_cyl(.05,.05,.16,6),0x39415a,0,.08,.06);
+  add(g,g_cyl(.05,.05,.16,6),0x39415a,0,.08,-.06);
+  add(g,g_box(.2,.24,.19),isM?0x4f6a9a:0xb04a3a,0,.28,0);
+  add(g,g_sph(.145,10),0xf3c9a0,0,.52,0);
+  add(g,g_sph(.155,10),isM?0xf0c46a:0x7a4a2e,0,.56,0,{s:[1,.6,1]});
+  add(g,g_sph(.02,6),0x21252e,.12,.51,.055,{noSh:1});
+  add(g,g_sph(.02,6),0x21252e,.12,.51,-.055,{noSh:1});
+  const tool=mk();
+  add(tool,g_cyl(.022,.022,.42,6),0x6b5236,0,0,0,{rz:PI/2});
+  if(isM)add(tool,g_box(.06,.07,.2),0x9aa6bc,.2,.03,0,{rz:.4});
+  else   add(tool,g_box(.045,.17,.12),0xc8d2dc,.2,.02,0);
+  tool.position.set(.15,.34,.03);
+  g.add(tool);g.userData.tool=tool;
+  return g;
+}
+/* 工人循环：出门 → 到资源点砍/挖 → 回家交货（交货那一刻落飘字） */
+let wkT=0,_lastGt=0;
+const wkCyc={};
+function drawWorkers(){
+  const d=max(0,min(gt-_lastGt,.1));_lastGt=gt;
+  if(started&&!over)wkT+=d*(typeof speed==='number'?speed:1);
+  for(let s=0;s<2;s++){
+    const isM=s===1;                                   // 0=伐木场(上) 1=金矿(下)
+    const key=isM?'mine':'mill';
+    const n=min(NODE_N,(isM?mineW:millW)|0);
+    const lv=(isM?mineLv:millLv)|0;
+    let idx=0;for(let i=0;i<SHOPS.length;i++)if(SHOPS[i].k===key)idx=i;
+    // 出门口开在靠资源的那一侧（矿脉在建筑下方、树在建筑上方）
+    const hp=shopPos(idx), hx=hp[0], hz=hp[1]+(isM?.45:-.45);
+    const nz=isM?ORE_Z:TREE_Z, stand=isM?nz-.38:nz+.38;
+    // 就近占点：按离本建筑的横向距离排序
+    const order=nodeX.map((v,j)=>j).sort((a,b)=>abs(nodeX[a]-hx)-abs(nodeX[b]-hx));
+    for(let i=0;i<n;i++){
+      const ph0=wkT/TRIP+i*.37, ph=ph0-Math.floor(ph0), ci=Math.floor(ph0);
+      const nx=nodeX[order[i]]||0;
+      let x,z,face,swing=0;
+      if(ph<.32){                                      // 出门
+        const k=ph/.32;x=hx+(nx-hx)*k;z=hz+(stand-hz)*k;
+        face=Math.atan2(-(stand-hz),nx-hx);
+      }else if(ph<.72){                                // 干活
+        x=nx;z=stand;swing=1;
+        face=Math.atan2(-(nz-stand),0);
+      }else{                                           // 回家交货
+        const k=(ph-.72)/.28;x=nx+(hx-nx)*k;z=stand+(hz-stand)*k;
+        face=Math.atan2(-(hz-stand),hx-nx);
+      }
+      const g=take('WK'+key,()=>buildWorker(key));
+      const walk=swing?0:abs(sin(wkT*9+i));
+      g.position.set(x,walk*.045,z);
+      g.rotation.y=face;
+      g.userData.tool.rotation.z=swing?-1.35*(.5+.5*sin(wkT*11+i*2)):-.35;
+      // 交货：一趟结算一次，金额 = 等级×TRIP，合起来正好是 每秒 工人数×等级
+      const ck=key+i;
+      if(wkCyc[ck]===undefined)wkCyc[ck]=ci;
+      else if(ci!==wkCyc[ck]){
+        wkCyc[ck]=ci;
+        if(started&&!over&&lv>0&&nums.length<80)
+          nums.push({x:hx,y:hz-.15,txt:'+'+(lv*TRIP),color:isM?'#f0c46a':'#c98f5b',t:1.1,max:1.1});
+      }
+    }
+  }
+}
+function shopAt(x,z){                              // 供 rpg.js 判断点击
+  for(let i=0;i<SHOPS.length;i++){
+    const [px,pz]=shopPos(i);
+    if(abs(x-px)<SHOP_R&&abs(z-pz)<SHOP_R)return SHOPS[i].k;
+  }
+  return null;
+}
+function buildShop(kind,glowTex){
+  const g=mk();
+  /* 圆形石台（参考图里建筑都站在石盘上） */
+  const base=new T.Mesh(g_cyl(.5,.54,.11,16),new T.MeshLambertMaterial({color:0x5b6685}));
+  base.position.y=.055;base.receiveShadow=true;g.add(base);
+  const rim=new T.Mesh(g_ring(.46,.53),
+    new T.MeshBasicMaterial({color:0x93a4c6,transparent:true,opacity:.5,depthWrite:false}));
+  rim.rotation.x=-PI/2;rim.position.y=.112;g.add(rim);
+  const halo=new T.Mesh(new T.PlaneGeometry(1.5,1.5),
+    new T.MeshBasicMaterial({map:glowTex,transparent:true,opacity:.18,depthWrite:false}));
+  halo.rotation.x=-PI/2;halo.position.y=.012;g.add(halo);
+  g.userData.halo=halo;
+  if(kind==='skill'){                              // 法师书塔
+    add(g,g_cyl(.2,.25,.58,10),0x8e9bbe,0,.4,0);   // 塔身（浅色，压得住深色路面）
+    add(g,g_cyl(.28,.28,.06,10),0xb8c4de,0,.71,0);
+    add(g,g_cone(.32,.4,10),0x8a6cff,0,.94,0);     // 紫顶（别用蓝，会和石板路撞色）
+    add(g,g_sph(.085,8),0xe0d0ff,0,1.19,0,{glow:1});
+    const bk=add(g,g_box(.22,.05,.17),0xfff2d0,0,.8,.32,{glow:1});  // 悬浮的书
+    add(g,g_box(.025,.06,.18),0x8a5f38,0,.84,.32,{glow:1});
+    g.userData.bob=bk;
+  }else if(kind==='item'){                         // 铁匠铺
+    add(g,g_box(.52,.36,.44),0x8a6a4e,0,.29,0);
+    add(g,g_cone(.46,.34,4),0xe0603f,0,.64,0,{ry:PI/4});  // 四坡屋顶（亮红）
+    add(g,g_box(.17,.13,.15),0x4a5464,.02,.17,.3);        // 铁砧
+    add(g,g_box(.22,.06,.2),0x5e6a7c,.02,.26,.3);
+    const fr=add(g,g_sph(.1,7),0xffa040,-.26,.22,.22,{glow:1});      // 炉火
+    add(g,g_box(.11,.34,.11),0x6b5340,-.26,.5,0);                     // 烟囱
+    g.userData.pulse=fr;
+  }else if(kind==='mine'){                         // 矿洞
+    add(g,g_oct(.46),0x8a8168,0,.32,0,{s:[1.15,.95,1]});           // 土黄岩体
+    add(g,g_oct(.26),0x9c927a,.3,.2,.18);
+    add(g,g_box(.28,.28,.1),0x14161c,0,.21,.38,{glow:1});           // 洞口
+    add(g,g_box(.055,.34,.055),0x6b5334,-.17,.22,.38);              // 支撑木
+    add(g,g_box(.055,.34,.055),0x6b5334,.17,.22,.38);
+    add(g,g_box(.44,.055,.055),0x6b5334,0,.39,.38);
+    const or1=add(g,g_sph(.09,7),0xffd35c,-.32,.15,.26,{glow:1});   // 金矿石
+    add(g,g_sph(.07,7),0xffd35c,-.38,.11,.38,{glow:1});
+    g.userData.pulse=or1;
+  }else{                                           // 伐木场
+    add(g,g_box(.46,.34,.4),0x9c7a4a,0,.28,0);
+    add(g,g_cone(.44,.32,4),0x6fa84a,0,.62,0,{ry:PI/4});             // 亮绿顶
+    for(let i=0;i<3;i++)                                             // 原木堆
+      add(g,g_cyl(.08,.08,.36,7),0xc09660,-.32+(i%2)*.03,.1+i*.15,.32,{rz:PI/2});
+    const saw=add(g,g_cyl(.17,.17,.025,14),0xe2ecfa,.32,.28,.14,{rz:PI/2});  // 锯片
+    g.userData.spin=saw;
+  }
+  return g;
+}
+
+/* ================= 传送门（怪从这里涌出来） ================= */
+/* ⚠️ rpg3d.js 比 rpg.js 先加载，模块顶层拿不到 COLS/ROWS，只能在 init 时赋值 */
+let PORTAL_X=0, portalG=null, portalVeil=[];
+let BZ0=-1.3, BZ1=0;                 // 石板路纵向范围（init 里按 ROWS 定）
+function buildPortal(glowTex){
+  PORTAL_X=COLS+.15;
+  const g=new T.Group();
+  g.position.set(PORTAL_X,0,ROWS/2);
+  const W=ROWS+.3, H=2.0;
+  const tex=texPortal();
+  /* 两层能量幕反向滚动，叠出流动感（加性混合，够亮） */
+  for(let i=0;i<2;i++){
+    const t2=tex.clone();t2.needsUpdate=true;
+    t2.wrapS=t2.wrapT=T.RepeatWrapping;t2.repeat.set(2.2,1);
+    const m=new T.Mesh(new T.PlaneGeometry(W,H),
+      new T.MeshBasicMaterial({map:t2,transparent:true,depthWrite:false,
+        blending:T.AdditiveBlending,side:T.DoubleSide,opacity:i?.72:1}));
+    m.rotation.y=-PI/2;m.position.y=H/2;
+    g.add(m);portalVeil.push({m,tex:t2,dir:i?-1:1});
+  }
+  /* 门框：两根石柱 + 顶部横梁 */
+  for(const z of [-W/2,W/2]){
+    const p1=new T.Mesh(g_cyl(.13,.17,H+.25,8),new T.MeshLambertMaterial({color:0x4a3f66}));
+    p1.position.set(0,(H+.25)/2,z);p1.castShadow=true;g.add(p1);
+    const cap=new T.Mesh(g_sph(.22,10),new T.MeshBasicMaterial({color:0xd9b6ff}));
+    cap.position.set(0,H+.3,z);g.add(cap);
+  }
+  const bar=new T.Mesh(g_box(.22,.2,W+.3),new T.MeshLambertMaterial({color:0x4a3f66}));
+  bar.position.y=H+.1;bar.castShadow=true;g.add(bar);
+  /* 地面光带 */
+  const gl=new T.Mesh(new T.PlaneGeometry(2.2,W+.4),
+    new T.MeshBasicMaterial({map:glowTex,transparent:true,opacity:.3,
+      depthWrite:false,blending:T.AdditiveBlending,color:0xb070ff}));
+  gl.rotation.x=-PI/2;gl.position.y=.02;g.add(gl);
+  const bg=new T.Mesh(new T.PlaneGeometry(W,H),      // 幕后一层底色，衬出门的轮廓
+    new T.MeshBasicMaterial({color:0x2a1140,transparent:true,opacity:.72,
+      depthWrite:false,side:T.DoubleSide}));
+  bg.rotation.y=-PI/2;bg.position.set(.04,H/2,0);g.add(bg);
+  portalG=g;g.userData.glow=gl;
+  scene.add(g);
+}
+
+/* ================= 地图装饰（树/石头/草簇，只摆在战场外围） ================= */
+function scatterDecor(){
+  const inBattle=(x,z)=>x>-.7&&x<PORTAL_X+1.4&&z>BZ0-.3&&z<BZ1+.3;
+  /* 商店排会随 shopShift 往左挪，这里按最大挪动量留出空地，别让树长到广场里 */
+  const inShops =(x,z)=>x>SHOP_X0B-SHIFT_MAX-1.8&&x<SHOP_X0B+SHOP_DX+1.4&&z>-.9&&z<ROWS+.9;
+  let n=0,guard=0;
+  while(n<78&&guard++<1400){                       // 上方露出的草地也要有东西，范围往上铺开
+    const x=-6+srand()*(COLS+12), z=-6+srand()*(ROWS+10);
+    if(inBattle(x,z)||inShops(x,z))continue;
+    const t=srand(),g=mk();
+    if(t<.3){                                      // 树
+      add(g,g_cyl(.07,.09,.5,6),0x4a3a2a,0,.25,0);
+      add(g,g_cone(.34,.55,7),0x24422c,0,.68,0);
+      add(g,g_cone(.26,.42,7),0x2d5236,0,.98,0);
+    }else if(t<.55){                               // 石头
+      const s=.7+srand()*.9;
+      add(g,g_oct(.22),0x3c4454,0,.14,0,{s:[s*1.2,s*.8,s]});
+      add(g,g_oct(.12),0x48505f,.18,.08,.1);
+    }else{                                         // 草簇
+      for(let i=0;i<4;i++)
+        add(g,g_cone(.05,.24,4),i%2?0x2d4a32:0x233a29,
+            (srand()-.5)*.3,.12,(srand()-.5)*.3,{noSh:1});
+    }
+    g.position.set(x,0,z);
+    g.rotation.y=srand()*6.28;
+    g.scale.setScalar(.8+srand()*.5);
+    scene.add(g);n++;
+  }
+}
+
+/* ---- 异象天色：rpg.js 调 R3.mood(天空,阳光,天光) 换目标色，这里每帧平滑靠拢 ---- */
+let hemi=null,mSky=null,mSun=null,mAmb=null,cSky=null,mLast=0;
+function mood(sky,sun,amb){
+  if(!T)return;
+  mSky=new T.Color(sky);mSun=new T.Color(sun);mAmb=new T.Color(amb||sun);
+}
+function moodTick(){
+  if(!mSky||!dirLight)return;
+  const now=performance.now(),dt=Math.min(.05,(now-(mLast||now))/1000);mLast=now;
+  const k=Math.min(1,dt*1.6);
+  if(!cSky)cSky=new T.Color(0x8fb8d4);
+  cSky.lerp(mSky,k);ren.setClearColor(cSky,1);
+  dirLight.color.lerp(mSun,k);
+  if(hemi)hemi.color.lerp(mAmb,k);
+}
+function init(){
+  const cv=document.getElementById('cv');
+  ren=new T.WebGLRenderer({canvas:cv,antialias:true,powerPreference:'high-performance'});
+  ren.setClearColor(0x8fb8d4,1);                    // 万一露出草地以外，是天光色不是黑
+  ren.shadowMap.enabled=true;ren.shadowMap.type=T.PCFShadowMap;
+
+  scene=new T.Scene();
+  cam=new T.OrthographicCamera(-1,1,1,-1,.5,CAM_D*2.5);
+
+  /* 阳光下的明亮场景：天光偏蓝、地面反光偏暖，主光是一颗高角度的太阳。
+     ⚠️ 环境光不能再往上加了 —— 卡通分阶靠"一盏主光压过环境光"，天光一高就全顶到最亮那一阶。 */
+  hemi=new T.HemisphereLight(0xbcd8ff,0x6d7a58,.78);scene.add(hemi);
+  dirLight=new T.DirectionalLight(0xfff4d6,1.6);
+  dirLight.position.set(COLS/2-5,13,ROWS/2-5);
+  dirLight.castShadow=true;
+  dirLight.shadow.mapSize.set(2048,1024);
+  dirLight.shadow.bias=-.0012;
+  const sc=dirLight.shadow.camera;
+  sc.left=-COLS*.95;sc.right=COLS*.72;             // 左边要罩住挪出去的商店排sc.top=ROWS*2.4;sc.bottom=-ROWS*2.4;sc.near=1;sc.far=34;
+  scene.add(dirLight);scene.add(dirLight.target);
+  dirLight.target.position.set(COLS/2,0,ROWS/2);
+  const fill=new T.DirectionalLight(0x9ec0e8,.2);fill.position.set(6,4,6);scene.add(fill);
+  // 背光：从战场远侧低角度打过来，给单位勾一道冷色边，跟地面拉开
+  const rim=new T.DirectionalLight(0xcfe6ff,.4);
+  rim.position.set(COLS/2+3,2.6,ROWS+9);scene.add(rim);scene.add(rim.target);
+  rim.target.position.set(COLS/2,.5,ROWS/2);
+
+  const glowTex=texGlow(), runeTex=texRune();
+  /* ⚠️ 单位要低环境光才有卡通分阶，可地面跟着压暗就一片死黑。
+     试过用 light.layers 隔离 —— **HemisphereLight 不吃 layers**（它被并进全局 lightProbe），
+     所以改成给地面材质直接加自发光：emissiveMap 用同一张贴图，等于给地面单独提亮。 */
+  const lay=(m,e)=>{
+    const t=m.material;
+    if(t.map){t.emissiveMap=t.map;t.emissive.setHex(e);}
+    else t.emissive.setHex(e);
+    return m;
+  };
+
+  /* 连贯的草地大地图（一整张，战斗区只是铺在上面的石板路） */
+  const GW=COLS+46,GD=ROWS+46;                      // 铺大一点，屏幕上方不留天空缝
+  const ground=new T.Mesh(new T.PlaneGeometry(GW,GD),
+    new T.MeshLambertMaterial({map:texGrass()}));
+  ground.material.map.repeat.set(GW/4.9,GD/4.9);    // 保持原来那个草纹密度
+  ground.rotation.x=-PI/2;ground.position.set(COLS/2,0,ROWS/2);ground.receiveShadow=true;
+  scene.add(lay(ground,0x232323));
+
+  /* 战斗区：石板路台面（边缘有厚度，和草地区分开）
+     右边一直铺到传送门脚下（BW>COLS），不然屏幕右侧会留一条空草地 */
+  const BW=COLS+.95;
+  BZ0=-1.3;BZ1=ROWS+1.3;                          // 纵向也多铺出去，屏幕上下不露草地
+  const BD=BZ1-BZ0, BZC=(BZ0+BZ1)/2;
+  const board=new T.Mesh(new T.BoxGeometry(BW,.14,BD),
+    new T.MeshLambertMaterial({color:0x8a7f6c}));
+  board.position.set(BW/2,-.07,BZC);board.receiveShadow=true;
+  scene.add(lay(board,0x1a1a1a));
+  const road=new T.Mesh(new T.PlaneGeometry(BW,BD),
+    new T.MeshLambertMaterial({map:texStone(),color:0xffffff}));
+  road.material.map.repeat.set(BW/1.6,BD/1.6);
+  road.rotation.x=-PI/2;road.position.set(BW/2,.005,BZC);road.receiveShadow=true;
+  scene.add(lay(road,0x2a2a2a));
+
+  /* 左侧商店广场：碎石地，宽度跟着 shopShift 变（layoutShops 里设），把左边空草地填掉 */
+  yard=new T.Mesh(new T.PlaneGeometry(1,1),
+    new T.MeshLambertMaterial({map:texDirt()}));
+  yard.rotation.x=-PI/2;yard.receiveShadow=true;
+  scene.add(lay(yard,0x242424));
+
+  /* 左侧出兵位：不再是色块，改成职业色法阵光圈 */
+  for(let c=0;c<HCOLS;c++){
+    const col=CLASSES[COL_CLASS[c]].color;
+    for(let r=ROW0;r<ROW0+HROWS;r++){
+      const g=new T.Group();g.position.set(c+.5,0,r+.5);
+      const glow=new T.Mesh(new T.PlaneGeometry(1.05,1.05),
+        new T.MeshBasicMaterial({color:col,map:glowTex,transparent:true,opacity:.3,depthWrite:false}));
+      glow.rotation.x=-PI/2;glow.position.y=.016;g.add(glow);
+      const rune=new T.Mesh(new T.PlaneGeometry(.92,.92),
+        new T.MeshBasicMaterial({color:col,map:runeTex,transparent:true,opacity:.75,depthWrite:false}));
+      rune.rotation.x=-PI/2;rune.position.y=.022;g.add(rune);
+      const ring=new T.Mesh(g_ring(.4,.46),
+        new T.MeshBasicMaterial({color:col,transparent:true,opacity:.85,depthWrite:false}));
+      ring.rotation.x=-PI/2;ring.position.y=.024;g.add(ring);
+      g.userData={rune,glow,ring,col,c,r};
+      circles.push(g);scene.add(g);
+    }
+  }
+
+  /* 商店建筑：原来 dock 上那一行，摆到战斗区下方的草地上 */
+  for(let i=0;i<SHOPS.length;i++){
+    const g=buildShop(SHOPS[i].k,glowTex);
+    g.scale.setScalar(SHOP_S);
+    g.userData.k=SHOPS[i].k;
+    shopGroups.push(g);scene.add(g);
+  }
+  for(let i=0;i<NODE_N;i++){
+    const tr=buildTree();tr.position.set(0,0,TREE_Z);scene.add(tr);treeG.push(tr);
+    const or=buildOre(); or.position.set(0,0,ORE_Z); scene.add(or); oreG.push(or);
+  }
+  layoutShops();
+  buildPortal(glowTex);
+  scatterDecor();
+  /* 网格线 */
+  const pts=[];
+  for(let c=0;c<=COLS;c++)pts.push(c,.014,0, c,.014,ROWS);
+  for(let r=0;r<=ROWS;r++)pts.push(0,.014,r, COLS,.014,r);
+  const gg=new T.BufferGeometry();
+  gg.setAttribute('position',new T.Float32BufferAttribute(pts,3));
+  scene.add(new T.LineSegments(gg,new T.LineBasicMaterial({color:0x453c2e,transparent:true,opacity:.62})));
+
+  /* 出兵区/战斗区分界红线 */
+  frontier=new T.Mesh(g_box(.06,.02,ROWS),new T.MeshBasicMaterial({color:0xff5d5d,transparent:true,opacity:.55}));
+  frontier.position.set(HCOLS,.02,ROWS/2);scene.add(frontier);
+
+  /* 选中格高亮框 */
+  selGroup=new T.Group();
+  const sm=new T.MeshBasicMaterial({color:0x8ab8d8});
+  for(let i=0;i<4;i++){
+    const bar=new T.Mesh(i<2?g_box(.9,.03,.05):g_box(.05,.03,.9),sm);
+    bar.position.set(i===2?-.44:i===3?.44:0,.02,i===0?-.44:i===1?.44:0);
+    selGroup.add(bar);
+  }
+  selGroup.visible=false;scene.add(selGroup);
+
+  /* 2D 覆盖层：血条/蓝条/经验条/等级/伤害飘字（保持文字清晰、性能好） */
+  ocv=document.createElement('canvas');ocv.id='cv2';
+  cv.parentNode.appendChild(ocv);
+  octx=ocv.getContext('2d');
+  inited=true;
+}
+
+/* ================= 尺寸 / 相机 ================= */
+function resize(){
+  if(!inited)init();
+  const st=document.getElementById('stage');
+  W=max(st.clientWidth,2);H=max(st.clientHeight,2);
+  PR=min(window.devicePixelRatio||1,2);
+  const cv=document.getElementById('cv');
+  cv.style.width=W+'px';cv.style.height=H+'px';
+  ocv.style.width=W+'px';ocv.style.height=H+'px';
+  ocv.width=W*PR|0;ocv.height=H*PR|0;
+  ren.setPixelRatio(PR);ren.setSize(W,H,false);
+
+  const asp=W/H;
+  /* 纵向：**下沿死死贴着第5行地面，多出来的纵向空间全部留给上面**（用户明确要求：
+     下面不留多余空间，上面可以留）。相机看向 y=yc：v(y,z)=(y-yc)*cos(TILT)-(z-tz)*sin(TILT)，
+     下沿 v(0,ROWS)=-hh 反解出 tz；hh==needH 时正好回到 tz=ROWS/2。 */
+  const HEAD=.62, yc=HEAD/2;
+  const xR=PORTAL_X+.8, xLB=SHOP_X0B-1.45;
+  const needW=(xR-xLB)/2;
+  const needH=yc*cos(TILT)+(ROWS/2)*sin(TILT)+.02;
+  const hh=max(needH,needW/asp), hw=max(needW,hh*asp);
+  cam.left=-hw;cam.right=hw;cam.top=hh;cam.bottom=-hh;
+  /* 屏幕特别扁时横向会富余：先让商店整排往左挪(广场跟着变宽)，
+     剩下的富余全部留给左边——相机右沿死死贴着传送门，右侧不留空地 */
+  shopShift=min(SHIFT_MAX,max(0,(hw-needW)*2));
+  layoutShops();
+  const tx=xR-hw;
+  /* 下沿贴第5行、富余全给上面（用户指定）——但**富余封顶 needH*0.9**：
+     电脑窗口不像手机横屏那么扁（asp 只有 1.5~2），富余会大到把战场怼到屏幕最底边、
+     上面空出一大片草地，看着像坏了。封顶之后手机横屏(asp≈4，富余本来就小)行为不变。 */
+  const anchor=min(hh-needH,needH*.9);
+  const tz=ROWS-(needH+anchor-.02-yc*cos(TILT))/sin(TILT);
+  cam.position.set(tx,yc+CAM_D*sin(TILT),tz+CAM_D*cos(TILT));
+  camBase.copy(cam.position);
+  cam.lookAt(tx,yc,tz);
+  cam.updateProjectionMatrix();
+}
+
+/* ================= 屏幕投影（覆盖层用） ================= */
+const _pv=new T.Vector3();
+function proj(x,y,z){
+  _pv.set(x,y,z).project(cam);
+  return [(_pv.x*.5+.5)*W,(-_pv.y*.5+.5)*H];
+}
+/* 该点处 1 个格子 ≈ 多少屏幕像素 */
+function ppu(x,y,z){
+  const a=proj(x,y,z),b=proj(x+1,y,z);
+  return abs(b[0]-a[0])||30;
+}
+
+/* ================= 拾取（点击/拖拽 → 格子坐标） ================= */
+const _ray=new T.Raycaster(),_nd=new T.Vector2();
+const _plane=new T.Plane(new T.Vector3(0,1,0),-.25);
+const _hit=new T.Vector3();
+function pick(ev){
+  if(!inited)return null;
+  const r=ocv.getBoundingClientRect();
+  _nd.x=((ev.clientX-r.left)/r.width)*2-1;
+  _nd.y=-((ev.clientY-r.top)/r.height)*2+1;
+  _ray.setFromCamera(_nd,cam);
+  if(!_ray.ray.intersectPlane(_plane,_hit))return null;
+  return {x:_hit.x,y:_hit.z};
+}
+
+/* ================= 条形/文字（2D 覆盖层） ================= */
+function bar(cx,top,w,h,ratio,color){
+  octx.fillStyle='rgba(0,0,0,.62)';octx.fillRect(cx-w/2,top,w,h);
+  octx.fillStyle=color;octx.fillRect(cx-w/2,top,w*max(ratio,0),h);
+}
+
+/* ================= 每帧渲染 ================= */
+function draw(){
+  if(!inited)return;
+  const t0=performance.now();
+  moodTick();
+  tmpReset();
+  octx.setTransform(PR,0,0,PR,0,0);
+  octx.clearRect(0,0,W,H);
+  octx.textAlign='center';
+
+  drawWorld();
+  drawHeroes();
+  drawMinions();
+  drawMobs();
+  drawProps();
+  drawOverlay();
+  sweep();tmpHide();
+  if(shk>0){                                          // 屏幕震动：正交相机直接抖位置
+    cam.position.set(camBase.x+(Math.random()-.5)*shk,
+                     camBase.y+(Math.random()-.5)*shk,
+                     camBase.z+(Math.random()-.5)*shk*.4);
+    shk=max(0,shk-min(.05,max(0,gt-lastGt))*3.4);
+    if(shk<=0)cam.position.copy(camBase);
+  }
+  lastGt=gt;
+  ren.render(scene,cam);
+  cardTick();
+
+  /* 低端机自动降级：连续掉帧就关阴影 */
+  if(shadowOn){
+    ftAcc+=performance.now()-t0;ftN++;
+    if(ftN>=120){
+      if(ftAcc/ftN>17){shadowOn=false;ren.shadowMap.enabled=false;dirLight.castShadow=false;
+        outlineOn=false;for(const o of olMeshes)o.visible=false;
+        scene.traverse(o=>{if(o.isMesh)o.castShadow=false;});}
+      ftAcc=0;ftN=0;
+    }
+  }
+}
+
+/* 场景层：选中框 / 法阵 / 传送门 / 商店建筑 + 工人 + 建筑名牌 */
+function drawWorld(){
+  /* --- 选中格 --- */
+  if(sel){selGroup.visible=true;selGroup.position.set(sel.col+.5,0,sel.row+.5);}
+  else selGroup.visible=false;
+
+  /* --- 出兵法阵：符文环缓慢转，有英雄站着的更亮 --- */
+  for(const g of circles){
+    const u=g.userData;
+    const taken=heroes.some(h=>h.col===u.c&&h.row===u.r);
+    const p=.5+.5*sin(gt*1.6+u.c*1.1+u.r*.7);
+    u.rune.rotation.z-=(taken?.006:.0022);
+    u.rune.material.opacity=taken?.62+.3*p:.4+.14*p;
+    u.glow.material.opacity=taken?.34+.2*p:.2;
+    u.ring.material.opacity=taken?.85:.4;
+    u.ring.scale.setScalar(taken?1+.035*p:1);
+  }
+
+  /* --- 传送门：能量幕反向滚动，有怪时更亮 --- */
+  if(portalG){
+    const hot=mobs.length?1:.45;
+    for(const v of portalVeil){
+      v.tex.offset.x-=v.dir*.0022;
+      v.tex.offset.y=sin(gt*.6*v.dir)*.05;
+      v.m.material.opacity=(v.dir>0?1:.72)*hot*(.85+.15*sin(gt*2.4+v.dir));
+    }
+    portalG.userData.glow.material.opacity=.3*hot*(.8+.2*sin(gt*3));
+  }
+
+  /* --- 商店建筑：待机动画 + 打开中的高亮 --- */
+  for(const g of shopGroups){
+    const u=g.userData,on=openShop===u.k;
+    const p=.5+.5*sin(gt*3+u.k.length);
+    u.halo.material.opacity=on?.3+.22*p:.13;
+    u.halo.material.color.set(on?0xffd24f:0x8ab8d8);
+    if(u.spin)u.spin.rotation.y=gt*3.6;
+    if(u.bob){u.bob.position.y=.72+.05*sin(gt*2.2);u.bob.rotation.y=gt*.72;}
+    if(u.pulse)u.pulse.scale.setScalar(.85+.3*p);
+    g.position.y=on?.05+.03*p:0;
+  }
+  drawWorkers();
+
+  /* 建筑名牌（覆盖层，跟着建筑走） */
+  for(let i=0;i<SHOPS.length;i++){
+    const [sx,sz]=shopPos(i);
+    const u=ppu(sx,.9,sz), sp=proj(sx,0,sz+.75);   // 名牌画在建筑正下方
+    const on=openShop===SHOPS[i].k;
+    const fs=max(11,.23*u);
+    octx.textAlign='center';                     // 名牌画在建筑正下方（2×2 时上方总是别的建筑）
+    octx.font='700 '+fs.toFixed(1)+'px -apple-system,sans-serif';
+    octx.lineWidth=3.5;octx.strokeStyle='rgba(0,0,0,.75)';
+    octx.strokeText(SHOPS[i].name,sp[0],sp[1]);
+    octx.fillStyle=on?'#ffd24f':'#dce6f2';
+    octx.fillText(SHOPS[i].name,sp[0],sp[1]);
+    // 技能/装备不再显示小字，只有金矿伐木场标 Lv 和产量
+    const k=SHOPS[i].k;
+    const sub=k==='mine'?'Lv'+mineLv+'·'+mineW+'人 +'+(mineW*mineLv)+'/s'
+             :k==='mill'?'Lv'+millLv+'·'+millW+'人 +'+(millW*millLv)+'/s':'';
+    if(sub){
+      octx.font='500 '+(fs*.72).toFixed(1)+'px -apple-system,sans-serif';
+      octx.strokeText(sub,sp[0],sp[1]+fs*.95);
+      octx.fillStyle='rgba(190,205,225,.9)';
+      octx.fillText(sub,sp[0],sp[1]+fs*.95);
+    }
+  }
+}
+/* 英雄：模型动作 + 脚下环 + 血蓝经验条 */
+function drawHeroes(){
+  /* --- 英雄 --- */
+  for(const h of heroes){
+    const g=bind(h,'H'+h.cls+h.tier+h.branch,()=>buildHero(h.cls,h.tier,h.branch));
+    const dead=!h.alive, sz=(h.sizeMul||1)*1.12;
+    const ud=g.userData;
+    /* 动作进度：t = 已用时间比 0→1（逻辑层给的 h.anim 是倒计时） */
+    const p=h.anim>0?h.anim/(h.animT||ANIM_T):0;
+    const t=p>0?1-p:0;
+    const wep=ud.wep, ak=ud.akind;
+    const rng=(ak==='draw'||ak==='gun'||ak==='xbow'||ak==='cast');
+    const sw=dead?0:(rng?recoil(t):swing(t));      // 近战三段 / 远程后坐
+    /* 走路：只有真的在往前推进时才摆动（清场传送回本阵不算） */
+    const mv=!dead&&abs(h.x-(ud.lx==null?h.x:ud.lx))>1e-4;
+    ud.lx=h.x;
+    const wk=mv?gt*11:0;
+    let bob=dead?0:sin(gt*2.2+h.row*1.7)*.02;
+    if(mv)bob+=abs(sin(wk))*.035;
+    /* 全身跟随：出手时整个人往前冲一下 + 扭身 + 拉伸，蓄力时下蹲后坐 */
+    g.position.set(h.x+(dead?0:sw*.17),bob,h.row+.5);
+    g.scale.set(sz*(1-sw*.06),sz*(1+sw*.08),sz*(1-sw*.06));
+    g.rotation.y=dead?0:sin(gt*.8+h.row)*.06+sw*.2;
+    g.rotation.z=dead?0:(mv?sin(wk)*.055:0)-sw*.09;
+    tint(g,h.flash>0,dead,false);
+    if(wep){
+      if(ak==='axes'){                                   // 狂战士：双斧一前一后连斩
+        wep.rotation.z=.3-2.6*sw;
+        ud.wep2.rotation.z=.3-2.6*swing(max(0,(t-.2)/.8));   // 第二把晚 20% 起手
+      }else if(ak==='stab'){                             // 强盗：先缩手，再往前直捅
+        wep.position.x=.14+.5*sw;wep.position.z=.2-.05*sw;wep.rotation.y=.3-.3*max(0,sw);
+      }else if(ak==='gun'){                              // 火枪：开火即后坐上扬 + 枪口火光
+        wep.position.x=.16-.19*sw;wep.rotation.z=.06+.5*sw;
+        const on=t<.34;                                  // 弹丸 t=0 就出去了，火光只闪一下
+        ud.muzzle.visible=ud.muzzle2.visible=on;
+        if(on){const q=1-t/.34;ud.muzzle.scale.setScalar(.5+1.6*q);ud.muzzle2.scale.setScalar(.35+1.4*q);}
+      }else if(ak==='xbow'){                             // 弩手：一次沉重后坐，慢慢压回
+        wep.position.x=.18-.3*sw;wep.position.y=.54+.08*sw;wep.rotation.z=.7*sw;
+      }else if(ak==='swing'){                            // 剑：抡起来再劈下去（护卫的盾同步前顶）
+        wep.rotation.z=.25-2.35*sw;
+        if(ud.aux)ud.aux.position.x=-.05+.22*max(0,sw);
+      }else wep.position.x=(ud.wx||.24)-.13*sw;          // 拉弓：放箭瞬间弹回，再慢慢推出
+    }
+    if(ud.orb)ud.orb.scale.setScalar(1+.22*sin(gt*4)+sw*.7);   // 法杖宝珠：施法瞬间爆亮
+    if(ud.halo)ud.halo.material.opacity=.55+.35*sin(gt*2.4);   // 牧师头顶光环呼吸
+    if(ud.orbit){                                        // 转职法师：宝珠环绕光环
+      ud.orbit.rotation.z=gt*3;
+      ud.orbit.rotation.y=gt*.9;
+      if(ud.orbit2){ud.orbit2.rotation.y=gt*1.7;ud.orbit2.rotation.x=gt*.6;}
+    }
+    /* 转职：脚下金环 */
+    if(h.tier&&!dead){
+      const r=take('adv',()=>{const g2=mk();
+        add(g2,g_ring(.82,1),0xf0c46a,0,0,0,{rx:-PI/2,glow:1,op:.6,noSh:1});return g2;});
+      r.position.set(h.x,.03,h.row+.5);
+      r.scale.setScalar(.33+.02*sin(gt*3));
+      r.children[0].material.opacity=.3+.2*sin(gt*3);
+    }
+    /* 嗜血狂战：赤红气场 */
+    if(!dead&&h.bhT>0){
+      const s=take('bh',()=>{const g2=mk();
+        add(g2,g_sph(1,12),0xff3b3b,0,0,0,{glow:1,op:.16,noSh:1});
+        add(g2,g_ring(.93,1),0xff5d5d,0,0,0,{rx:-PI/2,glow:1,op:.5,noSh:1});return g2;});
+      s.position.set(h.x,.42,h.row+.5);
+      s.scale.setScalar(.5*sz);
+      const pp=.75+.25*sin(gt*11);
+      s.children[0].material.opacity=.16*pp;s.children[1].material.opacity=.5*pp;
+    }
+    /* 幽邃恐惧：灵魂绕着英雄飘（最多画 12 个，再多就只是数字了） */
+    if(!dead&&h.fearT>0){
+      const ns=min(12,Math.round(h.souls||0));
+      for(let i=0;i<ns;i++){
+        const a=gt*1.5+i*6.283/max(1,ns);
+        const so=take('soul',()=>{const g2=mk();
+          add(g2,g_sph(.075,7),0xb070ff,0,0,0,{glow:1,op:.85,noSh:1});return g2;});
+        so.position.set(h.x+cos(a)*.55,.55+sin(gt*3+i)*.12,h.row+.5+sin(a)*.4);
+      }
+    }
+    /* 覆盖层：血条/蓝条/等级/经验 */
+    if(!dead){
+      const u=ppu(h.x,.9,h.row+.5), sp0=proj(h.x,1.28*sz,h.row+.5);
+      const bw=.62*u*sz, lb=.2*u;
+      const sp=[sp0[0]+lb/2+1,sp0[1]];
+      bar(sp[0],sp[1]-8,bw,.09*u,h.hp/h.maxHp,'#6ee7a0');
+      bar(sp[0],sp[1]-8+.11*u,bw,.07*u,h.mp/h.maxMp,'#4f8dff');
+      octx.fillStyle='#0a0e16';                         // 等级小框octx.fillRect(sp[0]-bw/2-lb-2,sp[1]-8,lb,.19*u);
+      octx.strokeStyle='#f0c46a';octx.lineWidth=1;
+      octx.strokeRect(sp[0]-bw/2-lb-2,sp[1]-8,lb,.19*u);
+      octx.fillStyle='#f0c46a';octx.font='600 '+(.13*u).toFixed(1)+'px -apple-system,sans-serif';
+      octx.fillText(h.lv,sp[0]-bw/2-lb/2-2,sp[1]-8+.14*u);
+      const fp=proj(h.x,0,h.row+.5);                    // 经验条（脚下）
+      bar(fp[0],fp[1]+2,.7*u,.06*u,
+        h.lv>=MAX_HERO_LV?1:min(h.xp/xpNeed(h.lv),1),'#b070ff');
+    }
+  }
+}
+function drawMinions(){
+  /* --- 召唤物 --- */
+  for(const br of bears){
+    const kind=br.kind||'bear', z=br.row+.5+(br.oy||0);
+    const g=bind(br,'S'+kind,()=>buildMinion(kind));
+    const r=(MINIONS[kind]&&MINIONS[kind].r)||.28;
+    g.position.set(br.x,sin(gt*4+br.x)*.015,z);
+    g.scale.setScalar(r*1.28);
+    tint(g,false,false,false);
+    const u=ppu(br.x,.5,z),sp=proj(br.x,r*2.5,z);
+    bar(sp[0],sp[1]-6,.6*u,.08*u,br.hp/br.maxHp,'#6ee7a0');
+  }
+}
+/* 怪物 + 尸体 */
+function drawMobs(){
+  /* --- 怪物 --- */
+  for(const m of mobs){
+    const z=m.y+.5;
+    const g=bind(m,'M'+m.type,()=>buildMob(m.type));
+    const ph=gt*6+m.x*2.2;
+    /* 打击感：挨打瞬间往后弹一下并被压扁（knock 由逻辑层在 damage() 里置位） */
+    const kn=m.knock||0, S=m.r*1.32;
+    /* 挥击：和英雄共用 swing() 三段曲线，怪面朝 -X 所以往左扑 */
+    const at=m.anim>0?swing(1-m.anim/.42):0;
+    g.position.set(m.x+kn-at*.24,abs(sin(ph))*.05*m.r+at*.05,z);
+    g.scale.set(S*(1+kn*1.2-at*.05),S*(1-kn*1.4+at*.09),S*(1+kn*1.2-at*.05));
+    g.rotation.z=sin(ph)*.05+kn*1.1-at*.28;
+    tint(g,m.flash>0,false,m.frost>0);
+    /* 脚下光环：试炼色环 / 精英金环 */
+    if(m.trial||m.elite){
+      const col=m.trial?TRIALS[m.trial].color:'#f0c46a';
+      const r=take('mr',()=>{const g2=mk();
+        add(g2,g_ring(.82,1),0xffffff,0,0,0,{rx:-PI/2,glow:1,op:.5,noSh:1});
+        add(g2,g_ring(.6,.72),0xffffff,0,.004,0,{rx:-PI/2,glow:1,op:.35,noSh:1});return g2;});
+      r.position.set(m.x,.03,z);r.scale.setScalar(m.r*1.75);
+      const a=.35+.3*sin(gt*4+m.x);
+      r.children[0].material.color.set(col);r.children[0].material.opacity=a;
+      r.children[1].material.color.set(col);r.children[1].material.opacity=m.elite?a*.8:0;
+    }
+    const u=ppu(m.x,.4,z),sp=proj(m.x,m.r*2.5,z);
+    bar(sp[0],sp[1]-5,m.r*2.4*u,.085*u,m.hp/m.maxHp,'#6ee7a0');
+  }
+
+  /* --- 尸体：倒下去 + 沉进地里（不是"啪"地消失） --- */
+  for(const c of corpses){
+    const k=1-c.t/c.max;                              // 0→1
+    const g=bind(c,'M'+c.type,()=>buildMob(c.type));
+    g.position.set(c.x,-.55*k*k,c.y+.5);
+    g.scale.setScalar(c.r*1.32*(1-.15*k));
+    g.rotation.z=-1.55*min(1,k*1.7);                  // 往后仰倒
+    g.rotation.y=c.rot||0;
+    tint(g,false,true,false);
+  }
+}
+/* 宝箱 / 弹道 / 特效 */
+function drawProps(){
+  /* --- 宝箱 --- */
+  for(const ch of chests){
+    if(ch.dead)continue;
+    const g=bind(ch,'CH',buildChest);
+    const pulse=.5+.5*sin(gt*4+ch.x);
+    g.position.set(ch.x,.03+sin(gt*3+ch.x)*.04,ch.y);
+    g.rotation.y=sin(gt*1.4+ch.x)*.25;
+    g.children[5].scale.setScalar(.5+.1*pulse);
+    g.children[5].material.opacity=.16+.18*pulse;
+  }
+
+  /* --- 弹道 --- */
+  for(const s of shots){
+    const g=bind(s,'P'+(s.kind||'arrow'),()=>buildShot(s.kind));
+    g.position.set(s.x,.45,s.y);
+    g.rotation.y=-(s.a||0);
+    if(s.kind!=='orb')g.rotation.z=0;
+  }
+
+  /* --- 特效 --- */
+  for(const f of fx)drawFx(f);
+}
+/* 覆盖层：右上角伤害统计表 + 伤害飘字 */
+function drawOverlay(){
+  /* --- 伤害飘字（覆盖层） --- */
+  /* 伤害统计表：三个英雄的总输出 / 总承伤（召唤物挨的打算主人头上） */
+  if(heroes.length){
+    const fmt=v=>{v=Math.round(v||0);return v>=10000?(v/1e4).toFixed(1)+'万':String(v);};
+    const rowH=13,pad=5,bw=136,bx=W-bw-8,by=8,bh=pad*2+rowH*(heroes.length+1);
+    octx.globalAlpha=1;
+    octx.fillStyle='rgba(8,12,20,.58)';octx.fillRect(bx,by,bw,bh);
+    octx.strokeStyle='rgba(120,150,190,.32)';octx.lineWidth=1;octx.strokeRect(bx,by,bw,bh);
+    octx.font='600 9.5px -apple-system,sans-serif';
+    octx.fillStyle='#8ea0ba';
+    octx.textAlign='left'; octx.fillText('英雄',bx+pad,by+pad+9);
+    octx.textAlign='right';octx.fillText('输出',bx+bw-48,by+pad+9);
+                           octx.fillText('承伤',bx+bw-pad,by+pad+9);
+    heroes.forEach((h,i)=>{
+      const y=by+pad+9+rowH*(i+1);
+      octx.textAlign='left'; octx.fillStyle=CLASSES[h.cls].color;
+      octx.fillText(dispName(h),bx+pad,y);
+      octx.textAlign='right';
+      octx.fillStyle='#ffd08a';octx.fillText(fmt(h.dmgOut),bx+bw-48,y);
+      octx.fillStyle='#ff9d9d';octx.fillText(fmt(h.dmgTaken),bx+bw-pad,y);
+    });
+    octx.textAlign='center';
+  }
+
+  /* BOSS 总血条已挪到顶栏 DOM（rpg.js 的 updateBossBar），这里不再画，免得挡战斗 */
+
+  for(const n of nums){
+    const u=ppu(n.x,.9,n.y),sp=proj(n.x,.95,n.y);
+    octx.globalAlpha=min(1,n.t/n.max*1.6);
+    octx.fillStyle=n.color;
+    /* 暴击(big)：字号 ×1.55 + 更粗的描边，一眼看得出来 */
+    const fs=max(10,.3*u)*(n.big?1.55:1);
+    octx.font=(n.big?'800 ':'700 ')+fs.toFixed(1)+'px -apple-system,sans-serif';
+    octx.lineWidth=n.big?4.5:3;octx.strokeStyle='rgba(0,0,0,.65)';
+    octx.strokeText(n.txt,sp[0],sp[1]);
+    octx.fillText(n.txt,sp[0],sp[1]);
+  }
+  octx.globalAlpha=1;
+}
+
+/* ================= 特效分支 ================= */
+function drawFx(f){
+  const k=1-f.t/f.max;                       // 0→1 进度
+  const c=f.color;
+  if(f.type==='line'){
+    const m=take('fl',()=>new T.Mesh(g_box(1,1,1),
+      new T.MeshBasicMaterial({color:0xffffff,transparent:true})));
+    beam(m,f.x1,.45,f.y1,f.x2,.45,f.y2,.07);
+    m.material.color.set(c);m.material.opacity=1-k;
+  }else if(f.type==='aoe'){
+    const g=take('fa',()=>{const g2=mk();
+      add(g2,g_disc(),0xffffff,0,0,0,{rx:-PI/2,glow:1,op:.22,noSh:1});
+      add(g2,g_ring(.93,1),0xffffff,0,.004,0,{rx:-PI/2,glow:1,op:1,noSh:1});return g2;});
+    g.position.set(f.x,.035,f.y);g.scale.setScalar(f.rr);
+    g.children[0].material.color.set(c);g.children[0].material.opacity=.22*(1-k);
+    g.children[1].material.color.set(c);g.children[1].material.opacity=1-k;
+  }else if(f.type==='fall'){                 // 冰棱坠落
+    const g=take('ff',()=>{const g2=mk();
+      add(g2,g_oct(.11),0xffffff,0,0,0,{glow:1,s:[.5,1.5,.5]});
+      add(g2,g_box(.02,.3,.02),0xffffff,0,.28,0,{glow:1,op:.4,noSh:1});return g2;});
+    g.position.set(f.x,1.6*(1-k)+.12,f.y);
+    g.children[0].material.color.set(c);
+    g.children[0].material.opacity=1;g.children[0].material.transparent=false;
+  }else if(f.type==='bolt'){                 // 火球飞行 + 落点爆闪
+    const fp=min(1,k/.62);
+    const g=take('fb',()=>{const g2=mk();
+      add(g2,g_sph(.1,8),0xffffff,0,0,0,{glow:1});
+      add(g2,g_sph(.2,8),0xffffff,0,0,0,{glow:1,op:.4,noSh:1});return g2;});
+    if(fp<1){
+      g.position.set(f.x1+(f.x2-f.x1)*fp,.5,f.y1+(f.y2-f.y1)*fp);
+      g.scale.setScalar(1);
+      g.children[0].material.color.set(0xfff4c0);
+      g.children[1].material.color.set(c);g.children[1].material.opacity=.45;
+    }else{
+      const e=(k-.62)/.38;
+      g.position.set(f.x2,.4,f.y2);
+      g.scale.setScalar(1.2+e*3.4);
+      g.children[0].material.color.set(c);
+      g.children[1].material.color.set(c);g.children[1].material.opacity=(1-e)*.5;
+    }
+  }else if(f.type==='zap'){                  // 闪电链：折线电弧
+    const N=6,dx=(f.x2-f.x1)/N,dz=(f.y2-f.y1)/N;
+    let nx=-(f.y2-f.y1),nz=(f.x2-f.x1);
+    const nl=Math.hypot(nx,nz)||1;nx/=nl;nz/=nl;
+    let px=f.x1,pz=f.y1;
+    for(let i=1;i<=N;i++){
+      const o=i<N?sin(f.seed+i*2.3)*.2*(1-abs(i/N-.5)*1.2):0;
+      const qx=i<N?f.x1+dx*i+nx*o:f.x2, qz=i<N?f.y1+dz*i+nz*o:f.y2;
+      const m=take('fz',()=>new T.Mesh(g_box(1,1,1),
+        new T.MeshBasicMaterial({color:0xffffff,transparent:true})));
+      beam(m,px,.5,pz,qx,.5,qz,.075);
+      m.material.color.set(c);m.material.opacity=(1-k)*(.75+.25*Math.random());
+      px=qx;pz=qz;
+    }
+  }else if(f.type==='slash'){                // 战士弧形刀光
+    const g=take('fs',()=>new T.Mesh(g_torus(2.1),
+      new T.MeshBasicMaterial({color:0xffffff,transparent:true})));
+    g.position.set(f.x,.42,f.y);
+    g.rotation.set(-PI/2,0,0);
+    g.rotateZ(-f.a-1.05);
+    const r=f.rr*(.7+.5*k);
+    g.scale.set(r,r,1+(1-k)*1.2);
+    g.material.color.set(c);g.material.opacity=1-k;
+  }else if(f.type==='flame'){                // 火焰风暴火舌
+    const m=take('fm',()=>new T.Mesh(g_cone(.13,.42,6),
+      new T.MeshBasicMaterial({color:0xffffff,transparent:true})));
+    const s=f.sz*(1-k*.55);
+    m.position.set(f.x,.16+.55*k,f.y);
+    m.scale.setScalar(s);
+    m.material.color.set(c);m.material.opacity=(1-k)*.9;
+  }else if(f.type==='sword'){                // 剑雨：剑从天而降
+    const g=take('fw',()=>{const g2=mk();
+      add(g2,g_box(.035,.4,.035),0xffffff,0,.2,0,{glow:1});
+      add(g2,g_box(.14,.035,.035),0xffffff,0,.38,0,{glow:1});return g2;});
+    g.position.set(f.x,1.5*(1-k)*(1-k)+.05,f.y);
+    const a=k<.85?1:(1-k)/.15;
+    g.children[0].material.color.set(c);g.children[0].material.opacity=a;
+    g.children[1].material.color.set(c);g.children[1].material.opacity=a;
+  }else if(f.type==='rock'){                 // 大地震颤碎石
+    const m=take('fr',()=>new T.Mesh(g_tet(.1),
+      new T.MeshBasicMaterial({color:0xffffff,transparent:true})));
+    const s=f.sz*(1-k*.4);
+    m.position.set(f.x+f.vx*k*.5,(.5-abs(k-.5))*.9+.05,f.y);
+    m.scale.setScalar(s);
+    m.rotation.set(k*7,k*5,k*3);
+    m.material.color.set(c);m.material.opacity=1-k*k;
+  }else if(f.type==='heal'){                 // 治疗：上浮十字
+    const g=take('fh',()=>{const g2=mk();
+      add(g2,g_box(.08,.24,.02),0xffffff,0,0,0,{glow:1});
+      add(g2,g_box(.24,.08,.02),0xffffff,0,0,0,{glow:1});return g2;});
+    g.position.set(f.x,.55+.75*k,f.y);
+    g.rotation.x=-TILT;
+    const a=(1-k)*.95;
+    g.children[0].material.color.set(c);g.children[0].material.opacity=a;
+    g.children[1].material.color.set(c);g.children[1].material.opacity=a;
+  }else if(f.type==='spark'){                // 升级/命中粒子
+    const m=take('fp',()=>new T.Mesh(g_sph(.06,6),
+      new T.MeshBasicMaterial({color:0xffffff,transparent:true})));
+    const d=.25+k*1.1;
+    m.position.set(f.x+f.ax*d,.45+k*.3,f.y+f.ay*d);
+    m.scale.setScalar((1-k)+.3);
+    m.material.color.set(c);m.material.opacity=1-k;
+  }else{                                     // 默认：扩散圆环
+    const m=take('fd',()=>new T.Mesh(g_ring(.9,1),
+      new T.MeshBasicMaterial({color:0xffffff,transparent:true,side:T.DoubleSide})));
+    m.position.set(f.x,.04,f.y);m.rotation.x=-PI/2;
+    m.scale.setScalar(f.rr*(.4+.6*k));
+    m.material.color.set(c);m.material.opacity=1-k;
+  }
+}
+
+/* ================= 角色卡片里的 3D 预览 =================
+   用一个独立的小 renderer 逐张渲染，再 drawImage 到各卡片的 2D canvas 上。
+   这样只多占 1 个 WebGL context（手机上下文数量有限，别一卡一个）。
+   rpg.js 通过 R3.cardShow([{canvas,cls,tier,branch}]) 挂上，cardHide() 摘掉。 */
+let cardRen,cardScene,cardCam,cardSlot;
+let cardViews=[];
+const cardCache={};
+function cardInit(){
+  const c=document.createElement('canvas');
+  cardRen=new T.WebGLRenderer({canvas:c,antialias:true,alpha:true});
+  cardRen.setPixelRatio(min(window.devicePixelRatio||1,2));
+  cardRen.setSize(200,240,false);
+  cardScene=new T.Scene();
+  // ⚠️ 卡片场景的灯要和战场同步压低，否则卡通分阶会全顶到最亮那一阶、模型发白
+  cardScene.add(new T.HemisphereLight(0xd6e6ff,0x33405c,.62));
+  const d1=new T.DirectionalLight(0xfff4e0,1.3);d1.position.set(3,5,4);cardScene.add(d1);
+  const d2=new T.DirectionalLight(0x8fb0ff,.34);d2.position.set(-4,2,-3);cardScene.add(d2);
+  cardCam=new T.OrthographicCamera(-.62,.62,.86,-.62,.1,20);
+  cardCam.position.set(1.5,1.3,3.2);cardCam.lookAt(0,.5,0);
+  cardSlot=new T.Group();cardScene.add(cardSlot);
+}
+function cardShow(list){
+  if(!cardRen)cardInit();
+  cardViews=list||[];
+}
+function cardHide(){cardViews=[];}
+function cardTick(){
+  if(!cardViews.length)return;
+  for(const v of cardViews){
+    const key=v.cls+'|'+(v.tier|0)+'|'+(v.branch|0);
+    let g=cardCache[key];
+    if(!g)g=cardCache[key]=buildHero(v.cls,v.tier,v.branch);
+    cardSlot.clear();cardSlot.add(g);
+    /* 模型面朝 +X，转 90° 才面对相机；再左右缓慢摆动展示侧面 */
+    /* 模型面朝 +X；相机在 (1.5,1.3,3.2)，要转到 -PI/2 附近才是面对镜头 */
+    g.rotation.y=-PI/2+.34+sin(gt*.6+(v.phase||0))*.26;
+    g.position.y=sin(gt*1.6+(v.phase||0))*.012;
+    cardRen.render(cardScene,cardCam);
+    const cv=v.canvas;
+    if(!cv||!cv.width)continue;
+    const x=cv.getContext('2d');
+    x.clearRect(0,0,cv.width,cv.height);
+    x.drawImage(cardRen.domElement,0,0,cv.width,cv.height);
+  }
+}
+
+function info(){const r=ren.info.render;
+  return {calls:r.calls,tris:r.triangles,outline:olMeshes.length,textures:ren.info.memory.textures};}
+return {resize,draw,pick,shopAt,cardShow,cardHide,info,shake,mood};
+})();

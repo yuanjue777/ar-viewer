@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>全息塔防</title>
+<style>
+  :root{
+    --bg:#070d18;          /* 深空底 */
+    --bg2:#0c1626;         /* 面板底 */
+    --grid:#12304a;        /* 网格线 */
+    --holo:#45d6e8;        /* 全息青（主accent） */
+    --holo-dim:#1e6b7d;
+    --gold:#f0c46a;        /* 金币 */
+    --hp:#6ee7a0;          /* 生命 */
+    --danger:#ff5c7a;      /* 敌人/警告 */
+    --ink:#cfe8f2;         /* 正文 */
+    --ink-dim:#6d8ba0;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    background:var(--bg);
+    color:var(--ink);
+    font-family:-apple-system,"PingFang SC","Helvetica Neue","Noto Sans SC",sans-serif;
+    overflow:hidden;
+    -webkit-user-select:none;user-select:none;
+    -webkit-tap-highlight-color:transparent;
+  }
+  #app{height:100%;height:100dvh;display:flex;flex-direction:column}
+
+  /* ---- 顶部 HUD ---- */
+  header{
+    display:flex;align-items:center;gap:14px;
+    padding:calc(env(safe-area-inset-top) + 8px) 14px 8px;
+    background:linear-gradient(var(--bg2),rgba(12,22,38,.6));
+    border-bottom:1px solid var(--grid);
+  }
+  header .stat{display:flex;align-items:baseline;gap:5px}
+  header .stat b{
+    font-variant-numeric:tabular-nums;
+    font-family:ui-monospace,"SF Mono",Menlo,monospace;
+    font-size:17px;font-weight:600;
+  }
+  .stat.money b{color:var(--gold)}
+  .stat.life b{color:var(--hp)}
+  .stat.wave b{color:var(--holo)}
+  header .stat small{font-size:11px;color:var(--ink-dim);letter-spacing:.08em}
+  #speedBtn{
+    margin-left:auto;
+    background:none;border:1px solid var(--holo-dim);color:var(--holo);
+    border-radius:4px;padding:5px 10px;font-size:13px;
+    font-family:ui-monospace,"SF Mono",Menlo,monospace;
+  }
+  #speedBtn.on{background:var(--holo);color:#04222b;border-color:var(--holo)}
+
+  /* ---- 战场 ---- */
+  #stage{flex:1;position:relative;display:flex;align-items:center;justify-content:center;overflow:hidden}
+  canvas{display:block;touch-action:none}
+
+  /* ---- 底部操作面板 ---- */
+  #panel{
+    min-height:92px;
+    padding:10px 14px calc(env(safe-area-inset-bottom) + 10px);
+    background:var(--bg2);
+    border-top:1px solid var(--grid);
+    display:flex;align-items:center;gap:10px;
+  }
+  .btn{
+    flex:1;border:1px solid var(--holo-dim);border-radius:6px;
+    background:rgba(69,214,232,.06);color:var(--ink);
+    padding:9px 6px;text-align:center;font-size:13px;line-height:1.35;
+  }
+  .btn b{display:block;font-size:14px}
+  .btn .cost{color:var(--gold);font-variant-numeric:tabular-nums;font-size:12px}
+  .btn .sub{color:var(--ink-dim);font-size:11px}
+  .btn:disabled{opacity:.35}
+  .btn.primary{background:var(--holo);border-color:var(--holo);color:#04222b;font-weight:600;font-size:15px}
+  .btn.sell{border-color:#7d3c4c;background:rgba(255,92,122,.08)}
+  .btn.sell .cost{color:var(--danger)}
+  #panel .hint{flex:1;color:var(--ink-dim);font-size:13px;line-height:1.5}
+
+  /* ---- 遮罩层（开始/结束） ---- */
+  #overlay{
+    position:absolute;inset:0;z-index:10;
+    background:rgba(7,13,24,.88);backdrop-filter:blur(3px);
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    gap:14px;text-align:center;padding:28px;
+  }
+  #overlay.hide{display:none}
+  #overlay h1{
+    font-size:30px;font-weight:700;color:var(--holo);
+    letter-spacing:.14em;text-shadow:0 0 22px rgba(69,214,232,.55);
+  }
+  #overlay p{color:var(--ink-dim);font-size:14px;line-height:1.8;max-width:300px}
+  #overlay .big{
+    border:1px solid var(--holo);background:rgba(69,214,232,.12);color:var(--holo);
+    border-radius:8px;padding:12px 44px;font-size:17px;letter-spacing:.2em;
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="stat money"><b id="uiMoney">0</b><small>金币</small></div>
+    <div class="stat life"><b id="uiLife">0</b><small>生命</small></div>
+    <div class="stat wave"><b id="uiWave">0/20</b><small>波次</small></div>
+    <button id="speedBtn">×1</button>
+  </header>
+  <div id="stage">
+    <canvas id="cv"></canvas>
+    <div id="overlay">
+      <h1>全息塔防</h1>
+      <p>敌人沿光路推进，点击空地建塔拦截。<br>箭塔快攻 · 炮塔溅射 · 冰塔减速。<br>守住 20 波即胜利。</p>
+      <button class="big" id="startBtn">开 始</button>
+    </div>
+  </div>
+  <div id="panel"><div class="hint">点击空地建塔，点击塔升级</div></div>
+</div>
+
+<script>
+'use strict';
+/* ================= 基础数据 ================= */
+const COLS=9, ROWS=13, TOTAL_WAVES=20;
+// 蛇形路径拐点（格坐标，行 -1 与 ROWS 为出入口）
+const WAY=[[1,-1],[1,2],[7,2],[7,5],[1,5],[1,8],[7,8],[7,11],[4,11],[4,13]];
+
+const TOWERS={
+  arrow:{name:'箭塔', cost:50, up:[40,70],  dmg:[12,20,34],  range:2.3, rate:[2.4,2.8,3.2], color:'#45d6e8', desc:'快速单体'},
+  cannon:{name:'炮塔', cost:80, up:[60,110], dmg:[26,46,80],  range:1.9, rate:[.8,.9,1.0],   color:'#f0c46a', desc:'范围溅射', aoe:1.0},
+  frost:{name:'冰塔', cost:60, up:[50,90],  dmg:[6,10,16],   range:2.0, rate:[1.2,1.3,1.4], color:'#9db8ff', desc:'减速敌人', slow:[.42,.52,.62]},
+};
+const ENEMIES={
+  normal:{hp:42, spd:1.5, reward:8,  r:.26, color:'#ff5c7a', lives:1},
+  fast:  {hp:26, spd:2.5, reward:9,  r:.20, color:'#ffa94d', lives:1},
+  tank:  {hp:130,spd:1.0, reward:16, r:.34, color:'#c06bff', lives:2},
+  boss:  {hp:950,spd:.85, reward:90, r:.46, color:'#ff3860', lives:4},
+};
+
+/* ================= 状态 ================= */
+let money, lives, wave, waveActive, spawnQueue, spawnT, nextWaveT;
+let towers, enemies, bullets, fx;
+let sel=null;            // {type:'cell'|'tower', c, r}
+let speed=1, running=false, over=false;
+const pathCells=new Set();
+
+/* 路径像素点与累计长度（以格为单位） */
+let pts=[], segLen=[], pathTotal=0;
+(function buildPath(){
+  for(let i=0;i<WAY.length-1;i++){
+    const [ax,ay]=WAY[i],[bx,by]=WAY[i+1];
+    const dx=Math.sign(bx-ax),dy=Math.sign(by-ay);
+    let x=ax,y=ay;
+    while(x!==bx||y!==by){ if(y>=0&&y<ROWS) pathCells.add(x+','+y); x+=dx;y+=dy; }
+    if(by>=0&&by<ROWS) pathCells.add(bx+','+by);
+  }
+  pts=WAY.map(([x,y])=>[x+.5,y+.5]);
+  for(let i=0;i<pts.length-1;i++){
+    const l=Math.hypot(pts[i+1][0]-pts[i][0],pts[i+1][1]-pts[i][1]);
+    segLen.push(l); pathTotal+=l;
+  }
+})();
+function posAt(d){ // 路径距离 -> [x,y]（格单位）
+  for(let i=0;i<segLen.length;i++){
+    if(d<=segLen[i]){
+      const t=d/segLen[i],a=pts[i],b=pts[i+1];
+      return [a[0]+(b[0]-a[0])*t, a[1]+(b[1]-a[1])*t];
+    }
+    d-=segLen[i];
+  }
+  return pts[pts.length-1];
+}
+
+/* ================= 画布 ================= */
+const cv=document.getElementById('cv'), ctx=cv.getContext('2d');
+let cell=40, dpr=1;
+function resize(){
+  const st=document.getElementById('stage');
+  const w=st.clientWidth,h=st.clientHeight;
+  cell=Math.floor(Math.min(w/COLS,h/ROWS));
+  dpr=Math.min(window.devicePixelRatio||1,2);
+  cv.width=COLS*cell*dpr; cv.height=ROWS*cell*dpr;
+  cv.style.width=COLS*cell+'px'; cv.style.height=ROWS*cell+'px';
+}
+window.addEventListener('resize',resize); resize();
+
+/* ================= 游戏流程 ================= */
+function reset(){
+  money=120; lives=10; wave=0;
+  waveActive=false; spawnQueue=[]; spawnT=0; nextWaveT=0;
+  towers=new Map(); enemies=[]; bullets=[]; fx=[];
+  sel=null; over=false;
+  updateHUD(); renderPanel();
+}
+function waveComp(w){
+  const list=[]; const n=6+w*2;
+  for(let i=0;i<n;i++){
+    let t='normal';
+    if(w>=3&&i%3===2)t='fast';
+    if(w>=5&&i%4===3)t='tank';
+    list.push(t);
+  }
+  if(w%5===0)list.push('boss');
+  return list;
+}
+function startWave(){
+  if(waveActive||wave>=TOTAL_WAVES)return;
+  wave++; waveActive=true;
+  spawnQueue=waveComp(wave); spawnT=0;
+  updateHUD(); renderPanel();
+}
+function spawn(type){
+  const b=ENEMIES[type], mul=1+0.28*(wave-1);
+  enemies.push({type,d:0,hp:b.hp*mul,maxHp:b.hp*mul,spd:b.spd,r:b.r,
+    color:b.color,reward:b.reward,lives:b.lives,slowT:0,slowF:0});
+}
+
+/* ================= 更新 ================= */
+function update(dt){
+  // 出怪
+  if(waveActive&&spawnQueue.length){
+    spawnT-=dt;
+    if(spawnT<=0){
+      const t=spawnQueue.shift(); spawn(t);
+      spawnT=(t==='fast')?.45:.8;
+    }
+  }
+  // 敌人移动
+  for(const e of enemies){
+    if(e.slowT>0)e.slowT-=dt;
+    const s=e.spd*(e.slowT>0?1-e.slowF:1);
+    e.d+=s*dt;
+    if(e.d>=pathTotal){
+      e.dead=true; lives-=e.lives;
+      if(lives<=0){lives=0;endGame(false);}
+      updateHUD();
+    }
+  }
+  // 塔攻击
+  for(const t of towers.values()){
+    t.cd-=dt; if(t.cd>0)continue;
+    const def=TOWERS[t.type], rng=def.range;
+    let best=null;
+    for(const e of enemies){
+      if(e.dead)continue;
+      const [ex,ey]=posAt(e.d);
+      if(Math.hypot(ex-(t.c+.5),ey-(t.r+.5))<=rng+e.r){
+        if(!best||e.d>best.d)best=e;   // 优先打最靠前的
+      }
+    }
+    if(best){
+      t.cd=1/def.rate[t.lv];
+      const [ex,ey]=posAt(best.d);
+      bullets.push({x:t.c+.5,y:t.r+.5,tx:ex,ty:ey,target:best,
+        dmg:def.dmg[t.lv],type:t.type,lv:t.lv,color:def.color});
+      t.flash=.1;
+    }
+    if(t.flash>0)t.flash-=dt;
+  }
+  // 子弹
+  const BSPD=9;
+  for(const b of bullets){
+    if(b.target&&!b.target.dead){const p=posAt(b.target.d);b.tx=p[0];b.ty=p[1];}
+    const dx=b.tx-b.x,dy=b.ty-b.y,l=Math.hypot(dx,dy);
+    if(l<BSPD*dt){hit(b);b.dead=true;}
+    else{b.x+=dx/l*BSPD*dt;b.y+=dy/l*BSPD*dt;}
+  }
+  enemies=enemies.filter(e=>!e.dead);
+  bullets=bullets.filter(b=>!b.dead);
+  for(const f of fx)f.t-=dt;
+  fx=fx.filter(f=>f.t>0);
+  // 波次结束
+  if(waveActive&&!spawnQueue.length&&!enemies.length){
+    waveActive=false;
+    money+=20+wave*2; updateHUD();
+    if(wave>=TOTAL_WAVES){endGame(true);return;}
+    renderPanel();
+  }
+}
+function hit(b){
+  const def=TOWERS[b.type];
+  if(b.type==='cannon'){
+    fx.push({x:b.tx,y:b.ty,rr:def.aoe,t:.25,max:.25,color:def.color});
+    for(const e of enemies){
+      if(e.dead)continue;
+      const[ex,ey]=posAt(e.d);
+      if(Math.hypot(ex-b.tx,ey-b.ty)<=def.aoe+e.r)damage(e,b.dmg);
+    }
+  }else{
+    const e=b.target;
+    if(e&&!e.dead){
+      damage(e,b.dmg);
+      if(b.type==='frost'){e.slowT=1.5;e.slowF=def.slow[b.lv];}
+    }
+  }
+}
+function damage(e,d){
+  e.hp-=d;
+  if(e.hp<=0&&!e.dead){
+    e.dead=true;money+=e.reward;updateHUD();
+    const[x,y]=posAt(e.d);
+    fx.push({x,y,rr:e.r*1.6,t:.3,max:.3,color:e.color});
+  }
+}
+function endGame(win){
+  over=true;running=false;
+  const ov=document.getElementById('overlay');
+  ov.classList.remove('hide');
+  ov.innerHTML=win
+    ?'<h1>防线守住了</h1><p>20 波全部拦截，全息核心完好。</p><button class="big" id="startBtn">再来一局</button>'
+    :`<h1 style="color:var(--danger);text-shadow:0 0 22px rgba(255,92,122,.5)">核心失守</h1><p>坚持到了第 ${wave} 波。调整塔位再试一次。</p><button class="big" id="startBtn">重新开始</button>`;
+  document.getElementById('startBtn').onclick=begin;
+}
+function begin(){
+  document.getElementById('overlay').classList.add('hide');
+  reset();running=true;startWave();
+}
+
+/* ================= 绘制 ================= */
+function draw(){
+  ctx.setTransform(dpr*cell,0,0,dpr*cell,0,0);   // 1 单位 = 1 格
+  ctx.clearRect(0,0,COLS,ROWS);
+  // 网格
+  ctx.strokeStyle='#12304a';ctx.lineWidth=.02;
+  ctx.beginPath();
+  for(let c=0;c<=COLS;c++){ctx.moveTo(c,0);ctx.lineTo(c,ROWS);}
+  for(let r=0;r<=ROWS;r++){ctx.moveTo(0,r);ctx.lineTo(COLS,r);}
+  ctx.stroke();
+  // 路径
+  ctx.fillStyle='#0d2033';
+  for(const k of pathCells){const[c,r]=k.split(',').map(Number);ctx.fillRect(c,r,1,1);}
+  ctx.strokeStyle='rgba(69,214,232,.28)';ctx.lineWidth=.06;
+  ctx.beginPath();ctx.moveTo(pts[0][0],pts[0][1]);
+  for(const p of pts)ctx.lineTo(p[0],p[1]);
+  ctx.stroke();
+  // 选中格
+  if(sel){
+    ctx.strokeStyle='#45d6e8';ctx.lineWidth=.05;
+    ctx.strokeRect(sel.c+.05,sel.r+.05,.9,.9);
+    let rng=null;
+    if(sel.type==='tower')rng=TOWERS[towers.get(sel.c+','+sel.r).type].range;
+    if(rng){
+      ctx.beginPath();ctx.arc(sel.c+.5,sel.r+.5,rng,0,7);
+      ctx.fillStyle='rgba(69,214,232,.07)';ctx.fill();
+      ctx.strokeStyle='rgba(69,214,232,.4)';ctx.lineWidth=.03;ctx.stroke();
+    }
+  }
+  // 塔
+  for(const t of towers.values()){
+    const def=TOWERS[t.type],x=t.c+.5,y=t.r+.5;
+    ctx.fillStyle=t.flash>0?'#ffffff':def.color;
+    ctx.strokeStyle=def.color;ctx.lineWidth=.06;
+    ctx.beginPath();
+    if(t.type==='arrow'){ctx.moveTo(x,y-.3);ctx.lineTo(x+.28,y+.24);ctx.lineTo(x-.28,y+.24);ctx.closePath();}
+    else if(t.type==='cannon'){ctx.arc(x,y,.28,0,7);}
+    else{for(let i=0;i<6;i++){const a=Math.PI/3*i-Math.PI/6;const px=x+Math.cos(a)*.3,py=y+Math.sin(a)*.3;i?ctx.lineTo(px,py):ctx.moveTo(px,py);}ctx.closePath();}
+    ctx.globalAlpha=.25;ctx.fill();ctx.globalAlpha=1;ctx.stroke();
+    // 等级点
+    ctx.fillStyle=def.color;
+    for(let i=0;i<=t.lv;i++)ctx.fillRect(x-.18+i*.14,y+.32,.08,.08);
+  }
+  // 敌人
+  for(const e of enemies){
+    const[x,y]=posAt(e.d);
+    ctx.beginPath();ctx.arc(x,y,e.r,0,7);
+    ctx.fillStyle=e.color;ctx.globalAlpha=e.slowT>0?.55:.9;ctx.fill();ctx.globalAlpha=1;
+    if(e.slowT>0){ctx.strokeStyle='#9db8ff';ctx.lineWidth=.04;ctx.stroke();}
+    // 血条
+    const w=e.r*2;
+    ctx.fillStyle='rgba(0,0,0,.55)';ctx.fillRect(x-w/2,y-e.r-.16,w,.09);
+    ctx.fillStyle='#6ee7a0';ctx.fillRect(x-w/2,y-e.r-.16,w*Math.max(e.hp/e.maxHp,0),.09);
+  }
+  // 子弹
+  for(const b of bullets){
+    ctx.beginPath();ctx.arc(b.x,b.y,.08,0,7);
+    ctx.fillStyle=b.color;ctx.fill();
+  }
+  // 特效
+  for(const f of fx){
+    const k=1-f.t/f.max;
+    ctx.beginPath();ctx.arc(f.x,f.y,f.rr*(.4+.6*k),0,7);
+    ctx.strokeStyle=f.color;ctx.globalAlpha=1-k;ctx.lineWidth=.06;ctx.stroke();ctx.globalAlpha=1;
+  }
+}
+
+/* ================= UI ================= */
+const uiMoney=document.getElementById('uiMoney'),
+      uiLife=document.getElementById('uiLife'),
+      uiWave=document.getElementById('uiWave'),
+      panel=document.getElementById('panel');
+function updateHUD(){
+  uiMoney.textContent=money;
+  uiLife.textContent=lives;
+  uiWave.textContent=wave+'/'+TOTAL_WAVES;
+}
+function renderPanel(){
+  if(over)return;
+  if(sel&&sel.type==='cell'){
+    panel.innerHTML=Object.entries(TOWERS).map(([k,d])=>
+      `<button class="btn" data-build="${k}" ${money<d.cost?'disabled':''}>
+        <b style="color:${d.color}">${d.name}</b>
+        <span class="cost">${d.cost}</span><span class="sub"> ${d.desc}</span>
+      </button>`).join('');
+  }else if(sel&&sel.type==='tower'){
+    const t=towers.get(sel.c+','+sel.r),d=TOWERS[t.type];
+    const maxed=t.lv>=2, upCost=maxed?0:d.up[t.lv];
+    const refund=Math.floor(t.spent*.7);
+    panel.innerHTML=
+      `<button class="btn" data-up="1" ${maxed||money<upCost?'disabled':''}>
+        <b>${maxed?'已满级':'升级 Lv'+(t.lv+2)}</b>${maxed?'':`<span class="cost">${upCost}</span>`}
+      </button>
+      <button class="btn sell" data-sell="1"><b>拆除</b><span class="cost">+${refund}</span></button>`;
+  }else if(!waveActive){
+    panel.innerHTML=`<div class="hint">第 ${wave+1} 波即将来袭<br>点击空地布防</div>
+      <button class="btn primary" data-next="1" style="max-width:46%">下一波 ▶</button>`;
+  }else{
+    panel.innerHTML=`<div class="hint">第 ${wave} 波进行中 — 剩余敌人 ${enemies.length+spawnQueue.length}<br>点击空地可继续建塔</div>`;
+  }
+}
+panel.addEventListener('click',ev=>{
+  const b=ev.target.closest('button');if(!b)return;
+  if(b.dataset.build){
+    const k=b.dataset.build,d=TOWERS[k];
+    if(money>=d.cost&&sel&&sel.type==='cell'){
+      money-=d.cost;
+      towers.set(sel.c+','+sel.r,{type:k,c:sel.c,r:sel.r,lv:0,cd:0,flash:0,spent:d.cost});
+      sel={type:'tower',c:sel.c,r:sel.r};
+      updateHUD();
+    }
+  }else if(b.dataset.up){
+    const t=towers.get(sel.c+','+sel.r),d=TOWERS[t.type],c=d.up[t.lv];
+    if(t.lv<2&&money>=c){money-=c;t.lv++;t.spent+=c;updateHUD();}
+  }else if(b.dataset.sell){
+    const t=towers.get(sel.c+','+sel.r);
+    money+=Math.floor(t.spent*.7);
+    towers.delete(sel.c+','+sel.r);
+    sel=null;updateHUD();
+  }else if(b.dataset.next){startWave();return;}
+  renderPanel();
+});
+cv.addEventListener('pointerdown',ev=>{
+  if(!running)return;
+  const rect=cv.getBoundingClientRect();
+  const c=Math.floor((ev.clientX-rect.left)/cell),
+        r=Math.floor((ev.clientY-rect.top)/cell);
+  if(c<0||c>=COLS||r<0||r>=ROWS){sel=null;renderPanel();return;}
+  const k=c+','+r;
+  if(towers.has(k))sel={type:'tower',c,r};
+  else if(!pathCells.has(k))sel={type:'cell',c,r};
+  else sel=null;
+  renderPanel();
+});
+document.getElementById('speedBtn').addEventListener('click',ev=>{
+  speed=speed===1?2:1;
+  ev.currentTarget.textContent='×'+speed;
+  ev.currentTarget.classList.toggle('on',speed===2);
+});
+document.getElementById('startBtn').addEventListener('click',begin);
+
+/* ================= 主循环 ================= */
+let last=performance.now();
+function loop(now){
+  const dt=Math.min((now-last)/1000,.05);last=now;
+  if(running&&!over)update(dt*speed);
+  draw();
+  requestAnimationFrame(loop);
+}
+reset();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>

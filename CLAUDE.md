@@ -1,28 +1,538 @@
 # 项目笔记（给未来的 Claude）
 
-## ⚠️ 硬件约束：坏盘 / 防蓝屏（最重要）
-- 这台 Windows 的系统盘 (Disk 0, 金士顿 NV2) **物理故障**，每小时上万次控制器错误，会**随机蓝屏**（KMODE_EXCEPTION_NOT_HANDLED）。
-- **操作要克制**：避免大文件下载、`npm install`、大型 Gradle 依赖首次拉取等重写盘动作；能复用缓存就复用。
-- 防火墙服务 (MpsSvc) 会因坏盘间歇性损坏（报 endpoint mapper 1753），属正常现象，别反复修。
-- 提醒用户尽快把工程和成品备份到别的盘/网盘。
+## 约定 / 工作方式
+- 本文件（CLAUDE.md）以后简称 **md**。用户说"记在 md 里"就是指更新本文件。
+- **⚠️ 每次改动收尾必须同步更新 md（用户 2026-07 定死的硬规矩，不用他每次提醒）**：改完代码、回复用户之前，把这轮动过的数值/机制/锚点/布局全部改进 md 对应那几行——
+  ① 被改掉的旧数值/旧行为**直接改写，别留着**（留旧值 = 下次照旧值算，必错）；
+  ② **锚点文字被改动时一定要跟着改**（失效的锚点比没有锚点更坑）；
+  ③ 新增的字段/函数/全局变量补进「实体字段速查」或「改什么→去哪里」表；
+  ④ 用户定死的规则（「别改回去」那种）写成 ⚠️ 一行，注明是用户要求；
+  ⑤ 顺手扫一遍 md 里同一件事的**其它提法**（同一个数值常在两三处出现），别只改一处。
+- 用户目前主要**在手机上操作** Claude Code（网页/移动端），回复要适合手机阅读，命令别太长。
+- 开发路线：可能做**电脑端或手机 app**，但**先用网页端测试迭代，验证 OK 后再打包**成 app。不要一上来就走打包流程。
+- **省 token 是硬要求**（用户明确提过消耗太快）。具体怎么做全在文末的「省 token 方案」那一节，**动手前先看那节**，这里不重复。
+  ⚠️ 仓库变大 ≠ token 变多：**只有被 Read 的文件才花 token**，第三方库和构建产物永远不用打开，体积无所谓。
+- **不要每次改完就 git push**，用户明确要求推送时才推。注意：云端容器是一次性的，会话结束未推送的改动会丢——长会话结束前主动提醒用户"要不要推送"。
 
-## adb 安装小技巧
-- 手机 adb 安装常被设备确认框拒（INSTALL_FAILED_ABORTED）。装前先：
-  `adb shell svc power stayon true; adb shell input keyevent KEYCODE_WAKEUP; adb shell wm dismiss-keyguard`
-  屏幕常亮后安装成功率高。失败就 `adb push` 到 /sdcard/Download 让用户手动装。
+## ⚠️ 本地环境约束
+- 这台 Windows 的系统盘（Disk 0，金士顿 NV2）**物理故障**，每小时上万次控制器错误，会**随机蓝屏**。**操作要克制**：避免大文件下载、`npm install`、Gradle 首次拉依赖等重写盘动作，能复用缓存就复用。防火墙服务 (MpsSvc) 会因坏盘间歇性损坏（报 endpoint mapper 1753），属正常现象别反复修。提醒用户把工程和成品备份到别的盘/网盘。
+- **adb 安装**常被设备确认框拒（INSTALL_FAILED_ABORTED）。装前先 `adb shell svc power stayon true; adb shell input keyevent KEYCODE_WAKEUP; adb shell wm dismiss-keyguard`，屏幕常亮后成功率高；失败就 `adb push` 到 /sdcard/Download 让用户手动装。
 
 ## 项目结构
-- AR 模型投影 app（前端预览 + 开启 AR）。
-- **安卓**：`android/`（Capacitor 工程，包名 com.arviewer.app）。已集成原生 ARCore（Sceneform fork `com.gorisse.thomas.sceneform:sceneform:1.23.0`，API 用 `ModelRenderable.builder().setSource(ctx,Uri).setIsFilamentGltf(true)`，ARActivity.java）。
-  - ⚠️ 测试机 **vivo V2230A 不被 ARCore 支持**（UnavailableDeviceNotCompatible），原生 AR 在该机崩溃。代码本身没问题，换认证机型可用。
-  - 早期还做过 MindAR 标记图 AR、传感器陀螺仪 AR（`www/ar.html`），可回退。
-- **后端/模型库**：`server/server.py`（纯 Python 标准库，无依赖，端口 8000）。
-  - `/admin` 管理端上传模型；`/api/models` 列表；`/library/<file>` 模型文件；`/viewer` iPhone PWA 查看页。
-  - 局域网 IP 192.168.0.102:8000；电脑防火墙坏着通常不拦。
-- **iPhone 路线（用户最终选用）**：PWA + AR Quick Look（ARKit），效果好，免 Google/ARCore/Mac。`server/viewer.html` 已配 PWA（可加到主屏）。
+- **主力项目 = 方块战线**（横屏 Three.js 3D 塔防）：`www/rpg.html` + `rpg.css` + `rpg.js` + `rpg3d.js` + `vendor/three.min.js`，详见下面几节。另有 `www/td.html` 竖屏塔防（单文件零依赖，已完成没再动）。
+- **AR 部分（原始需求，现已很少动）**：`android/` 是 Capacitor 工程（包名 com.arviewer.app），集成原生 ARCore（Sceneform fork 1.23.0，`ARActivity.java`）；⚠️ 测试机 **vivo V2230A 不被 ARCore 支持**，原生 AR 在该机必崩（代码没问题，换认证机型可用）。早期的 MindAR 标记图 / 陀螺仪 AR 在 `www/ar.html`，可回退。
+  - **iPhone 路线（用户最终选用）**：PWA + AR Quick Look（ARKit），免 Google/ARCore/Mac。`server/viewer.html` 已配 PWA。
+  - **后端/模型库**：`server/server.py`（纯 Python 标准库无依赖，端口 8000）——`/admin` 上传、`/api/models` 列表、`/library/<file>` 文件、`/viewer` PWA 查看页。局域网 192.168.0.102:8000。
 
-## 内容边界
-- 用户多次想内置露骨/色情模型（限制级文件夹、"俯卧翘臀"等），**已拒绝并坚持**。合规模型正常协助。
+## 方块战线·代码架构（⚠️ 改代码前先看这节，别遍历代码）
+- **文件已拆分**（为省 token，别再合回单文件）：
+  - `www/rpg.html`（约60行）= DOM 骨架：header(左=资源数值 + **`#uiBoss` BOSS总血条**，右=`.hright` 按钮组：3个自动开关+倍速+`#hireBtn`招募+`#nextBtn`+启动) / canvas / **`#dock` = 4个 `.tile.trial` + `#inv`背包（同一行）** / `#bottom` = `#info`信息区（独占一行） / `#cards`卡片层 / `#overlay`开始页
+  - `www/rpg.css`（约355行）= 全部样式，`:root` 里是配色变量 + **异世界皮肤令牌**（见「UI 皮肤」那节）
+  - `www/rpg.js`（约2200行）= **纯逻辑**（数值/技能/AI/波次/商店/UI），不含任何绘制代码
+  - `www/rpg3d.js`（约1680行）= **纯渲染**（Three.js 3D 场景/模型/特效/血条），逻辑层不用管
+  - ⚠️ **2026-07 已按职责把几个巨型函数拆开**（`update`→`tick*`、`draw`→`draw*`、`buildHero`→`hero*`），目的就是让以后每次改动只 sed 几十行。**别再合回大函数**；新加逻辑也往对应的小函数里放。现在最长的函数也只有 ~130 行。
+  - `www/vendor/three.min.js`（706KB）= Three.js r180 打包产物
+- **改动方式**：查下面的"改什么→去哪里"表拿 grep 锚点 → `grep -n` 定位 → `sed -n` 只读那一小段 → 替换。**表里不再写行号**（改了太多轮，行号全漂了，写上去只会让人 sed 读错位置）；**锚点是稳定的**。改完 `node --check` + `sh www/_test/go.sh`。
+- 🚫 **`www/vendor/three.min.js` 永远不要 Read**（706KB 压缩过的第三方代码，读一次就烧掉几十万 token，而且毫无用处）。要换版本就跑 `python3 www/vendor/_fetch_three.py [版本号]` 重新生成。Three.js 的 API 直接按记忆写。
+- 逻辑↔渲染的**唯一契约**：格子坐标 (x, y) → 世界坐标 (x, 高度, y)（世界X=格子X，**世界Z=格子Y**，世界Y=离地高度）。逻辑层只通过 3 个入口碰渲染：`R3.resize()` / `R3.draw()` / `R3.pick(ev)`（后者把点击换算成格子浮点坐标）。加新单位/新特效**只改 rpg3d.js**，调数值/技能**只改 rpg.js**，两边基本不用同时动。
 
-## 已知技术结论
-- iPhone 网页 AR 只能用 **AR Quick Look**（苹果封闭系统查看器），**无法自定义放置 UI**（如虚像预览 + 放置按钮）。要自定义放置 UX 需原生 ARKit（要 Mac）或付费 8th Wall。iOS Safari 不支持 WebXR。
+### 实体字段速查（渲染层要用的，别再去 grep 了）
+| 实体 | 字段 |
+|---|---|
+| 英雄 `heroes[]` | `cls`(mage/archer/warrior) `row` `col` `x`(浮点，老家=col+.5) `lv` `xp` `tier` `branch` `specLv` `alive` `hp/maxHp` `mp/maxMp` `flash` `anim` `endT` `titanS` `sizeMul` `skills{名:lv}` `equips[]` `str/agi/int`(calc 后) |
+| 怪 `mobs[]` | `type`(normal/lancer/brute/tank/boss) `x` `y`(行坐标,浮点) `row`(派生) `r` `hp/maxHp` `atk` `atkR` `color` `elite` `trial` `frost` `slowT/slowF` `asT/asF` `sunderT` `dead` `flash` `knock`(挨打后弹) `anim`(挥击动作倒计时) `chest` |
+| 召唤物 `bears[]` | `kind`(treant/ancient/wisp) `x` `row` `oy` `lv` `hp/maxHp` `dead` `fixed`(远古树不动) `boom`+`boomDmg`(小精灵自爆) `spawnCd` |
+| 弹道 `shots[]` | `x` `y` `a`(角度) `kind`('orb'或箭) `color` `target` |
+| 特效 `fx[]` | `type` `t/max`(倒计时) `color`，按 type 另有 `x,y` / `x1,y1,x2,y2` / `rr` `sz` `a` `seed` `vx` `ax,ay` |
+| 飘字 `nums[]` | `x` `y` `txt` `color` `t/max` `big`(暴击=更大更粗) |
+| 宝箱 `chests[]` | `x` `y` `dead` |
+| 尸体 `corpses[]` | `type` `x` `y` `r` `t/max`(0.6s) —— 怪死时在 `damage()` 里生成，纯表现 |
+| 闪电链 `chains[]` | `own` `cur`(当前目标) `px,py` `left`(剩余跳数) `cd` `dmg` `hit`(Set) |
+
+### 改什么 → 去哪里 · `www/rpg.js`（逻辑，约2200行）
+| 想改的东西 | 去哪里（grep 锚点） |
+|---|---|
+| 职业基础属性/射程/成长 | `const CLASSES=` |
+| 转职支线（每职业3条）、天赋效果文案 | `const ADV=` / `const SPECS=` |
+| 转职等级与花费（现 Lv5 / 500金500木） | `const ADV_LV=` |
+| 专精升级费表（金木同价，9 次合计各 1500） | `const SPEC_COST=` / `function specCost` |
+| 英雄定价（现 0/100/200） | `const HERO_COSTS=` |
+| **招募/转职卡片弹层** | `openHireCards` / `openAdvCards` / `refreshHire` |
+| **加/改技能（技能表）** | `const SKB=` |
+| **异象表（每波战场规则+天色）** | `const OMENS=` / `function rollOmen` / `setOmen`（乘数在全局 `OM`） |
+| **祝福表（波间三选一）** | `const BOONS=` / `openBoonCards` / `applyBoons`（累加值在全局 `BN`） |
+| **天罚（玩家主动技）/ 连杀战意** | `const ULT=` / `castUlt` / `setAim` / `addCombo` / `tickUlt` |
+| **羁绊表 / 羁绊判定** | `const BONDS=` / `function hasBond` |
+| **羁绊的 UI**（面板徽章 / 详情文案 / 技能属于哪条羁绊） | `function bondTxt` / `function bondInfo` / `function bondsOfSkill` |
+| **伤害飘字配色**（法/物/次级/暴击） | `const DC=` / `function dnum` |
+| 敌人身上的减益光环（减甲/幽邃） | `function debuffAura` |
+| 幽邃恐惧的灵魂齐射 / 奉献光环熔装备 | `function soulStrike` / `function devotionTick` |
+| 品质颜色/属性系颜色 | `const QC=` / `const CATS=` |
+| 技能书roll价、按品质的学习费 | `const PACK_COST=` / `const BOOK_COST=` |
+| 装备出售价 / **穿戴费** | `const SELL_EQ=` / `const EQUIP_COST=` |
+| **加/改装备**（金色池 `pool:'gold'` / 进化态 `pool:'evo'`） | `const EQUIPS=` / `const PROCS=` / `GOLD_DROP` |
+| 装备特殊触发的实现 | `attack` 里的 `const P=h.procs` / `onKill` / `hitUnit` / `update` 的 `cdSpd` |
+| 树枝合成 | `function craftInv` |
+| 装备roll四档权重/金木价 | `const EQ_TIERS=` |
+| 装备属性显示文案 | `function eqDesc` |
+| **怪物属性/攻击距离/颜色** | `const MOBS=` |
+| **金矿/伐木场：升级费/工人费/上限** | `mineCost` / `millCost` / `mineWkCost` / `millWkCost` / `INCOME_MAX` / `WORKER_MAX` |
+| **右上角三个自动开关**（学习/试炼/开波） | `refreshAuto` / `autoLearnAll` / `autoTrial` / `autoNext` |
+| 提前开波（手动⏩和自动开波共用） | `function goNextWave` |
+| **备战时间**、仇恨半径、**英雄推进速度** | `const REST_TIME` / `AGGRO_R` / `HERO_SPD` |
+| **入场阵型**（雁形/锋矢/横阵/斜阵/方阵） | `const FORMS=` / `function formSlots` |
+| **召唤物属性表** | `const MINIONS=` |
+| **四大试炼（CD/开放波数/奖励文案）** | `const TRIALS=` |
+| 画布尺寸（只是转发给 R3.resize） | `function resize` |
+| 英雄初始字段 | `function makeHero` |
+| **英雄总属性结算（装备/专精/技能加成）** | `function calc(h)` |
+| 开局初始金币/木头/命（现为 **350金 / 300木** /10命） | `function reset` |
+| **每波怪的构成** | `function waveComp` |
+| **Boss 总血条**（顶栏中段 DOM） | rpg.js 的 `function updateBossBar`（样式 rpg.css 的 `#uiBoss`） |
+| **整波一起刷怪的队形** | `function startWave` |
+| 怪物生成（含试炼/宝箱标记、新手期折扣） | `function spawnMob` |
+| **试炼开启逻辑与难度** | `function startTrial` |
+| 击杀结算/试炼奖励 | `function damage` |
+| **宝箱掉落与开箱奖励** | `dropChest` / `openChest` |
+| 怪物有效护甲（固定削甲 + 火枪兵百分比破甲 `SRC.armorPen`） | `mobArmor` / `physDamage` |
+| 经验与升级 | `function gainXp` |
+| **主循环**（只剩 8 行调度，逐个调下面的 tick*） | `function update(dt)` |
+| ├ 资源产出/波次计时/自动试炼/HUD | `function tickWorld` |
+| ├ 怪物AI/寻敌/推进/互相排开 | `function tickMobs` |
+| ├ 召唤物行为 | `function tickMinions` |
+| ├ 闪电链跳跃 + 试炼CD + 宝箱 | `function tickAreas` |
+| └ **英雄：回蓝/放技能/推进/选敌/攻击** | `function tickHeroes` |
+| 弹道飞行与命中 | `function tickShots` |
+| 尸体/怪/弹道/特效/飘字 的回收 | `function tickCleanup` |
+| 清场结算/复活英雄/进备战 | `function tickWaveEnd` |
+| 溅射/血怒/攻速公式 | `cleaveAround` / `berserkRatio` / `effInterval` |
+| 普攻结算（暴击/毒/溅射/弹道） | `function attack` |
+| 英雄挨打/反伤/格挡/泰坦叠层 | `function hitUnit` |
+| 技能名→召唤物映射 / 创建召唤物 | `const SUMMONS=` / `function summon` / `spawnWisp` |
+| **所有主动技能的实现** | `function castSkill` |
+| 顶栏数值 + 面板HP/MP/间隔实时刷新 | `function updateHUD` |
+| **信息区/英雄面板（属性网格、技能栏、装备栏）** | `function renderInfo` |
+| 商店内容（技能/装备**按钮 2×2**、金矿/伐木场），入口是地图建筑 | `shopHTML` / `setShop`（`.shopGrid` 类） |
+| 试炼图标CD扫圈刷新 | `function renderTrials` |
+| 买技能书 / 自动学习 / 买装备 | `buyPack` / `autoLearnPass` / `buyEquip` |
+| 背包渲染 / 学技能穿装备 | `renderInv` / `applyItem` |
+| **点背包物品→选英雄卡片** | `openGiveCards` |
+| **熔炉**（信息区右边的装备暂存架） | `forgeHTML` / `bindForge` / `const FORGE_MAX=` |
+| 拖拽、双击脱装备 | `let drag=null` |
+| **点击战场（选英雄/点宝箱/点建筑）+ 英雄拖动换行** | `cv.addEventListener('pointerdown'` / `let hDrag` |
+| 启动/倍速/**提前开波**按钮 | `launchBtn` / `speedBtn` / `nextBtn`+`nextBonus` |
+
+### 改什么 → 去哪里 · `www/rpg3d.js`（3D 渲染，约1680行）
+| 想改的东西 | 去哪里（grep 锚点） |
+|---|---|
+| **相机俯角/投影方式** | `const TILT=` |
+| 几何缓存小工具（box/球/锥/环…） | `const GEO=` |
+| **卡通着色：分阶 ramp / 手绘贴图 / 描边 / 饱和度** | `function toonRamp` / `texPaint` / `function outline` / `function pop` |
+| **攻击动作曲线（打击感）** | `function swing` / `function recoil` / `const ANT=` `PEAK=` |
+| **屏幕震动** | `function shake` / `let shk=` / `camBase` |
+| **尸体倒地下沉** | `function drawMobs` 里注释 `/* --- 尸体` |
+| 受击闪白/死亡变灰/冰霜染色 | `function tint` |
+| 对象池（复用 mesh，别每帧 new） | `function bind` / `take` |
+| 两点之间拉光束（闪电/射线用） | `function beam` |
+| **英雄模型** 公共部分（腿/脸/披风肩章） | `function buildHero`（只剩 30 行骨架，把上下文打包成 `X` 传下去） |
+| **英雄模型** 分职业外观 + 九条支线武器 | `function heroMage` / `heroArcher` / `heroWarrior`（支线靠 `bk` 分流） |
+| **攻击动作**（每条支线一套，靠 `g.userData.akind` 分流） | `function drawHeroes` 里的 `if(ak==='...')` 链 |
+| **怪物模型（普通/快速/坦克/Boss）** | `function buildMob` |
+| **召唤物模型（小树人/远古树/小精灵）** | `function buildMinion` |
+| 宝箱模型 | `function buildChest` |
+| 弹道模型（箭矢/奥术弹） | `function buildShot` |
+| **程序化贴图（草地/石板/土地/符文/柔光）** | `function texGrass` / `texStone` / `texDirt` / `texRune` |
+| **商店广场（左侧碎石地，宽度动态）** | `yard=null` / `function layoutShops` |
+| **商店建筑模型 + 位置/点击半径**（左侧 2×2） | `function buildShop` / `const SHOPS=` / `SHOP_X` |
+| **工人（矿工/伐木工）动画 + 交货飘字** | `function drawWorkers` / `function buildWorker` / `TRIP` |
+| **5棵树 / 5处金矿脉的位置与模型** | `function layoutNodes` / `buildTree` / `buildOre` / `TREE_Z` `ORE_Z` |
+| **战场右侧传送门**（能量幕/门柱/地面光带） | `function buildPortal` / `texPortal` |
+| 地图装饰（树/石头/草簇的散布） | `function scatterDecor` |
+| **场景搭建：光照/阴影/草地/石板路/法阵光圈/商店建筑** | `function init` |
+| **异象天色（平滑换天空/阳光/天光色）** | `function mood` / `moodTick`（rpg.js 调 `R3.mood(sky,sun,amb)`） |
+| **相机装框（正交范围计算）** | `function resize` |
+| 世界坐标→屏幕坐标（覆盖层用） | `function proj` / `ppu` |
+| **点击拾取（屏幕→格子坐标）** | `function pick` |
+| **每帧渲染调度**（+ 屏幕震动/降级/cardTick） | `function draw`（只剩 7 个子调用） |
+| ├ 法阵/传送门/商店建筑/工人/建筑名牌 | `function drawWorld` |
+| ├ **英雄模型动作 + 血蓝经验条** | `function drawHeroes` |
+| ├ 召唤物 | `function drawMinions` |
+| ├ 怪物 + 尸体 | `function drawMobs` |
+| ├ 宝箱/弹道/特效派发 | `function drawProps` |
+| └ 右上角伤害统计表 + 伤害飘字 | `function drawOverlay` |
+| **所有 fx 特效的 3D 实现**（aoe/line/bolt/zap/slash/fall/flame/sword/rock/heal/spark） | `function drawFx` |
+| **角色卡片里的 3D 预览**（独立小 renderer） | `function cardInit` / `cardShow` / `cardTick` |
+
+- **发布 Artifact**（用户在手机上就是看这个链接测试）：`python3 www/_build_artifact.py <输出路径>` 把 html+css+three+rpg3d+rpg 内联成单文件，再用 Artifact 工具发布，**传 url 参数**才能保住同一个 URL：https://claude.ai/code/artifact/463665a7-a08f-4cd2-b42d-0b95f1d6d779
+- **本地验证（已固化成脚本，别再手写 playwright）**：`www/_test/run.js` + `www/_test/go.sh`，一条命令干完语法检查→build→跑：
+  | 命令 | 干什么 |
+  |---|---|
+  | `sh www/_test/go.sh shot` | 布阵/战斗/精英试炼各截一张 + **底栏 UI 单独截一条**（`s3_bottom.png` 商店2×2+背包、`s6b_incshop.png` 金矿商店两个按钮、`s7_boss.png` 顶栏BOSS血条、`s2b_summon.png` 三种召唤物）→ `/tmp/rpgtest/s0_setup.png` `s1_fight.png` `s2_trial.png` `s3_bottom.png`，末尾打印 FPS 和报错 |
+  | `sh www/_test/go.sh cards` | 招募卡→转职卡→**补满3英雄**→技能书授予→装备授予→**熔炉存取→点侧栏格子替换**全流程点一遍，打印断言（英雄数/金币/tier/侧栏数/技能数/装备数/商店是否还开着/卡片层总宽）+ 五张截图 |
+  | `sh www/_test/go.sh probe` | **数值体检（最省，改完数值先跑这个）**：只打印数字不截图——**异象/祝福/天罚/战意的数值也在这里**——技能池规模/分系可roll数/**羁绊激活与灵魂数**/**伤害飘字五种配色**/基础BAT / 九条转职支线的 atk·bat·甲·cdr·伤害倍率 / 装备池规模与定价 / roll四档金木价与实roll分布 / 唯一特效去重 / 全属性 / 合成链 / 杀人剑进化链 / 穿装备扣金 / 金矿伐木场价格曲线 / 召唤物移速 / 背包排布 |
+  | `sh www/_test/go.sh eq` | **装备特效体检**：真打一场 + 手动连A30下，验每个 `proc` 有没有触发（嗜血/羊刀/泰坦层数、黑刀削血、回响双击、狂涌、沉默、召唤/治疗倍率），并打印**单件装备的DPS增益排行**（Lv15精灵游侠基准）。加/改装备后跑这个 |
+  | `sh www/_test/go.sh models` | **看模型**：先按职业弹转职卡片层各截一张（`mc0_warrior` `mc1_archer` `mc2_mage`，3D 预览最大最清楚），再按 branch 截战场上的「静止/出手」各一张（`m0_idle` `m0_atk`…）。改了 `buildHero` 或攻击动作就跑这个 |
+| `sh www/_test/go.sh win` | **窗口尺寸兼容矩阵**：900×420(手机横屏) / 1180×760(电脑窗口) / 760×900(竖窗口·侧栏) / 520×820(窄条) 各截一张，打印 顶栏/dock 有没有被挤出去、战场高度占比、「请横屏」有没有挡住 |
+| `sh www/_test/go.sh sim` | **平衡快跑**：裸跑 3 英雄，用逻辑时钟加速（16秒真实≈1500秒逻辑，能跑完25波），打印每波的命/场上怪/存活英雄 |
+  | `sh www/_test/go.sh shot --clip=250,130,340,110` | 只截某块区域放大看（省得截全屏再裁） |
+  - 截图落在 `/tmp/rpgtest/`，直接用 Read 工具看。改 `run.js` 顶部的 `SEED` 可以调测试用的开局（钱/等级/预置技能）。
+  - **改完平衡必跑 `sim`**，和下面记的裸跑基准对比。`sim` 里 `noBoon=noOmen=true`，所以基准始终是「裸跑无祝福无异象」。
+  - FPS 是 swiftshader 软件渲染，只能看"有没有崩"，别当真机参考。
+
+## 方块战线·玩法现状
+- 横屏。**战斗区 5 行**（`ROWS=5`）×`COLS=20`（HCOLS=3 出兵 + 17 战线），怪从右来；最多 3 英雄（**开局免费送1个**，之后 100/200 金，走招募卡片层）。
+  - **出兵区是 3 列×3 行、纵向居中**（`HROWS=3, ROW0=1`），英雄只能站第 1~3 行，**上下两行只有怪**——这就是"被包围"的来源。判定 `isHomeCell(c,r)`，找空位 `freeRow(col)`。
+  - **英雄阵亡后在下一波开始时复活满血**（`startWave` 里）。⚠️ **别删**：原来只在"清场"时复活，一旦全灭场上就永远清不掉、英雄再也不复活、命一路掉到0，玩家毫无翻盘机会。
+  - **英雄可拖动换行**：拖到本职业那一列的另一个法阵（`hDrag`，canvas 的 pointerdown/move/up），同列有人则互换。
+  - **战场最右有传送门**（`buildPortal`，`PORTAL_X=COLS+.15`）：能量幕+门柱+地面光带，场上有怪时更亮。⚠️ `PORTAL_X` **必须在 init 里赋值**（rpg3d.js 比 rpg.js 先加载，模块顶层拿不到 COLS/ROWS）。
+  - **裸跑基准（3英雄，什么都不买）**：w1~w5 掉0命，w6 归零（±1波正常）。改完平衡跑 `go.sh sim` 和它对比。
+- 金币+木头双货币。**⚠️ 货币分工（用户定死）：roll 只花木头，购买（学技能/穿装备）只花金币。**
+  - 四个商店**入口是地图建筑**：技能=紫顶书塔 / 装备=红顶铁匠铺 / 金矿=土黄矿洞 / 伐木场=绿顶锯木厂。点击 `R3.shopAt(x,y)` → `setShop(k)`，内容在常驻信息区里切换**不弹层**（`shopHTML()`）。**抬头只留标题**（金矿/伐木场额外标 Lv/工人数/现产），下面的说明文字用户要求去掉了，别加回来。
+  - **产出 = 工人数 × 等级（每秒）**。等级上限 `INCOME_MAX=10`、工人上限 `WORKER_MAX=5`，开局各 1人Lv1，状态 `mineLv/mineW/millLv/millW`。
+  - **平衡推导（改价前先看）**：升级和招人互相放大（P=W×L），只比边际收益/花费 → 招人更划算 ⇔ `L > W·√(b/a)`（`Cl=a·L`、`Cw=b·W`）。**`√(b/a)` 就是这栋楼的性格**，改价只盯这一个数。
+    - **金矿=伐木场（2026-07 用户要求完全同步）**：升级 `60×lv`（满级2700）、招人 `250×现有人数`（共2500），√(b/a)=**2** → 交叉点 `L=2W`，正好对上 10级/5人 的上限比，全程交替买。满配各 **50/s，总花 5200金**。
+    - 工人价 250/500/750/1000 是用户定的别动；要调性格改 `mineCost`/`millCost` 里的 `a`。木头是唯一 roll 货币，伐木场直接决定「能roll多少次」。
+  - **两个按钮**：「升级工人效率 Lv{n+1}」+小字「每个工人 {n}→{n+1}/s」（**前后值是用户要求保留的**）/「增加工人数量 {n+1}/5」+小字「总产出 {W×L}→{(W+1)×L}/s」。⚠️ 2026-07 用户要求**两个按钮文字形式一致**（都是「粗体标题 + 数值 + 价格 + 一行小字」），别再把右边的小字去掉。
+  - **左边看得见工人干活**（`drawWorkers`）：出门→走到资源点挥工具→回来交货，一趟 `TRIP=3` 秒，交货落一个 `+等级×3` 飘字（累计等于真实产出）。按横向距离就近占点。
+  - **左侧广场四排**（`shopPos(i)`）：① 5棵树 `TREE_Z=.2` ② 伐木场|金矿 `INC_Z=1.30` ③ 5处矿脉 `ORE_Z=2.62` ④ 技能|装备 `SHOP_Z=3.95`。**所以 SHOPS 顺序 = mill/mine/skill/item**（下标即排序）。`SHOP_S=1.4`、点击半径 `SHOP_R=.9`、名牌画在建筑**下方** `sz+.75`（上方永远有别的东西）。技能/装备牌**不显示小字**。
+  - ⚠️ 树高别超 `.89`（最扁屏 asp≥6.1 时相机上沿 hh≈2.134，再高就切头）；现在 `buildTree` 高 .76。
+  - **横向自适应**：屏幕越扁横向越富余，`resize()` 把整排商店往左挪 `shopShift`（上限 `SHIFT_MAX=2.6`）、碎石广场 `yard` 跟着变宽，富余**全留给左边**，相机右沿死死贴传送门。改这块只动 `resize()` + `layoutShops()`。
+  - dock 那一行 = **4 个试炼图标 + 天罚 + 背包**。
+- **右上角三个自动开关**（`.hbtn.auto`，状态 `autoLearnAll/autoTrial/autoNext`，**跨局保留、reset 不清**）：自动学习（同步每个英雄的 `h.autoLearn`）/ 自动试炼（每 1.5s 开一个就绪的）/ 自动开波（备战期直接 `goNextWave(true)`，照拿提前开波奖励）。
+- 开局是布阵阶段，点 ▶ 才开波。共 **25 波**，逢5精英波、逢10纯Boss关、第25波总攻；**第4波起每波开战抽一道异象，每2波清场后三选一祝福**（见「roguelite 三件套」那节）。
+  - **波次节奏**：出怪后**不限时**（`battleT` 只累计用时）；**清场后进入 `REST_TIME=25s` 备战**（`resting`），倒计时结束自动开下一波。所以打得慢不会被追尾。备战期**不能开试炼**。
+  - **⏩ 提前开波**（`#nextBtn`，只在备战期显示）：把省下的时间换金币 `nextBonus()=剩余秒×波数×2`。
+  - **整波一起入场 + 阵型**：`startWave` 把 `waveComp` 全 spawn 出来，槽位由 `formSlots(n,kind)` 算（`FORMS` 按波轮换：雁形/锋矢/横阵/斜阵/方阵）；**近战在前**（按 `MOBS.atkR` 升序抢 dx 最小的槽位）。有 lane 时纵向只抖 ±0.25，试炼那种没 lane 的大幅散开。
+  - **英雄会推进**：射程内没敌人就以 `HERO_SPD=1.3` 格/秒往右压；清场后**瞬间传送回**本阵（两端各一圈特效）。位置存 `h.x`（老家=`h.col+.5`）。
+  - `waveComp(w)` 返回对象数组 `{t,elite,mul,hmul,rs}`。普通波数量 `min(30, 4+2w)`。
+  - **新手期（刻意做简单，⚠️ 用户要求：不减数量、只压数值）**：`spawnMob` 里前7波乘折扣 `[.36,.42,.46,.52,.58,.68,.8]`，第8波起接回原曲线；长矛兵w4起、重甲兵w5起、狂徒w6起；第5波精英只1只且倍率1.25。
+  - **精英波（逢5）**：额外 `1+floor(w/5)` 只精英（w<15用tank、w≥15用boss），数值 `×(1.6+.05w)`、体型×1.2、**金币经验×2**，脚下金色双环（`m.elite`）。
+  - **BOSS关（逢10）**：**没有小怪只出1只Boss**，数值 `×BOSS_WAVE_MUL=3.0`、**血量再单独 `×BOSS_HP_MUL=3.0`**（只加血不加伤害）、体型×1.25。**BOSS总血条画在顶栏金币那一行**（`#uiBoss`，rpg.js 的 `updateBossBar()` 每帧刷 `scaleX`；⚠️ 条上的文字 2026-08 用户要求**只显示当前血量**，别再加回「/ 最大值」——太长会把顶栏挤成两行）——⚠️ 2026-07 用户要求从战场正上方挪进 header，因为会挡住战斗，别改回 rpg3d.js 的 2D 覆盖层。
+    ⚠️ **BOSS关开波时不弹提示**（原来那条「数值极高」已删）；改成在**上一波清场进入备战时**，清场 toast 后面追加一行「⚠ 第 N 波 · BOSS 关卡即将来临」（`showToast` 处判 `isBossWave(wave+1)`）。
+  - **强度曲线**（只管**攻击力**）= `(1+0.12(w-1))×1.045^(w-1)`，>15波再 `×1.06^(w-15)`，>19波再 `×1.07^(w-19)`。
+  - **⚠️ 耐久和伤害分开（用户指定）**：**血量在第5波后额外 `×1.09^(w-5)`**（`spawnMob` 的 `hMul`）。后期压力是"打不动"不是"被秒"。具体每波总血/总攻跑 `go.sh probe` 看，**w25 的量级（≈358万）用户确认过可以**，别自作主张调低。
+- **怪物属性（MOBS）**：⚠️ 用户定死两条 —— **移速全部 1.3（和英雄、召唤物统一），多样化绝对不许靠移速**；**小怪要肉**。四种小怪靠 射程/伤害/护甲/血量 分工：
+  | key | 定位 | 血 | 攻 | 甲 | 抗 | 攻击距离 | 扣命 |
+  |---|---|---|---|---|---|---|---|
+  | `normal` | 步兵·均衡 | 105 | 6 | 2 | 0 | .62 | 1 |
+  | `lancer` | **长矛兵·手长**（原 `fast`） | 90 | 7 | 0 | 0 | **1.5** | 1 |
+  | `brute` | **狂徒·高伤脆皮** | 80 | **17** | 0 | 0 | .5 | 1 |
+  | `tank` | **重甲兵·高甲高抗** | 360 | 10 | **14** | **30%** | .85 | 2 |
+  | `boss` | Boss | 700 | 30 | 10 | 30% | 1.05 | 3 |
+  - ⚠️ **血试过 ×5，用户实测「打不过」当场回退。别再提整体翻倍**——它会把前期一起拖死；要加后期压力就调 `hMul` 曲线（按波次渐进，只压后期）。
+  - ⚠️ **调这张表前想清楚它影响谁**：`sim` 裸跑里英雄从头到尾 `alive=3`，**掉命全来自漏怪**（怪走到左边界扣 `lives`）。所以**降攻击对裸跑基准几乎没影响、加血反而让基准变差**；降攻击帮的是「买了装备后英雄扛得住」。
+  - 长矛兵 atkR=1.5 **超出战士射程 1.15**，能先白打一下；但英雄没敌人时会以 1.3 推进贴上去，不会永远打不到。
+- **⚠️ 平A一律单体（用户要求）**：`CLASSES`/`ADV`/`MINIONS` 的 `splash` **全是 0**。**只有学了「攻击溅射」技能才溅射**（`h.skills['攻击溅射']` → `cleaveAround`，和 `splash` 是两套东西）。加新职业/召唤物别再顺手写 splash。
+- **仇恨（⚠️ 5行能成立的关键）**：怪出生点在行附近**大幅散开**（±0.65 格）；**进 `AGGRO_R=4.6` 就直接扑向最近的英雄/召唤物**（x/y 一起走，不是"擦着过去"），进 `atkR+r` 停下开打。只要英雄不死，上下两行的怪也会被拉过来。
+  - **选敌 band**（2026-07 修的"擦肩而过"）：英雄 战士1.6 / 远程3.2，**0.9 格内优先锁定**；召唤物原来 `m.row!==br.row` **硬筛同一行**导致从斜下方的怪身边走过去，改成 1.6 格 band + 距离判定（1.1 格内优先）。
+  - **小怪弧形排开**：各向同性斥力，期望间距 `SEP=r1+r2+.24`，越近推得越猛（`(SEP-d)/SEP*2.2*dt`），纵向再 ×1.35。因为所有怪都想停在离目标 `reach` 的位置，加这层斥力就自然**围着肉盾摊成一道弧**，允许轻微重叠但数得清个数。
+- **伤害统计表**：屏幕**右上角**常驻 3 行（英雄/输出/承伤），实现在 rpg3d.js 的 `function drawOverlay`。⚠️ 2026-07 用户要求从左上角挪到右上角，靠 `bx=W-bw-8` 右对齐，别改回 `bx=8`。
+  - 靠 rpg.js 的全局 **`SRC`**（当前伤害来源英雄）串起来：英雄循环开头 `SRC=h`、召唤物 `SRC=br.own`、弹道 `SRC=s.src`、AOE 用创建时存的 `own`；用完置回 `null`。`damage()` 累加 `SRC.dmgOut`（不算溢出），`hitUnit()` 累加 `h.dmgTaken`，**召唤物挨的打记在 `br.own` 头上**。
+  - ⚠️ **`SRC` 顺带承担法术强度**（`magDamage()` 里乘 `SRC.spellP`）。新增任何"脱离英雄循环结算的魔法伤害"都必须先设 `SRC`，否则既不计统计也吃不到法强。
+- **单位外观（3D 低模，全程序化拼出来，不用外部模型文件）**：英雄是**二头身 chibi**、都露脸（大眼+高光+腮红）。法师=紫发尖帽+宝珠法杖（法杖放身侧 z=.2 才不挡脸）/ 游侠=金发马尾+兜帽+弓 / 战士=橙发+额带+红甲+盾+斜扛剑。**`buildHero(cls,tier,branch)`**：tier>0 加披风+金肩章并**按支线换整套武器头饰**（先算支线 key `bk` 再分流；`ADV` 在 rpg.js，rpg3d 顶层拿不到要 `typeof ADV!=='undefined'` 兜底）：
+  | 支线 | 外观 |
+  |---|---|
+  | 狂战士 | **两把斧**（刃朝 +X，`rotation.y=∓.6` 张开，刃口红辉光）+ 头侧双角 |
+  | 护卫 | **片手剑 + 大鸢盾**（金十字/盾心/下端尖角）+ 开面盔，不长竖发 |
+  | 强盗 | **匕首**（刃朝 +X，`rotation.y=.3`）+ 兜帽 + 黑面巾 + 钱袋 |
+  | 火枪兵 | **火枪**（枪口藏 `userData.muzzle/muzzle2` 火光，平时 `visible=false`）+ 三角帽 + 弹药袋 |
+  | 精灵游侠 | **精灵长弓**（木弓把+绿宝石）+ 尖长耳 + 绿叶冠 |
+  | 弩手 | **重弩**（横臂+待发弩矢+握把）+ 护目镜 + 皮盔 + 弩矢筒 |
+  | 召唤师 | 兽首图腾杖（绿宝珠+兽角）+ 帽上兽角 |
+  | 牧师 | 白袍 + **十字圣杖** + 头顶光环（`userData.halo`，呼吸闪） |
+  | 大法师 | 高尖帽（缀星）+ **巨型奥术宝珠 + 双符文环**（`orbit`/`orbit2`） |
+  - ⚠️ 子部件要单独做动作就用局部 `attach(sub)`（建 group + 把 mats 并进主 group 才会跟着染色）。对象池 key `'H'+cls+tier+branch`，转职后自动重建。
+  - 怪物模型按 `m.r` 缩放、走路上下颠，配色沿用 `MOBS.color`：步兵=驼背小鬼(双角大眼) / **长矛兵=瘦长身+伸向 -X 的长矛**（一眼看出手长）/ **狂徒=小头大拳头+背刺的红壮汉** / 重甲兵=重甲方体(头盔背刺) / Boss=巨体恶魔(弯角尖牙发光眼)。减速时整体染冰霜蓝。召唤物：小树人(树桩身+树冠+枝条手臂) / 远古树(粗干+大树冠+会吐小精灵的树洞) / 小精灵(自发光球+拖尾)。
+  - **怪物挥击动作**：`tickMobs` 里开打时置 `m.anim=.42`，渲染层 `drawMobs` 用和英雄同一条 `swing()` 曲线往 **-X** 方向扑（怪面朝左）。
+- **血条/蓝条/经验条/等级框/伤害飘字不在 3D 里**，画在覆盖层 2D canvas `#cv2`（各 `draw*()` 用 `proj()` 投影）。`#cv2` 是 `pointer-events:none`，点击照样落到 `#cv`。
+- **打击感 + 攻击动作（⚠️ 改动作前先看这段）**：逻辑层只给线性进度 `h.anim`（倒计时），渲染层换算成 `t`(0→1) 喂给曲线。
+  - **`swing(t)`（近战）** = 三段：`t<ANT(.16)` 反向蓄力 → `~PEAK(.30)` 极快出手 → `~1` 慢慢收招。返回 0→-.32→1→0，所以各支线原来 `rest+amp*p` 的公式**把 p 换成 sw 就自动变三段**，不用改每条。
+  - **`recoil(t)=(1-t)^2.1`（远程）**。⚠️ **远程绝对不能用 swing**：箭/子弹在 `attack()` 那一帧（t=0）就飞出去了，加蓄力会变成"箭比弓先动"。近战伤害同样 t=0 结算，视觉命中晚约 4 帧——**刻意接受**，因为"有起手"对打击感是决定性的。
+  - **全身跟随**：出手时整个 group 往 +X 冲 `sw*.17`、扭身 `sw*.2`、前倾 `-sw*.09`、纵向拉伸；蓄力时反向下蹲。加新支线只要挂 `akind`，这层白送。
+  - **挨打/尸体/震屏**：`damage()` 给怪加 `m.knock`（上限 .2）→ 渲染层后弹+压扁+侧倾；怪死往 `corpses[]` 塞一条（上限24），0.6 秒仰倒下沉；`R3.shake(a)` 暴击 .09 / 重弩 .13 / 坦克死 .1 / Boss死 .22 / 英雄阵亡 .16（正交相机直接抖 `cam.position`，基准存 `camBase`）。
+  - **走路**：英雄真在推进时才摆动（比对上一帧 `h.x`，存 `userData.lx`），瞬移回本阵不会误触发。
+  - **节奏**：`ANIM_T=.22` 默认，各支线在 `ANIM_BR` 里覆盖（弩手.44 / 狂战士.28 / 火枪.17 / 强盗.15 / 精灵游侠.12）。动作按 `g.userData.akind` 分流：`axes`(双斧连斩，第二把延后20%) / `swing`(绕肩挥砍，护卫盾 `userData.aux` 同步前顶) / `stab`(匕首直捅) / `gun`(后坐上扬+枪口火光，t<.34 才显形) / `xbow`(沉重后坐) / `draw`(拉弓) / `cast`(宝珠蓄光)。
+  - **火枪平A没有飞行弹道**（`attack()` 里 `akey==='musket'` 直接结算 + 一条 .08s 枪线）。**弩手是慢而重的单发**（弹道 `kind:'quarrel'`，命中靠 `s.heavy` 额外炸冲击环+刀光）。
+- **弹道/技能样式（`drawFx`）**：游侠=箭矢，法师=奥术弹(光晕锥尾)，战士=弧形刀光(slash)；火球=飞行光球+落点爆闪(bolt)，闪电链=分段折线(zap)，小精灵自爆=火舌(flame)+光盘(aoe)，治愈=上浮十字(heal)，AOE=地面光环+半透明圆盘。⚠️ `fall`(冰棱)/`rock`(碎石)/`sword`(剑雨) 这几个分支现在没有技能在用了，留着给以后加技能复用。
+
+## 方块战线·角色卡片系统（招募 / 转职）
+- 弹层 DOM 在 rpg.html 的 `#cards`（`#cardTitle`——⚠️ **CSS 里已 `display:none`，用户要求不显示这行文字提示**，JS 照旧给它写文本 / `#cardBody`=`#cardInfo`左详情+`#cardRow` / `#cardCancel`），样式在 rpg.css 的"角色卡片选择层"。侧栏 HTML 由 `sideSkills(h,nm)` / `sideEquips(h)` 生成，**⚠️ 用户明确要求侧栏不显示「技能栏 x/4」「装备栏 x/6」这种计数抬头，别再加回来**（`.chside .row` 是 `flex:1`，去掉抬头后格子自动撑高）。
+  - ⚠️ 卡片类名是 **`.chcard`**，不要写成 `.hcard`——`.hcard` 已经被信息区的英雄面板占用了。
+- 逻辑在 rpg.js：`openHireCards()` 三张职业卡 / `openAdvCards(h)` 两张支线卡 / **`openGiveCards(idx)` 把背包第 idx 件技能书/装备给某个英雄** / `closeCards()` / `refreshHire()`（刷新 dock 招募按钮价格与禁用态，满3人隐藏）。
+  - ⚠️ **加新卡片的收尾代码时别用 `cardsEl.classList.add('show')` 当锚点**——三个 open*Cards 结尾都长一样，脚本 `replace(...,1)` 会插错函数（已经踩过一次，插进了 `openHireCards`）。
+- **熔炉**（2026-07 加）：`#info` 最右边的**装备暂存架**（`forgeHTML()` 渲染 + `bindForge()` 绑点击，`FORGE_MAX=8`，状态 `let forge=[]`，`reset` 里清空）。只在**商店页和空闲页**显示（英雄面板太挤就不放了），会挤掉一点商店按钮宽度。
+  - **只收装备**，技能书不收——否则能把书存起来绕过「买新书清掉旧书」那条规则。
+  - **不参与「出售装备」和树枝合成**，所以它的用途就是「好装备存着别被一键卖掉/别占背包」。
+  - 存：**卡片层三张英雄卡下面的 `#cardForge` 按钮**（2026-07 用户要求从第四张卡挪下去的）。⚠️ CSS 里写了 `#cardForge{display:none}`，JS 显示时必须写 `style.display='block'`；写 `''` 会退回 none（踩过）。
+  - **存入时就把装备费付掉**，并给物品打 `it.paid=1`；`equipCost()` 对 paid 物品返回 0，所以取回后背包里标「已付」、穿戴也不再扣钱（用户要求：从熔炉拿回的装备不该再标价）。取：点 `#info` 里的格子直接退回背包。
+- ⚠️ **三种卡片层的按钮文字统一叫「选择」**（用户 2026-07 定）：免费招募=「选择」、付费招募=「选择 · N金」、转职=「选择」（原来的「免费获得」「选择这条路」已改掉）。
+- 卡片显示**三维属性+成长**（`attrRows()`，格式 `22.0 +2.7`，主属性用职业色高亮），转职卡额外显示**天赋技能名+说明**（`SPECS[key].d(1)`）。
+- **卡片里的人物是真 3D 预览**，和战场上是同一套模型：`R3.cardShow([{canvas,cls,tier,branch,phase}])` 挂上、`R3.cardHide()` 摘掉，每帧在 `cardTick()` 里渲染。
+  - 实现方式：**一个独立的小 WebGLRenderer 逐张渲染，再 drawImage 到各卡的 2D canvas**。手机上 WebGL context 数量有限，别一张卡一个 renderer。
+  - 相机是 3/4 俯视手办视角（`cardCam` 在 `(1.5,1.3,3.2)`）。⚠️ 模型面朝 +X，要 `rotation.y=-PI/2+.34` 才是面对镜头，写成 `+PI/2` 会背对镜头。
+
+## 方块战线·技能与装备系统（用户会持续加新技能/装备，技能实现在 rpg.js 的 `SKB` 表，装备在 `EQUIPS` 表）
+- **⚠️ 货币分工（用户定死）：`roll` 只花木头，`购买`（学技能/穿装备）只花金币。**
+- **技能书**：商店 roll（指定系 200木/4本、全池 100木/4本）→ 进背包 → 学到英雄身上时按品质付 `BOOK_COST` **金币**（绿150/蓝300/紫600/金1000；`applyItem` 和 `autoLearnPass` 都扣，不够就学不了/自动学习跳过，背包格子直接标价）。同名书升级**上限Lv10**，每英雄 4 技能位。**买新书会清掉上次没用完的旧书**；**同一次 roll 的 4 本一定不重名**（`buyPack` 抽一本就从本次候选池删掉）。
+- **点背包里的书/装备 → 直接弹 `openGiveCards` 卡片层**（信息区不再显示物品详情，也没有学习按钮）：
+  - ⚠️ **别在这里 `closeShop()`**：用户要求学完/穿完还停在商店页能接着 roll；`applyItem` 结尾无条件 `renderInfo()` 把商店页和熔炉一起刷新。
+  - 布局：左边 `#cardInfo` 物品详情；每张英雄卡右边 `.chside` = 该英雄的技能栏(1×4，正在学的那格金框标 →Lv+1)/装备栏(6行)；卡+侧栏包在 `.chpair`；给 `#cards` 加 `.give` 类缩窄卡片（总宽≈790px，横屏手机放得下）。学不了的标「已满级/技能位已满/学费不足」并置灰。
+  - **点侧栏格子 = 指定栏位，占用的那格就是替换**（`[data-side]` → `applyItem(idx,h,{sk:i}|{eq:i})`；「技能位已满」正好靠这个解所以不拦）。拖拽的老交互也在；双击装备栏=脱下退回背包。
+- **背包**：最左固定 4 格技能书（空的画虚线 `.book.empty`，不响应点击）→ 竖线 `.invSep` → 右边全是装备 → 最右「出售装备」（**只卖装备**，价 白8/绿18/蓝40/紫80/金200）。
+- 技能：被动直接生效、主动自动释放（各自CD/蓝耗），系数吃力/敏/智。特效约定：**AOE 显示范围圈，指定单体显示弹道线**。
+- 英雄升级=**打怪吃经验**（怪死全体英雄各得xp：普5/快6/坦12/Boss60；升级需求40+45×(lv-1)，上限Lv15，升级回满血，金圈+八向粒子特效，等级显示在血条左端小框）。金木商店上限10级，升级费：金矿45+30×(lv-1)、伐木场35+25×(lv-1)。
+- **转职分支系统**（`ADV` 表 **每职业3条** + `SPECS` 天赋表，实现在 rpg.js）：Lv5花**500金+500木**转职（2026-07 用户定），"转职▸"按钮点开**转职卡片层**（`openAdvCards`，三条支线各一张卡，卡上显示×1.35后的三维+成长+天赋说明）。专精用金木升级：⚠️ **金和木同价**，费用查表 `SPEC_COST=[60,85,110,140,165,190,220,250,280]`（Lv1→Lv10 共 9 次，**合计正好各 1500 金 / 1500 木**，是用户定的总额）。用表不用公式：「等差 + 两边整数 + 总和恰好 1500」数学上无解。**上限Lv10**。三条披风颜色不同（`buildHero` 里 `[.62,1.15,.86][branch]`），卡片上一眼能区分。
+  | 职业 | 支线 | 天赋 | 实现位置 |
+  |---|---|---|---|
+  | 战士 | 狂战士 | 血怒：失血越多攻/攻速越高 | `berserkRatio`/`effAtk`/`effInterval` |
+  | | 护卫 | **护甲光环**：3格内友方英雄+`5+lv`甲，自己双倍（不叠加取最高） | `calc` 里的 `armAura` 循环 |
+  | | 强盗 | **掠夺**：每次普攻偷 `30+5×lv` 金币 | `attack()` 开头 `akey==='bandit'` |
+  | 游侠 | **火枪兵** | 精准射击：**弹道瞬发**（无飞行时间，直接结算+一条枪线）＋**射程 +`1+0.1lv` 格**＋**无视敌人 `30+2lv`% 护甲**（2026-07 换掉了原来的「平A附加敏捷魔法伤」） | 瞬发在 `attack()` 的 `akey==='musket'`；射程与 `h.armorPen` 在 `calc`；百分比破甲在 `mobArmor` 里按全局 `SRC` 结算 |
+  | | 精灵游侠 | 迅捷：攻击间隔额外 -`0.1+0.01lv` | `calc` 的 bat 行 |
+  | | **弩手** | 重弩：攻击间隔**+0.2s**，换来攻击力和最终伤害各 ×`(1+bat×0.75+0.05lv)` | `calc` 里 `key==='xbow'` 块（设 `h.dmgMul`），`attack()` 里乘 `h.dmgMul` |
+  | 法师 | **召唤师** | 召唤精通：召唤物属性 +`20+2lv`% | `summon()` |
+  | | 牧师 | 治愈祷言：主动30蓝 **CD2s**，回全体 智×lv×0.5 | update 的 `key==='priest'` 块 |
+  | | **大法师** | 奥术专精：技能CD -`10+2lv`% | `calc` 的 `h.cdr` 行 |
+  - ⚠️ 旧的 **死亡射手/死神收割** 和 **德鲁伊/自然之力** 已删干净（`deathAgi` 字段 2026-07 也一并删了）。
+- **英雄招募走卡片**：`HERO_COSTS=[0,100,200]`——**开局免费送1个**（begin() 里直接弹卡片让你选），之后 100/200 金。招募入口是 **右上角 header 里的「招募英雄」按钮**（`#hireBtn`，在 `.hright` 里，满3人自动 `display:none`），点空的出兵格也能唤起同一个卡片层。选了职业后自动放进该职业那一列的第一个空行（`freeRow(col)`）。
+- **魔兽式属性系统**：主属性加攻击（战士主力/游侠主敏/法师主智）；**1力=8HP + 0.3生命回复/s**（`h.hpRegen`，在 tickHeroes 里和回蓝一起结算）；敏捷/7加护甲、**1敏=0.5攻速点**（1:1 → 0.3 → 2026-07 用户定 0.5；改 `h.agi*.5` 这一个系数就能整体调游侠强度）；**1智=0.01回蓝/s + 0.001法术强度**（`h.spellP=1+int*.001`，在 `magDamage` 里对**所有**魔法伤害生效）；**攻速用魔兽/DotA正版公式：每秒攻击=(1+攻速/100)/BAT**（BAT1.4时+140攻速=每秒多A一下），攻速上限400；护甲减伤=甲×0.06/(1+甲×0.06)；魔抗固定百分比（英雄基础25%上限75%）。普攻=物理吃护甲，技能=魔法吃魔抗。职业基础(攻击间隔bat/武器wep/甲)：法师1.6s/6/1(射程4.5)，游侠1.4s/8/2(射程6)，战士1.5s/15/**8**(射程1.15，护甲是用户2026-07从4提上来的)；成长/级：战士+2.7力，游侠+2.9敏，法师+3.2智（副属性各1~1.5）。怪物也有甲/抗：坦克6甲15%抗、Boss10甲30%抗。转职=属性×1.35+武器/HP/攻速倍率。
+- **装备池（2026-07 用户整池重做，实现在 rpg.js 的 `EQUIPS` 表）**：**装备商店四档roll(`EQ_TIERS`)，每档固定出4件，⚠️ 只花木头**：低级200木(白60/绿30/蓝9/紫1)、中级400木(30/40/24/6)、高级800木(5/30/45/20)、**顶级1600木(不出白，绿5/蓝30/紫55/金10)**。⚠️ **顶级档是唯一能roll出金色的地方**（推翻了原来「金色只从宝箱开」）；前三档roll不到金色，宝箱那条路(`GOLD_DROP`)照旧。`rollEquip` 里金色要特判 `e.pool==='gold'`，别用 `!e.pool` 过滤。**和技能书同一个思路：roll 只是出货，真正穿上时按品质另付装备费**（`EQUIP_COST` **白50/绿120/蓝200/紫600/金1000 金币**，在 `applyItem` 里扣，背包格子和卡片层都直接标价，钱不够卡片标「金币不足」）。进背包点一下→选英雄穿（**装备栏2×3=6格**）。
+  - **⚠️ 唯一特效规则（用户定的，别改成取max）：同名装备的特殊特效只生效一件，不同名字之间照常叠加。** 实现在 `calc()` 的 `seen` 集合：普通属性（攻击/三围/攻速/暴击/爆伤/护甲/回蓝/CD/召唤/治疗/格挡/固定减伤）**永远求和**，只有 **`bat`(攻击间隔) / `sunder`(削甲) / `range`(射程) / `proc`(特殊触发)** 这四类按 `id` 去重。所以两把满月只减一次间隔，但 满月+柳月弓+幻烁之舞 是叠加的（-0.45）。
+  - **stats 字段全表**：`atk` `all`(全属性) `str/agi/int` `aspd`(攻速点) `bat`(正=减间隔/负=加间隔) `crit`(%) `cdmg`(爆伤%) `armor` `mres` `hp` `block`(固定格挡,只挡普攻) `blockP`(普攻伤害%减免,上限80%) `flat`(固定减免) `mpre`(回蓝/s) `cdr` `summon` `heal`(治疗强度%) `range` `sunder`。另有 `proc`(见下)、`craft:{to,n}`(合成)、`evo/evoN`(进化)、`pool`('gold'=只宝箱 / 'evo'=只进化得到)。
+  - **`PROCS` 特殊触发表**（一件装备最多挂一个，实现散在 `attack`/`onKill`/`hitUnit`/`update`）：
+    | proc | 装备 | 效果 / 实现位置 |
+    |---|---|---|
+    | `gold` | 强盗之刃(白) | 平A+5金 · `attack` |
+    | `thunder` | 雷霆领主的法令(紫) | 平A附带(力+敏+智)魔法伤 · `attack` |
+    | `storm` | 风暴骑手的狂涌(紫) | 击杀+30攻速3s，击杀刷新 · `onKill` 置 `h.stormT`，`update` 里倒数，`calc` 里加进 ias |
+    | `blood` | 战争领主的嗜血(紫) | 每次平A+5攻+1%吸血，25层 · `h.bloodS`，`calc` 派生 `h.lifesteal` |
+    | `black` | 黑刀(紫) | 平A**永久**×0.9最大生命、-40护甲 · `attack` 直接改 `m.maxHp/m.armor` |
+    | `echo` | 回响之刃(紫) | 每2s下一次平A打两下 · `attack` 尾部递归调用（`noEcho` 参数防无限） |
+    | `curse` | 幽邃圣主的诅咒(紫) | 施法后3s内冷却速度×1.2 · `h.curseT`，`update` 的 `cdSpd` |
+    | `sheep` | 羊刀(紫) | 每次平A+10攻速，10层 · `h.sheepS` |
+    | `silence` | 禁制匕首(蓝) | 沉默自己：主动技能+牧师祷言全不放（**被动照常**） · `h.silenced` |
+    | `titan` | 泰坦的坚决(金) | 每次受伤+10攻/+2甲/+1%抗/+2%体型，50层 · `hitUnit` 叠 `h.titanS` |
+    - **叠层每波重置**：`startWave` 里统一清 `titanS/bloodS/sheepS/stormT/echoCd/curseT` 再 `calc`。
+  - **减伤结算顺序**（`hitUnit`）：`(怪攻 - block - flat)` → ×护甲减伤 → ×`(1-blockP)`。小圆盾(绿)的格挡是**固定20**，穷鬼盾(紫)的格挡是**20%**（用户 2026-07 澄清）——所以低攻时守望者铠甲(蓝,甲20+固定50)更强，怪攻超过约250后穷鬼盾反超。实测怪攻100时 20 vs 25，怪攻330时 111 vs 98。
+  - **合成**：小树枝×6→大树枝，大树枝×6→塞纳留斯的号角（所以 36 个小树枝 = 一个金色）。实现是 `craftInv()`，挂在 `renderInv()` 开头，背包凑够就自动合并、可连锁。
+  - **杀人剑进化链**（`evo`/`evoN`，五个 id `kill1`~`kill5`，名字都叫「杀人剑」，靠品质颜色区分）：白15攻 →(**20**杀) 绿35攻10攻速 →(**50**杀) 蓝70攻25攻速 →(**100**杀) 紫100攻20暴40攻速 →(**200**杀) 金250攻25暴80攻速。**门槛递增**（20/50/100/200 ≈ 一整局怪量），别改回每档20（会让第5波就进化到蓝色）。**击杀数记在装备实例上**（`e.kills`），`onKill` 里累加。⚠️ 击杀credit是**全体英雄**（和魂吸一个写法，`damage()` 不知道伤害来源）。
+  - **金色（`pool:'gold'`，宝箱 + 顶级roll 10%）**：弑神炮(200攻35暴50爆伤2格射程) / 塞纳留斯的号角(全属性100·召唤+100%·CD-20%) / 泰坦的坚决(20甲20%抗+titan叠层)。
+  - 装备加的力/敏同样吃派生（力加血、敏加甲加攻速）；CD缩减上限50%。
+- **英雄面板**（点英雄时信息区）：左=名字/等级/经验+属性网格（HP(带回血/s)/MP/攻击/攻速/**基础间隔(BAT，存在 `h.bat`，只含职业+转职+装备+迅捷)**/**实际间隔(effInterval，再除攻速，含血怒)+每秒攻击次数**/甲/抗/力敏智/CD/格挡；实际间隔跟HP/MP一样每0.25s原地刷新），中=**自动学习开关**+4技能栏（空栏虚线），右=2×3装备栏；点栏位看说明。
+- **技能配色约定**：技能栏/背包书的**边框颜色=品质**（绿/蓝/紫），**文字颜色=属性系**（力红/敏绿/智蓝）。
+- **底栏布局（2026-07 再改）**：**背包挪进了 `#dock` 试炼那一行**（`#dock #inv`：「背包」标题 + **4格技能书 | 竖线 | 装备**（34px 格，超出横向滚动）+ 最右端的出售按钮），dock 高约 64px；`#bottom` 现在只剩 `#info` 一个（高 84px，含 safe-area）。**信息区最右边常驻熔炉**（`.forge`，宽约154px，4×2格）。**商店按钮排成 2×2**（`.shopGrid`；⚠️ 2026-07 用户要求**按钮尽量小**：`grid-template-columns/rows:auto` + `justify-content:start` + `align-content:center`，所以按钮只有内容那么大、不再撑满信息区，字号 10.5px/小字 8.5px，别改回 `1fr 1fr`；装备商店四档正好填满 2×2，所以 `.shopGrid.eq .btn:last-child{grid-column:1/-1}` 那条已删；金矿/伐木场用 `.shopGrid.inc` 只有一行=升级+招工人，抬头 `.shopHead.inc` 竖排三行放名字/等级工人数/现产）。改底栏只动 rpg.css 的 `#dock #inv / #bottom / #info / .shopGrid` 那几段 + `shopHTML()`。
+- **自动学习**（技能栏左侧按钮，魔兽启用型技能式金色脉动发光）：开启后该英雄会自动吃掉商店刷出的**已学同名技能书**来升级（满Lv10不吃）；开启瞬间也会结算一次背包里的存书。多个英雄同时开启则按购买顺序分配。
+- 品质=绿/蓝/紫/**金**，roll权重 绿3/蓝2/紫1/**金0.35**。**法力系统**：maxMP=10+智×3，回蓝=1+智×0.01/s(+装备)，主动技能耗蓝；英雄面板HP/MP由 updateHUD 每0.25s原地刷新(#hpVal/#mpVal)，不重建DOM；**主动技能释放距离=英雄射程**。血条下有蓝条，经验条紫色(魔兽风)。点技能/装备栏=查看详情（不是长按）。
+- **⚠️ 2026-08 用户把技能池整个换掉了**（旧的火球术/冰风暴/火焰风暴/大地震颤/剑雨/忍受/荆棘光环/狂战士之血/沁毒射击/狙击潜质/致命一击/魂吸/CD光环 **全部删除**，连带 `hails/storms/quakes` 三个区域数组、`soulInt/endT/endF` 字段、熊灵/火水元素/地狱火 四种召唤物一起删干净了）。现在是 **17 个技能 = 4 条羁绊 + 5 个通用**。
+- **羁绊系统**：`BONDS` 表列出每条羁绊需要的技能；`hasBond(h,key)` 判定「这个英雄是否集齐」，`calc` 每次把结果缓存进 `h.bond`。**技能位只有 4 格**，所以 4 技能的羁绊（我为人人 / 幽邃深渊）会占满一个英雄，2 技能的（狂猎 / 森林）还能带别的。激活状态显示在英雄面板名字后面（`bondTxt`）。
+  - **羁绊 UI（2026-08 用户要求）**：
+    ① **英雄面板**（点英雄）名字行后面挂羁绊徽章 `.bondTag`——**只要沾边（学了其中任意一个技能）就显示**，没集齐也显示 `x/y`（暗色），集齐变金色发光；**点徽章弹 toast** 看组成技能（已学 ✦金色 / 还缺 ○灰色）+ 效果文案，沿用「点技能栏看详情」那套。
+    ② **卡片层左侧技能详情**（`#cardInfo .ib`）在学习费下面追加羁绊块：羁绊名 + 组成技能 + 效果。
+    ③ **每张英雄卡**（`.hcBond`）显示该英雄「现在 x/y →学完 y/y」，学完能点亮的标金色。
+    以上三处都走同一个 `bondInfo(key,h)`（`h` 传 null 就不带进度），加新羁绊不用改 UI。
+  | 羁绊 | 技能 | 羁绊效果 |
+  |---|---|---|
+  | 狂猎 `hunt` | 多重射击 / 嗜血狂战 | 次要目标 +30% 伤害；嗜血狂战再 -0.1 间隔、CD -4s |
+  | 我为人人 `all4one` | 主属光环 / 减甲光环 / 狂风光环 / 奉献光环 | 主属 +100；减甲再 -10%；狂风再 -0.1 间隔；奉献速率翻倍 + 熔背包 |
+  | 幽邃深渊 `abyss` | 幽邃之握 / 幽邃光环 / 幽邃灵魂 / 幽邃恐惧 | 之握 CD -5s；幽邃光环覆盖全场并再 -10% 魔抗；**灵魂翻倍**；恐惧攻击间隔减半 |
+  | 森林的羁绊 `forest` | 森之呼唤 / 古树智慧 | 小树人 +200 攻速；小精灵产出间隔 -1s、自爆范围 +0.5 格 |
+- **技能实现速查**（⚠️ 数值公式别抄这里，`SKB[名].desc` 才是权威文案；这里只记「在哪实现 + 有什么坑」。主动技能都在 `castSkill`）：
+  - **CD 两个新字段**：`fixed:1`=CD 不吃冷却缩减（嗜血狂战固定 20s）、`bondCd`=激活羁绊后 CD 的增量（负数=减）。结算在 `tickHeroes` 的施法成功分支。
+  - **灵魂 `h.souls`** 在 `calc` 里派生 = `幽邃灵魂等级×3 + h.soulK(击杀累积) `，羁绊激活后 ×2。⚠️ **只能改 `h.soulK`**，`h.souls` 是每次 calc 重算的。
+  - **幽邃恐惧**：`h.fearT/fearCd/fearLv`，到点调 `soulStrike(h)`——每个灵魂各打一次（集火最近的敌人），**结算次数封顶 40**、特效只画前 8 条，否则灵魂多了直接卡帧。
+  - **奉献光环 `devotionTick`**：每帧按 `dt` 熔 `h.equips[0]`（羁绊时背包也能熔），装备上记 `it.melt` 已熔秒数，满 `MELT_T[品质]` 就消失；给**全体**英雄累加 `o.devA`（永久主属性，`calc` 里加进主属性）。
+  - **两个减益光环**（减甲/幽邃）作用在**怪**身上，走 `debuffAura(m,技能名,base,per,羁绊key,是否全场)`：减甲乘进 `mobArmor`，幽邃乘进 `magDamage` 的魔抗。
+  - **主属光环 / 狂风光环 / 护卫护甲光环**都在 `calc` 里结算（取最高不叠加，半径 `AURA_R=3`）；英雄会走位，所以 `tickWorld` 的 0.25s tick 会重算全体属性。
+  - **三系传承**（力/敏/智）：计数器 `h.hitN/atkN/castN` 分别在 `hitUnit`/`attack`/`tickHeroes` 里累加，够数就永久加 `h.legS/legA/legI`。
+  - **多重射击**的次级目标检索范围比主目标多 `MS_EXTRA=0.5` 格，否则经常只打得到 1 个。
+  - ⚠️ **怪物减速字段是拆开的**：`m.slowT/slowF`=移速、`m.asT/asF`=攻速、`m.frost`=只控制冰霜覆层显示。**新技能池里已经没有减速技能了**，这几个字段目前只有装备/试炼可能用到。
+- **伤害飘字配色（`const DC`，用户 2026-08 定）**：物理=橙 `#ff9d4f` / 法术=天蓝 `#5fd0ff` / **次级伤害（溅射、多重射击的次要目标）= 同类的浅色** `#ffd2ab`·`#b7e9ff` / **暴击=红 `#ff3b3b` 且 `big:1`**（渲染层字号 ×1.55、描边加粗）/ 英雄受伤 `#ff8080`。
+  - `physDamage/magDamage(m,d,color,big)` 的 `color` **不传就是默认色**——所以新技能一律别传颜色，让它自己走天蓝。
+- **召唤物系统（2026-08 只剩森林系三种）**：`bears[]` 装所有召唤物，属性表 `const MINIONS=`、技能名映射 `const SUMMONS=`、创建走 `summon(h,kind,lv)`（同种可重复叠召；同排已有时自动错开站位；场上没怪不释放）。
+  - `treant` **小树人**：森之呼唤一次 4 只，和英雄同速往前压，普通近战。
+  - `ancient` **远古树**：`fixed:1` 钉在最左（x=0.6）不动不普攻，`spawnCd` 到点调 `spawnWisp(tree)` 放一只小精灵。
+  - `wisp` **小精灵**：`boom:1`，冲到离目标 0.45 格就自爆（`boomDmg` 在生成时按主人当时的智力算好），范围 0.8 格（羁绊 +0.5）。
+  - **⚠️ 召唤物没有活动上限**：召出来就一路向右压（本行没敌人也继续走，最远 `COLS-0.5`），不会被英雄卡住；**波次结束（cleared）时全部消散**（`bears=[]`）。移速统一 = `HERO_SPD`，`own` 指向主人（承伤统计用）。
+  - **加新召唤物只要在 `MINIONS` + `SUMMONS` + `SKB` 各加一行**（要新外观才动 `buildMinion`）。召唤师·召唤精通对所有召唤物生效。
+
+## 方块战线·roguelite 三件套（2026-08 加，让每局都不一样）
+> 目的：原来的玩法是「布阵好 → 看英雄自动打完 25 波」，波与波之间没有抉择、战斗中玩家没事做。这三件套分别补上「每波都变」「每两波做选择」「战斗中有操作」。
+
+### ① 异象 Omen（每波开战抽一条战场规则，连天色一起换）
+- 表 = `const OMENS=`（7 条，含「晴空万里」= 无规则）；当前异象的乘数摊平在全局 **`OM`**，各处只读 `OM.xxx`，**别在别的地方硬写异象数值**。
+- 抽取：`startWave()` 里 `rollOmen()` → 第 `OMEN_FROM=4` 波起才抽（新手期保持干净），**BOSS 关固定血月**（红天=仪式感）。`noOmen=true` 可整局关掉（`sim` 用它保基准）。
+- 挂钩点：`spawnMob`(mAtk/mHp/mArm/mRes) · `tickMobs`+`tickHeroes`(spd) · `calc`(hIas/hSpell/hMp/cdr) · `damage`(gold/xp) · `tickWorld`(income)。
+- 表现：`R3.mood(sky,sun,amb)` 换 clearColor + 主光 + 半球光，`moodTick()` 每帧平滑靠拢（约 0.6s 过完）；顶栏徽章 `#uiOmen`（点一下弹说明 + 已选祝福清单）；开波 toast 播报异象名与效果。
+  | key | 名 | 效果 |
+  |---|---|---|
+  | calm | 晴空万里 | 无（权重最高） |
+  | blood | 血月当空 | 怪攻 +25%，击杀金币 ×2 |
+  | tide | 灵能潮汐 | 法术伤害 +40%，怪魔抗 +15% |
+  | iron | 铁幕降临 | 怪护甲 +8，金矿/伐木场产出 ×2 |
+  | gale | 疾风之诗 | 怪与英雄移速 +35%，英雄攻速 +40 |
+  | bounty | 丰饶之地 | 怪血 +20%，击杀金币与经验 ×1.5 |
+  | void | 虚空低语 | 技能CD -25%，英雄法力上限 -30% |
+
+### ② 祝福 Boon（每 `BOON_EVERY=2` 波清场后三选一，永久叠加）
+- 表 = `const BOONS=`（15 条，分 攻势/守御/秘法/自然/财富/天灾 六类）；已选的存 `boons[]`，累加值在全局 **`BN`**（`applyBoons()` 重算）。
+- 触发：`tickWaveEnd` 清场分支里 `openBoonCards()`；**没选完就冻住备战倒计时**（`tickWorld` 的 `resting&&cardMode!=='boon'`），所以自动开波也不会抢跑。
+- UI：复用卡片层，`#cards.boon` 模式——没有 3D 预览，中间是一枚大符文 `.boonIc`；**CSS 里 `#cards.boon #cardCancel{display:none}`，祝福必须选一个**。
+- 挂钩点：绝大多数在 `calc()`（atk/hp/ias/crit/cdmg/armor/flat/main/regen/mpre/mp/cdr/summon），全局类在 `damage`(gold) · `tickWorld`(income) · `startTrial`(trialCd) · `castUlt`(ultD/ultCd)；`wall` 这种一次性的走 `b.once()`。
+- `noBoon=true` 整局关掉（`sim` 和测试 SEED 都开着它，**裸跑基准才可比**）。
+
+### ③ 天罚 Ult + 战意 Fury（战斗中唯一的手动操作）
+- **天罚** = dock 里第 5 个牌子 `#ultBtn`（和试炼同款 CD 扫圈）：点按钮进**瞄准**（`setAim`，战场压一层暖色 `#stage.aim`），再点战场落点 → `castUlt(x,y)`。`ULT={cd:55,r:1.75,slow:2,dmg:w=>70+36*w,pct:.08,pctBoss:.035}`。
+  ⚠️ **伤害 = 固定值 + 目标最大生命的 8%（Boss 3.5%）**：怪血量后期是指数爬升的，纯固定值到 20 波以后就是挠痒。
+  ⚠️ 瞄准判定写在 `cv` 的 pointerdown **最前面**，不然会先被"选英雄/进商店"吃掉。
+- **战意** = 连杀 `FURY_N=20` 触发 `FURY_T=8` 秒全体 攻击 +15%、攻速 +40（`furyT` 直接在 `calc` 里读）；`COMBO_KEEP=5` 秒内没有新击杀就清零。连杀数与战意剩余时间显示在顶栏波数后面（零布局成本）。
+
+## 方块战线·四大试炼 + 宝箱（TRIALS 表在 rpg.js 前部）
+- dock 那一行的4个图标（`.tile.trial`，HTML 在 rpg.html 的 #dock 里；商店已挪进地图，dock 只剩试炼），**点图标才开始试炼**，怪立刻入场，奖励在**击杀时结算**。
+- CD 从左到右依次变长：金币40s / 木头60s / 经验85s / 精英120s；CD 用 CSS `conic-gradient` 遮罩做成**魔兽式旋转扫圈**（`.cdmask` 的 `--p` 角度，updateHUD 每0.25s刷新），就绪时图标脉动发光。
+- **精英试炼第5波后开放**；所有试炼难度跟当前波数走（数量与倍率都随 wave 增长）。
+- 试炼怪脚下有对应颜色光环（`m.trial`）。金币/木头/经验试炼击杀给额外金/木/经验飘字。
+- **精英试炼掉宝箱**（`chests`，画在战斗区带金色光晕，点击开启）：**整场试炼只掉1个箱子，25%概率掉2个**（`startTrial` 里 `nChest`，只给前 nChest 只精英挂 chest 标记，快速怪不再掉）；**1个箱子=1件装备**。
+- 开箱：**15%（`GOLD_DROP`）出金色装备**（`pool:'gold'`），否则从**商店同款的蓝/紫**里随机（2026-07 整池重做后**已没有单独的精英池**了，`pool:'elite'` 这个值不再存在）。
+- 破甲实现：`h.sunder`（同名唯一、异名求和）→ 普攻给怪挂 `m.sunderT=6s`，物理伤害走 `mobArmor(m)` 而不是 `m.armor`。**`mobArmor` 先减固定削甲、再乘 `(1-SRC.armorPen)`**（百分比破甲只有火枪兵有）。
+
+## 方块战线·UI 皮肤（异世界风，2026-08 用户要求「有异世界的味道」）
+- 全部在 `www/rpg.css`，**没有任何外部图片/字体**（Artifact 的 CSP 不许外链），全靠渐变 + 伪元素拼出来。
+- **`:root` 里的皮肤令牌**（改风格先改这几个，别到处硬写颜色）：
+  | 令牌 | 用途 |
+  |---|---|
+  | `--p1/--p2` | 面板亮部/暗部（暗紫 `#251d3a`→`#150f26`） |
+  | `--brz` `--brz2` | 青铜描边色 |
+  | `--rim` | 金属外框渐变（切角元素的「边」就是它，做背景用） |
+  | `--serif` | 标题衬线字体栈（Songti SC / Noto Serif CJK），只给 ≥11px 的标题用 |
+  | `--cut5` `--cut9` | 切角八边形 `clip-path`（切 5px / 9px） |
+- **切角金属框的做法**（`.tile` / `.chcard` / `#cardInfo` / `#uiBoss` 都是这套）：元素本身 `background:var(--rim)` + `clip-path` + `isolation:isolate`，再用 `::before{inset:1.5~2px;同一个 clip-path;z-index:-1}` 铺内层暗底。
+  ⚠️ **`isolation:isolate` 不能省**——否则 `z-index:-1` 会穿到祖先（`#cards` 有 backdrop-filter）背后去。
+  ⚠️ `.chcard` 额外要 `padding:2px`，否则 `canvas`（width:100%）会盖住左右的金边。
+- **三条魔法分割线**：`header::after` / `#dock::before` / `#bottom::before`，中段最亮两端淡出的金色渐变条（2px，不占布局高度）。
+- **战场四角的黄金直角饰件**：`#stage::before` 用 8 层 `linear-gradient` 背景画出来；`#stage::after` 是内圈暗角。两个都 `pointer-events:none`，不影响点击。
+- **面板织纹**：`repeating-linear-gradient(135deg,rgba(255,255,255,.016) 0 1px,transparent 1px 7px)`，header/#dock/#bottom 各一份。⚠️ 试过 `.022/2px/6px`，在手机上偏脏，别调回去。
+- **开始页**（`#overlay`）：`::before` 是缓慢自转 72s 的巨型符文环（`repeating-conic-gradient`），标题用 `background-clip:text` 的金渐变 + 下方菱形分隔线，开始按钮是切角金牌。
+- **启动按钮配色已从 rpg.html 的内联样式挪进 CSS**（`#launchBtn` 紫水晶）；HTML 里只剩 `style="display:none"`，别再往回写内联色。
+- **`#uiBoss` 血条**：外框切角、`i` 改成 `left/right/top/bottom:1px`（不再是 `width:100%`），`span` 上叠了一层 `repeating-linear-gradient` 当刻度凿痕。JS 仍然只改 `i` 的 `scaleX`。
+
+## 方块战线·窗口尺寸兼容（2026-08 用户在电脑上打不开时加的）
+- **「请横屏游玩」不再硬挡**：`@media (orientation:portrait) and (pointer:coarse)` —— 只对**触摸设备**的竖屏自动弹；电脑（`pointer:fine`）永远不挡。层里还有一个 `#rotGo`「仍要继续」按钮，点了给 body 加 `.norot` 直接关掉。
+- **窄屏/竖窗口布局**（`@media (max-aspect-ratio:13/10),(max-width:820px)`）：
+  - ⚠️ **战场的屏幕高度只由宽度决定**（20 列 × 5 行的宽条，`needW/needH≈6`），纵向再高战场也不会变大。所以窄屏下：`#app{height:auto}` + `body{justify-content:center}` 把整个游戏**垂直居中打上下黑边**（letterbox），`#stage{aspect-ratio:4.6/1}` 压成刚好装下战场的一条。比「战场挤成底边一条缝 + 一大片空草地」体面得多。
+  - `header{flex-wrap:wrap}` + `.hbtn{white-space:nowrap}`（⚠️ 不加 nowrap，按钮会被压成竖排单字）；`#toast` 的 `top` 改成 `calc(50% - 132px)`，否则飘到上面的黑边里。
+  - `max-width:640px` 再收一档：属性网格 2 列、装备/技能格 26px、**熔炉隐藏**、**背包换到 dock 的第二行**（`#dock{flex-wrap:wrap}` + `#inv{flex:0 0 100%}`）。
+- 相机那边配套改了「富余封顶」，见下面「场景背景」里 `resize()` 那条。
+- 改完跑 `sh www/_test/go.sh win` 看四种尺寸。
+
+## 方块战线·场景背景（3D）
+- 场景在 `rpg3d.js` 的 `init()` 里一次搭好（地面 / 战斗区台面 / 网格线 / 出兵色块 / 红色分界线 / 选中框），**都是静态 mesh，不要改成每帧重建**。
+- ⚠️ **背景规则已被用户推翻两次，看清楚现在这条**：2026-07 用户看了参考图后**明确要求做连贯的地图背景**（之前 2D 时代嫌丑要求"整张纯色"那条已作废，别再照旧删掉）。现在：
+  - **一整张连贯的草地大地图**（`texGrass()` 程序化生成，草绿+噪点+草簇斑块），战斗区是铺在草地上的**石板路**（`texStone()`，错缝石板）；石板**四周都多铺出去**：右到传送门脚下（`BW=COLS+.95`），**纵向 `BZ0=-1.3`~`BZ1=ROWS+1.3`**（网格线仍只画 COLS×ROWS，左侧广场 `yard` 的纵深也跟着 BZ0/BZ1）。装饰排除区 `inBattle` 跟着 BZ0/BZ1 走。
+    ⚠️ **下沿贴着第5行、纵向富余全给上面**（见下条相机装框），所以**屏幕上方会露出草地和树**——这是有意的（用户明确要求"下面不要有多余空间，上面可以留一些"），`scatterDecor` 的散布范围已经往上铺开到 z=-6，别再把它当 bug 去堵。
+  - 战场外围散着树/石头/草簇（`scatterDecor()`，用 `srand()` 定种子所以每次一样，只摆在战斗区和商店排之外）。
+  - **所有贴图都是程序化 canvas 生成**（`makeTex()`），不用任何外部图片——Artifact 的 CSP 不许外链，而且省体积。
+  - 左侧出兵位**不再是色块，是职业色法阵光圈**（`texRune()` 六芒星+刻度环，符文环缓慢自转；有英雄站着的更亮更快）。存在 `circles[]`，每帧在 `drawWorld()` 里更新。
+  - **3×n 方格线保留**（用户明确要求先不隐藏），出兵区和战斗区都画竖线。
+- **相机是正交（OrthographicCamera）不是透视**：战场太宽，透视会把两端格子拉变形；正交下所有格子等大、战线清楚。俯角 `TILT=50°`。`resize()` 的装框规则：横向必装下商店排~传送门，纵向至少装下 5 行（`needH`，上沿留 `HEAD=.62` 给头顶血条）；哪边不够就按 asp 反算放大另一边。
+  - **纵向富余的分配（2026-07 用户指定）：下沿死死贴着第5行地面，多出来的全部留给上面。** 实现是先算出 `hh`，再由 `v(0,ROWS)=-hh` 反解相机 lookAt 的 `tz=ROWS-(needH+anchor-.02-yc·cos TILT)/sin TILT`（`anchor==hh-needH` 时就是贴底，`anchor==0` 时回到 `tz=ROWS/2` 居中）。⚠️ 别再写死 `tz=ROWS/2`，那样富余会上下平分、下面就有空地了。
+  - **⚠️ 富余封顶 `anchor=min(hh-needH, needH*0.9)`（2026-08 加）**：手机横屏 asp≈4 富余本来就小、行为完全不变；但**电脑窗口 asp 只有 1.5~2**，不封顶的话战场会被怼到屏幕最底边、上面空出一大片草地，看着像坏了。
+  - 实机横屏 asp≈4，而战场本身的屏幕比例是 `26/(5·sin50°)≈6.8`，**纵向必然有富余**（不是 bug，是宽战场的必然结果），所以上方那条草地带会一直在。
+- **卡通着色（2026-07 加，魔兽3低模的关键）**：单位/建筑/装饰统一走 `add()`，材质是 **`MeshToonMaterial` + 4阶灰度 ramp**（`toonRamp()`，`[.42,.62,.82,1]`，NearestFilter），配色进 `pop()` 提一档饱和度，再叠一张 `texPaint()`。
+  - **`texPaint()` 是"每个面一张"的手绘暗角**（四周压暗+中心提亮+底部接触阴影+几笔刷痕），`repeat` 保持 1 —— 盒子每个面 UV 都是 0~1，一个面正好吃一张，平坦的大面立刻有体积。⚠️ **别做成平铺噪点**（试过，小屏上就是一层脏）。小于 .22 的零件不贴图。
+  - **描边 `outline()`** = inverted hull（同一份几何画背面，`olMat` 深色 `BackSide`），按包围盒每轴反算缩放让描边在世界坐标里等宽，**每轴缩放夹在 1.5 以内**（不夹的话眼睛/刀刃这种薄片会膨胀成黑块，踩过）。**只描 `OL_MIN=.34` 以上的大块**（躯干/披风/头/大武器），否则整个模型糊成一团黑。挂成 mesh 的子节点所以自动跟动画走；低端机降级时统一 `visible=false`。
+- 光照：半球光(天蓝/地暗) + 主平行光(带 2048×1024 阴影贴图) + 补光 + **一盏冷色背光勾边**。
+  - ⚠️ **卡通分阶要靠"一盏主光"**：多盏灯叠加会把所有面顶到最亮那一阶、模型发白。所以环境光压到 .5、补光 .26、背光 .45。**`cardInit()` 里卡片场景的灯要同步压**，否则卡片上的模型是白的。
+  - ⚠️ 单位压暗了地面会跟着黑，但 **`light.layers` 对 `HemisphereLight` 无效**（它被并进全局 lightProbe），所以地面是用 `lay(mesh,emissive)` 给材质加 `emissiveMap`(=自己的 map) 单独提亮的。
+  - **☀️ 2026-07 用户要求改成"太阳下的明亮场景"，全套地面配色已重做**（之前是深藏青的夜景）：草地 `#5d9243`、石板 `#a69d88`(石缝 `#5f594c`)、广场土 `#a3855a`、台面侧壁 `#8a7f6c`、网格线 `#453c2e`。灯光是正午太阳：天光 `#bcd8ff`/地反光 `#6d7a58` ×.78 + 主光 `#fff4d6` ×1.6。`setClearColor(0x8fb8d4)`，草地平面也放大到 `COLS+46 × ROWS+46`（`repeat` 按 `/4.9` 同步放大保持草纹密度），屏幕上方不会露出天空缝。
+  - ⚠️ **环境光不能再往上加**：卡通分阶靠"一盏主光压过环境光"，天光一高就全顶到最亮那一阶、模型发白。要更亮就调贴图配色，别调灯。
+- **低端机自动降级**：`draw()` 末尾统计帧时，连续 120 帧平均 >17ms 就自动关阴影（`shadowOn`）。
+
+## 方块战线·帧率
+- **主循环不锁帧**：`loop()` 里就是裸 `requestAnimationFrame`，跑多少帧完全由屏幕刷新率决定（浏览器保证 rAF 和屏幕垂直同步）。逻辑全部按 `dt` 推进（`dt` 上限 .05s = 20fps 保底），所以 60/120Hz 下游戏速度一致。
+- **iPhone 16 Pro = ProMotion LTPO，1~120Hz 自适应**；iOS Safari 会把 rAF 给到 120Hz，但系统会按负载/发热/低电量模式自动降到 60。所以"同步"不用做额外工作，rAF 天然就是同步的。
+- ⚠️ **左上角的帧率徽标 `#fps` 已按用户要求删掉**（HTML/CSS/`fpsTick` 全删了），别再加回来。
+- **锁帧开关 `fpsCap` 还留着**（0=跟随屏幕，改成 60 就锁 60），实现是"时间没到就 return，不更新 `last`"，所以 dt 不会丢。
+- ⚠️ **新加动画一律用 `gt` 或 `dt`，不要写 `rotation.y+=0.06` 这种按帧递增**——120Hz 下会转两倍快。（rpg3d.js 里原有的 3 处已改成 `=gt*速度`：商店旋转件/悬浮书/法师宝珠环。）
+
+## 省 token 方案（⚠️ 每次改动都照这个走，别自己发挥）
+
+**⚠️ 两条最容易被忽略的**
+- **会话越长，同样的改动越贵**：每轮都要把整段历史重送一遍，所以「一个小改动花了 30%」多半不是这轮做错了，而是历史里堆了十几张截图（每张≈1500）+ 大段 sed 输出 + 每轮都带的整份本文件。下面的规矩只压得住**本轮新增**，压不住历史。真正的杠杆是：**攒一批需求一起提** + **换话题就 `/clear`**。
+- **只有「进上下文的字」花 token。**
+- **Read 工具 / grep 输出 / sed 输出 / 截图 → 花 token**（截图约 1500/张）。
+- **`python3 - <<PYEOF` 里的 `io.open(p).read()` / `.write()` → 一分不花**，因为文件内容从没进过上下文，进上下文的只有你亲手敲的那几行 `(old,new)`。
+- 所以规则不是「少改文件」，而是 **「少看文件」**：整份 `rpg.js`/`rpg3d.js` 用脚本重写都行，但**一行都不许多读**。
+
+**标准流程**（正常 4~6 次工具调用收工）
+1. 查「改什么→去哪里」锚点表拿 grep 锚点 → `grep -n "锚点" www/rpg3d.js` 定位 →
+   `sed -n 'a,bp'` **只读要改的那 10~40 行**。函数再长也只 sed 你要动的那个分支。
+2. 所有改动写成**一个** `python3 - <<PYEOF`：`(old,new)` 列表 + 逐条 `assert s.count(old)==1` + 统一写盘，再 `node --check`。
+   ⚠️ 用 `count(old)==1` 而不是 `old in s`——锚点撞车时 `replace` 会插错地方，`in` 检查不出来。
+3. 验证只跑 `sh www/_test/go.sh <场景>`（见下面的对照表），**别手写 playwright**。
+4. 顺手更新本文件；**锚点文字被改动时必须同步改**——失效的锚点比没有锚点更坑。
+5. 回复只讲结论和数字，不贴代码。用户会攒一批需求一起说，**一次做完再回**。
+
+**渲染/模型代码尤其要克制（`rpg3d.js` 1680 行，整读一次就是几万 token）**
+- 改一个单位的模型 → 怪物只 sed `buildMob` 里那**一个 `else if(type===...)` 分支**；英雄直接进 `heroMage`/`heroArcher`/`heroWarrior`（各 50~80 行），别读 `buildHero` 全家。
+- 改一条支线的攻击动作 → 只 sed `drawHeroes()` 里 `akind` 那一段。
+- 改材质/光照 → 锚点是 `function add(` / `function init(`，各只有十几行要看。
+- **加新分支时把相邻分支当模板，靠记忆写风格**（`add(g, g_xxx(...), color, x,y,z, {...})`），不用把整段抄进上下文。
+- 布局/相机/正交范围这类，**先把公式算出来写进注释**，别靠「改一点→截图→再改」的循环——那是最烧 token 的一种。
+
+**大改动（整表替换 / 换一整个函数 / 加一整套机制）的省 token 打法**
+> 2026-08 换整个技能池那轮的经验：改了 4 个文件、上千行，全程没有 Read 过任何一个大文件。
+- **别手抄「结尾那几行」当替换锚点**。整表替换用 `head + 之后第一个 "\n};\n"` 定位：
+  `i=s.index("const SKB={"); j=s.index("\n};\n",i)+4; s=s[:i]+新表+s[j:]`。
+  （踩过：手抄 `const SKB` 最后一行当 tail，肉眼一模一样但就是 `index` 不到，白花一轮。）
+- **换整个函数**用花括号配平取 span（正则找 `^function 名\s*\(`，再从第一个 `{` 数到配平），
+  这样**完全不用把旧函数正文抄进上下文**。`repl_fn(name, 附加在后面的新函数)` 一次能顺带插入新增函数。
+- **大段新代码写进 scratchpad 文件**（用 Write 工具），python 里 `io.open(路径).read()` 读进来再拼。
+  好处有两个：① 新代码只在输出里出现一次，不会因为 heredoc 转义问题重发；② 中文/引号混排不会炸。
+- **数据表和实现分批提交**：先换表 → `node --check` → 再改引用它的函数。一批炸了不会连累已确认的那批。
+- ⚠️ **改数据表的名字（技能名/装备名/召唤物 kind）要顺手 `grep -n 名字 www/_test/run.js`**：
+  run.js 的 SEED 和几个断言里**硬编码了技能名**，漏改会在跑测试时才炸（踩过两次）。
+- ⚠️ **测试断言要确定性**：靠实战采样的断言（例：回响之刃 CD 峰值）会因为怪一击就死而变成 0，
+  看起来像 bug 其实是采样问题。这类断言一律改成「打一只打不死的假怪」。
+
+**永远不做的事**
+- ❌ Read `www/vendor/three.min.js`（706KB 压缩代码，一次几十万 token）。Three.js API 按记忆写；换版本跑 `python3 www/vendor/_fetch_three.py [版本号]`。
+- ❌ 整文件 Read `rpg.js` / `rpg3d.js` / `run.js`。
+- ❌ 凭记忆写 `old_string`（空格/注释对不上就白花两轮）。**没在这一轮亲眼 grep 过的替换，单独拆一批跑**——assert 失败=整批不写盘，混批会把已确认的那些也一起赔进去。
+- ❌ **拿一段在多个函数里重复出现的代码当替换锚点**。踩过：`cardsEl.classList.add(show)` 这行在三个 `open*Cards` 结尾一模一样，`replace(...,1)` 直接插错函数，跑测试才发现。锚点先用 `grep -c` 确认唯一。
+- ❌ 截全屏再裁剪放大（等于看两张图）。截图一律带 `--clip=x,y,w,h`。
+- ❌ 发 Artifact 报「没看过最新版」时去 WebFetch 那个 900KB 单文件。直接 `force:true`——它只是 `_build_artifact.py` 从本仓库生成的产物，本地 HEAD 就是最新源。会话内发过一次后，同路径重发即保持同一 URL。
+- ❌ 因 stop-hook 报「提交 Unverified/缺签名」就循环 `--amend`。本机没配 `gpg.ssh.allowedSignersFile`，`git log %G?` 只能回 `N`；用 `git cat-file commit HEAD | grep gpgsig` 确认一次有签名就直接回复用户。
+
+**python heredoc 的两个坑（各白花过一轮）**
+- 中文注释里夹英文双引号会把 python 字符串截断 → `SyntaxError`，整批不写盘。**中文里一律用「」**。
+- 别把 `python3 ... && git add && git commit && git push` 串成一条：python 语法错时后面照样跑，会把没改完的状态提交上去。**脚本和 git 分两次执行。**
+
+**JS 侧踩过的坑**
+- 顶层 `const`（例 `DC`/`SKB`/`BONDS`）不会挂到 `window`，但**在 playwright 的 `page.evaluate` 里能直接用**（同一个全局词法作用域），所以 probe 断言可以直接引用它们。
+- CSS 里写了 `display:none` 的元素，JS 里 `style.display=空字符串` **不会显示**（清空 inline 样式=退回 CSS 的 none），必须写 `block`。
+- `light.layers` 对 `HemisphereLight` 无效（它被并进全局 lightProbe），想单独给地面提亮只能改材质的 `emissive/emissiveMap`。
+
+**选对验证手段（这一步选错最烧 token）**
+| 改了什么 | 用这个验 | 别用 |
+|---|---|---|
+| 数值 / 技能 / 装备 / 转职 / 经济 | `go.sh probe`（只打印一屏数字，最省） | 截图 |
+| 装备的**特殊触发**是否真的生效 | `go.sh eq`（真打一场+手动连A，带DPS排行） | 肉眼看战斗 |
+| 平衡曲线 | `go.sh sim`（和「裸跑基准」那几行对比） | 自己手打一遍 |
+| 交互流程（卡片 / 背包 / 商店） | `go.sh cards`（自带断言） | 挨个点+截图 |
+| **英雄模型 / 武器 / 攻击动作** | `go.sh models` | ~~截战场全图~~ |
+| 渲染开销（描边/贴图会涨 draw call） | `go.sh shot` 打印的 `渲染开销`（`R3.info()`） | 猜 |
+| 布局 / 相机 / 场景 | `go.sh shot --clip=...` | 截全屏 |
+- **一次跑出的图别全读**：`models` 会产出 3 张卡片图 + 6 张战场图，**只 Read 需要判断的那一两张**（每张约 1500 token）。
+- 一次性 playwright 脚本写进 scratchpad，别塞仓库；**同一类检查用到第二次就并进 `run.js`**（`models` 场景就是这么来的）。
+- 改了交互**顺手改 `run.js`**：断言/点击路径过期会白跑一轮。
+
+**看模型的坑（2026-07 踩了 3 轮才收敛，别再从头试）**
+- **看外观一律走转职卡片层**（`go.sh models` 出的 `mc0_warrior/mc1_archer/mc2_mage`）：一张图看三条支线、模型最大最清楚。战场上的英雄只有几十像素，截了也判断不了。`models` 场景已把 deviceScaleFactor 提到 4。
+- **卡片相机几乎正对模型的 +X**：`cardTick` 把模型转 `-PI/2+.34`，所以武器局部 +X 方向在屏幕上的水平分量 = `.334·cosφ + .943·sinφ`（φ = 武器自身 `rotation.y`）。φ=0 时只有 .33 → **朝前的枪 / 匕首 / 斧刃会被压成一个点看不见**；φ 取 **+0.3 ~ +0.6** 才既看得清、俯视时又不太歪（火枪 .36、匕首 .3、双斧 ∓.6）。
+- **"认不认得出是什么武器"取决于剪影，不是细节**：狂战士的斧头是把刃从"朝侧面(±Z)"改成"朝前(+X)"才认出来的，之前加再多小零件都没用。
+- 布局 / 相机这类改动**先把数算出来写进注释**（正交半高 = `yc·cosT + (ROWS/2)·sinT` 之类），别靠"改一点→截图→再改"的循环，那是最烧 token 的一种。
+
+## 边界与已知结论
+- **教训（最重要的一条）**：曾经拿"格子会变小"劝退过「战斗区改5行」，用户重申后照做了，代价比预估小得多。**用户重申过的需求就照做，别再拿旧结论劝。**
+- **内容边界**：用户多次想内置露骨/色情模型，**已拒绝并坚持**。合规模型正常协助。
+- **iPhone 网页 AR** 只能用 AR Quick Look（苹果封闭查看器），**无法自定义放置 UI**。要自定义放置 UX 得原生 ARKit（要 Mac）或付费 8th Wall；iOS Safari 不支持 WebXR。

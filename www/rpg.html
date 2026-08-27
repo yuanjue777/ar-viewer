@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>方块战线</title>
+<link rel="stylesheet" href="rpg.css">
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="stat money"><b id="uiMoney">0</b><small>金</small></div>
+    <div class="stat woodS"><b id="uiWood">0</b><small>木</small></div>
+    <div class="stat life"><b id="uiLife">0</b><small>基地</small></div>
+    <div class="stat wave"><b id="uiWave">0/15</b><small>波</small></div>
+    <span class="omen" id="uiOmen" style="display:none"></span>
+    <div id="uiBoss"><i></i><span>BOSS</span></div>
+    <div class="hright">
+      <button class="hbtn auto" id="autoLearnBtn">自动学习</button>
+      <button class="hbtn auto" id="autoTrialBtn">自动试炼</button>
+      <button class="hbtn auto" id="autoNextBtn">自动开波</button>
+      <button class="hbtn" id="speedBtn">×1</button>
+      <button class="hbtn hire" id="hireBtn">招募英雄<span id="hireLv">免费</span></button>
+      <button class="hbtn" id="nextBtn" style="display:none">⏩ 下一波</button>
+      <button class="hbtn" id="launchBtn" style="display:none">▶ 启动</button>
+    </div>
+  </header>
+  <div id="stage"><canvas id="cv"></canvas></div>
+  <div id="dock">
+    <button class="tile trial" data-trial="gold"><span class="cdmask"></span><span class="ic"></span>金币试炼<span class="lv">就绪</span></button>
+    <button class="tile trial" data-trial="wood"><span class="cdmask"></span><span class="ic"></span>木头试炼<span class="lv">就绪</span></button>
+    <button class="tile trial" data-trial="xp"><span class="cdmask"></span><span class="ic"></span>经验试炼<span class="lv">就绪</span></button>
+    <button class="tile trial" data-trial="elite"><span class="cdmask"></span><span class="ic"></span>精英试炼<span class="lv">Lv5波</span></button>
+    <button class="tile ult" id="ultBtn"><span class="cdmask"></span><span class="ic"></span>天罚<span class="lv">待启动</span></button>
+    <div id="inv">
+      <div class="invLabel">背包</div>
+      <div id="invItems"></div>
+      <button id="sellAll">出售装备</button>
+    </div>
+  </div>
+  <div id="bottom">
+    <div id="info"><div class="hint"></div></div>
+  </div>
+</div>
+
+<div id="dragGhost"></div>
+<div id="toast"></div>
+
+<div id="overlay">
+  <h1>方块战线</h1>
+  <div class="cls">
+    <span><i style="background:var(--mage)"></i>法师·主智力</span>
+    <span><i style="background:var(--archer)"></i>游侠·主敏捷</span>
+    <span><i style="background:var(--warrior)"></i>战士·主力量</span>
+  </div>
+  <p>共 25 波。进场先<b>布阵</b>：买英雄、逛商店，点<b>右上角 ▶ 启动</b>开战。<br>
+  每波开战会降下一道<b>异象</b>，全场规则随之改变；每 2 波清场后从三张<b>祝福</b>里选一项永久强化；战斗中可放<b>天罚</b>（底栏右侧，点按钮再点落点）；连杀 20 触发<b>战意爆发</b>。</p>
+  <button class="lg" id="startBtn">开 始</button>
+</div>
+
+<div id="cards"><div id="cardTitle"></div><div id="cardBody"><div id="cardInfo"></div><div id="cardRow"></div></div><button id="cardForge" class="btn"></button><button id="cardCancel">取消</button></div>
+
+<div id="rotate"><div class="ph">📱</div><div>横屏（或把窗口拉宽）体验最好<br><span style="font-size:11px">战场是一条很宽的战线，屏幕越宽格子越大</span></div><button class="go" id="rotGo">仍要继续</button></div>
+
+<script src="vendor/three.min.js"></script>
+<script src="rpg3d.js"></script>
+<script src="rpg.js"></script>
+</body>
+</html>
